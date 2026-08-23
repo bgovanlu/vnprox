@@ -390,15 +390,22 @@ func TestNetworkStaging_FixtureDefaultFailureInjection(t *testing.T) {
 	}
 }
 
-// TestSDNZoneStatus_ReportsErrorForUnrealizedNode proves the SDN
-// pending-vs-applied status endpoint surfaces real per-node problems using
-// the messy-brownfield fixture's zone-legacy scenario (bridge missing on
-// pve3).
+// TestSDNZoneStatus_ReportsErrorForUnrealizedNode proves the per-node SDN
+// zone status endpoint (T-3701: GET /nodes/{node}/sdn/zones — real PVE
+// 9.2.4's actual shape, replacing an invented per-zone
+// GET /cluster/sdn/zones/{zone}/status that returns 501 on real hardware)
+// surfaces real per-node problems using the messy-brownfield fixture's
+// zone-legacy scenario (bridge missing on pve3), and that the wire shape
+// matches what real PVE sends (planning/reports/evidence/
+// pve-9.2.4-sdn-zone-status.txt): only "zone"/"status" per entry, no "node"
+// key at all — the {node} path segment is what says which node this is,
+// confirmed here by requesting a different node (pve1, whose zone-legacy
+// bridge exists) and getting a different answer for the identical zone id.
 func TestSDNZoneStatus_ReportsErrorForUnrealizedNode(t *testing.T) {
 	srv := newTestServer(t, "messy-brownfield.yaml")
 	ticket, _ := login(t, srv, "root@pam", "vnprox-mock")
 
-	req := authedRequest(t, http.MethodGet, "/api2/json/cluster/sdn/zones/zone-legacy/status", ticket, "", nil)
+	req := authedRequest(t, http.MethodGet, "/api2/json/nodes/pve3/sdn/zones", ticket, "", nil)
 	rec, body := doJSON(t, srv, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("zone status GET = %d, body=%v", rec.Code, body)
@@ -407,7 +414,10 @@ func TestSDNZoneStatus_ReportsErrorForUnrealizedNode(t *testing.T) {
 	found := false
 	for _, e := range entries {
 		m, _ := e.(map[string]any)
-		if m["node"] == "pve3" {
+		if _, hasNode := m["node"]; hasNode {
+			t.Fatalf("entry %v carries a \"node\" key — real PVE's per-node response never does (the {node} path segment already says which node)", m)
+		}
+		if m["zone"] == "zone-legacy" {
 			found = true
 			if m["status"] != "error" {
 				t.Fatalf("pve3 zone-legacy status = %v, want error", m["status"])
@@ -415,7 +425,86 @@ func TestSDNZoneStatus_ReportsErrorForUnrealizedNode(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("no status entry for pve3 in %v", entries)
+		t.Fatalf("no status entry for zone-legacy in %v", entries)
+	}
+
+	// pve1 realizes the same zone-legacy bridge fine — the SAME zone id
+	// reports a DIFFERENT status depending on which node answers, proving
+	// this is genuinely per-node, not a per-zone read this mock merely
+	// serves from a node-keyed route.
+	req1 := authedRequest(t, http.MethodGet, "/api2/json/nodes/pve1/sdn/zones", ticket, "", nil)
+	rec1, body1 := doJSON(t, srv, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("zone status GET (pve1) = %d, body=%v", rec1.Code, body1)
+	}
+	entries1, _ := body1["data"].([]any)
+	found1 := false
+	for _, e := range entries1 {
+		m, _ := e.(map[string]any)
+		if m["zone"] == "zone-legacy" {
+			found1 = true
+			if m["status"] != "ok" {
+				t.Fatalf("pve1 zone-legacy status = %v, want ok", m["status"])
+			}
+		}
+	}
+	if !found1 {
+		t.Fatalf("no status entry for zone-legacy in %v", entries1)
+	}
+}
+
+// TestSDNZoneStatus_UnavailableNodeAnswersEmpty proves
+// MockOptions.SDNZonesUnavailable reproduces the exact cross-node
+// divergence confirmed live on the project's own two-node cluster
+// (planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt): one node
+// reports a zone's real status while a sibling node — genuinely a member of
+// the same zone — answers with an empty array and no error at all. A test
+// (or a caller) that can't tell "no rows" apart from "healthy" would pass
+// against this fixture without noticing the gap; this test asserts the
+// empty-array shape explicitly, not just its absence from a healthy list.
+func TestSDNZoneStatus_UnavailableNodeAnswersEmpty(t *testing.T) {
+	srv := newTestServer(t, "messy-brownfield.yaml")
+	ticket, csrf := login(t, srv, "root@pam", "vnprox-mock")
+
+	toggle := authedRequest(t, http.MethodPost, "/mock/nodes/pve1/sdn-zones-unavailable", ticket, csrf, []byte(`{"unavailable":true}`))
+	if rec, body := doJSON(t, srv, toggle); rec.Code != http.StatusOK {
+		t.Fatalf("toggling sdn-zones-unavailable: status %d body %v", rec.Code, body)
+	}
+
+	req := authedRequest(t, http.MethodGet, "/api2/json/nodes/pve1/sdn/zones", ticket, "", nil)
+	rec, body := doJSON(t, srv, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("zone status GET (pve1, unavailable) = %d, body=%v", rec.Code, body)
+	}
+	entries, ok := body["data"].([]any)
+	if !ok {
+		t.Fatalf("data = %v (%T), want a JSON array", body["data"], body["data"])
+	}
+	if len(entries) != 0 {
+		t.Fatalf("entries = %v, want an empty array (pve1 has zone-legacy configured but is flagged unavailable)", entries)
+	}
+
+	// pve3 is untouched by the toggle — it still reports zone-legacy
+	// "error" from its own missing bridge, exactly as before. Same zone,
+	// same fixture, two different answers from two different nodes.
+	req3 := authedRequest(t, http.MethodGet, "/api2/json/nodes/pve3/sdn/zones", ticket, "", nil)
+	rec3, body3 := doJSON(t, srv, req3)
+	if rec3.Code != http.StatusOK {
+		t.Fatalf("zone status GET (pve3) = %d, body=%v", rec3.Code, body3)
+	}
+	entries3, _ := body3["data"].([]any)
+	found3 := false
+	for _, e := range entries3 {
+		m, _ := e.(map[string]any)
+		if m["zone"] == "zone-legacy" {
+			found3 = true
+			if m["status"] != "error" {
+				t.Fatalf("pve3 zone-legacy status = %v, want error", m["status"])
+			}
+		}
+	}
+	if !found3 {
+		t.Fatalf("no status entry for zone-legacy in %v", entries3)
 	}
 }
 

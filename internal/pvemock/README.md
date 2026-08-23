@@ -42,9 +42,12 @@ that vnprox's client calls:
   all staged changes.
 - `GET/PUT /nodes/{node}/{qemu,lxc}/{vmid}/config`.
 - SDN: `/cluster/sdn/zones`, `/cluster/sdn/vnets`,
-  `/cluster/sdn/vnets/{vnet}/subnets` (full CRUD), per-zone
-  `/cluster/sdn/zones/{zone}/status` (pending/applied/error per node), and
-  `PUT /cluster/sdn` (cluster-wide apply, task-returning).
+  `/cluster/sdn/vnets/{vnet}/subnets` (full CRUD), per-node
+  `/nodes/{node}/sdn/zones` (pending/applied/error, one call per node
+  covering every zone assigned to it — T-3701 corrected this from an
+  invented per-zone `/cluster/sdn/zones/{zone}/status` that real PVE 9.2.4
+  returns 501 for), and `PUT /cluster/sdn` (cluster-wide apply,
+  task-returning).
 - IPAM (read-only): `GET /cluster/sdn/ipams` (configured plugin
   instances), `GET /cluster/sdn/ipams/{ipam}`, and
   `GET /cluster/sdn/ipams/{ipam}/status` (the instance's current

@@ -57,4 +57,35 @@ describe("sdnZoneEntityStatus", () => {
       ]),
     ).toBe("down");
   });
+
+  // T-3701: the vnprox-synthesized "unknown" status (a declared member node
+  // PVE had nothing to report for at all — internal/pve.
+  // ReconcileSDNZoneStatus's doc comment, confirmed live on a real two-node
+  // cluster). It must move the aggregate off "ok" (silently reading a gap
+  // as healthy is exactly the bug this task exists to fix), but a confirmed
+  // error/pending elsewhere still outranks a mere "we don't know".
+  it("is unknown (not ok) when a reporting node itself has no status to give", () => {
+    expect(
+      sdnZoneEntityStatus([
+        { node: "pve1", status: "ok" },
+        { node: "pve2", status: "unknown" },
+      ]),
+    ).toBe("unknown");
+  });
+  it("error wins over unknown when both are present", () => {
+    expect(
+      sdnZoneEntityStatus([
+        { node: "pve1", status: "unknown" },
+        { node: "pve2", status: "error" },
+      ]),
+    ).toBe("down");
+  });
+  it("pending wins over unknown when both are present", () => {
+    expect(
+      sdnZoneEntityStatus([
+        { node: "pve1", status: "unknown" },
+        { node: "pve2", status: "pending" },
+      ]),
+    ).toBe("degraded");
+  });
 });

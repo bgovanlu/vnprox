@@ -369,8 +369,10 @@ from; and pvemock does not model an `ifreload` outage at all):
       reachable this way with zero `/etc/pve/sdn/ipams.cfg` entries, or whether a zone must
       explicitly set `ipam: pve` first.
 - [ ] **EVPN anycast-gateway realization when the gateway is absent**: does the zone's per-node
-      status (`GET /cluster/sdn/zones/{zone}/status`) report an error, or is routed/exit-node
-      traffic simply dark with no observable signal at all? This determines whether
+      status (`GET /nodes/{node}/sdn/zones` — T-3701 corrected the URL this item originally named,
+      an invented `/cluster/sdn/zones/{zone}/status` that never existed on real PVE) report an
+      error, or is routed/exit-node traffic simply dark with no observable signal at all? This
+      determines whether
       `sdn.evpn_gateway_missing` (`internal/change/validate_advisory.go`) is the *only* signal an
       operator gets, or whether T-402's post-apply zone health check would also eventually catch
       it.
@@ -1497,11 +1499,13 @@ pvecube has no fabrics configured and is a single node, so the capture
 API's *shape* only — none of the following is observed against real hardware:
 
 - [ ] **Fabric convergence and per-node realization.** The captured API has no
-      `/cluster/sdn/fabrics/fabric/{id}/status` route the way a zone has
-      `/cluster/sdn/zones/{zone}/status` — `internal/sdn.Fabric.NodeStatus` (built from
-      `GET /cluster/sdn/fabrics/node`) therefore reports configured *membership* only, with every
-      member node hardcoded to `status: "ok"`. Whether real PVE exposes fabric health any other
-      way (a task log, a different route, `journalctl` on the node) is unconfirmed.
+      `/cluster/sdn/fabrics/fabric/{id}/status` route the way a zone has a real per-node status read
+      (`GET /nodes/{node}/sdn/zones` — corrected by T-3701; this entry originally compared against an
+      invented `/cluster/sdn/zones/{zone}/status` that never existed on real PVE either) —
+      `internal/sdn.Fabric.NodeStatus` (built from `GET /cluster/sdn/fabrics/node`) therefore
+      reports configured *membership* only, with every member node hardcoded to `status: "ok"`.
+      Whether real PVE exposes fabric health any other way (a task log, a different route,
+      `journalctl` on the node) is unconfirmed.
   - [ ] `pve.SDNFabricNode`'s `ip`/`ip6` fields are this package's inference from `--ip_prefix`'s
         stated purpose ("The IP prefix for Node IPs"), not a captured field name — the fixture
         cluster's fabrics were all empty, so `GET /cluster/sdn/fabrics/node` was never observed
@@ -1549,9 +1553,10 @@ none of the following is observed against real hardware:
       isis/faucet equivalents with a field this model excludes) against pvecube and check whether it
       is accepted or rejected, then correct both maps together if it disagrees.
 - [ ] **Controller convergence and per-node realization.** The captured API has no
-      `/cluster/sdn/controllers/{id}/status` route the way a zone has
-      `/cluster/sdn/zones/{zone}/status`, and (unlike fabrics) no separate
-      `/cluster/sdn/controllers/node` per-node-membership collection either —
+      `/cluster/sdn/controllers/{id}/status` route the way a zone has a real per-node status read
+      (`GET /nodes/{node}/sdn/zones` — corrected by T-3701; this entry originally compared against an
+      invented `/cluster/sdn/zones/{zone}/status` that never existed on real PVE either), and (unlike
+      fabrics) no separate `/cluster/sdn/controllers/node` per-node-membership collection either —
       `internal/sdn.Controller` therefore carries no `nodeStatus` at all. Whether real PVE exposes
       controller health or per-node membership any other way is unconfirmed.
 - [ ] **`sdn.controller.update`'s type immutability.** `internal/change.SdnControllerUpdateParams`
@@ -1794,3 +1799,49 @@ could *not* reach:
       an installed-and-stopped state. The rest are exercised against the mock only — and the
       dnsmasq false positive is a standing reminder that the mock agreeing with the code proves
       nothing about the node.
+
+## T-3701 — SDN zone status: per-node endpoint, and a real cross-node divergence (2026-08-23)
+
+The client now calls the endpoint PVE 9.2.4 actually implements (`GET /nodes/{node}/sdn/zones`,
+per-node — `internal/pve/sdn.go`'s `ListNodeSDNZoneStatus`), reconciled against each zone's declared
+node membership by `pve.ReconcileSDNZoneStatus`. CLAUDE.md's "one real node, no cluster" line was
+out of date during this task: `pvecube` has been a member of a quorate two-node corosync cluster
+(`vnprox-dev`, `pve001` at 192.168.1.7) since 2026-08-18 —
+`planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt` is the read-only transcript. That
+changed what this task could verify directly, not just what it had to flag:
+
+- **Verified live, not flagged.** Cross-node reads from `pvecube` work
+  (`pvesh get /nodes/pve001/sdn/zones`), and the two nodes disagree on this exact endpoint right
+  now: `pvecube` reports `labz` `status: error`; `pve001` answers the identical call with an empty
+  array `[]` and only a human-readable "local sdn network configuration is not yet generated"
+  warning on stderr — no error status, no per-entry `node` field, no `zone: labz` row at all. This
+  is real production behaviour, not synthesized for this task, and it is exactly the shape
+  `ReconcileSDNZoneStatus`'s "unknown" synthesis exists to handle (a declared member node PVE had
+  nothing to say for a zone is not the same fact as that node being healthy). `internal/pvemock`'s
+  new `SDNZonesUnavailable` per-node flag reproduces this exact response (empty array,
+  unconditionally, independent of `SDNZoneStatusFail`/bridge state) and is exercised by
+  `internal/pvemock/server_test.go`'s `TestSDNZoneStatus_UnavailableNodeAnswersEmpty` and
+  `internal/pve/integration_test.go`'s `TestSDNZoneStatus_ReconcileAcrossDivergentNodes` — genuine
+  cross-node divergence against a real mock server, not two hand-rolled fakes agreeing with each
+  other.
+- [ ] **Whether an empty `SDNZone.Nodes` list means "every cluster node" on real PVE.** `pvesh
+      usage /cluster/sdn/zones/labz -v`'s `--nodes` description is just "List of cluster node
+      names.", with no stated default. `ReconcileSDNZoneStatus` (and this mock's own
+      `zoneAssignedToNode`, unchanged by this task) assume — based on Proxmox's general documented
+      SDN zone behaviour, not anything observed on this cluster — that no `--nodes` restriction
+      deploys a zone cluster-wide. Confirming this needs creating an unrestricted zone, which is a
+      mutating write against `vnprox-dev`'s two live nodes and out of scope for a read-only task.
+- [ ] **A cluster of three or more nodes, for majority-vs-minority disagreement.** Two nodes can
+      only ever show "they differ"; they cannot show which answer an operator should trust more
+      when, say, two of three agree and one doesn't. `ReconcileSDNZoneStatus` reports every node's
+      status independently with no voting/consensus logic (deliberately — PVE's own per-node
+      realization state has no notion of a "majority" answer being more correct), so this is a
+      product-behaviour question for a future task, not a defect in this one, but it remains
+      unverified beyond two nodes.
+- [ ] **A zone whose member list spans nodes in genuinely different health states beyond
+      error/unavailable** — e.g. one node mid-apply (`pending`) while another already shows
+      `error` for the same zone, both for real rather than injected. `pve3`'s missing-bridge
+      scenario (`messy-brownfield.yaml`, reused for this task's mock-level tests) and the
+      `SDNZoneStatusFail`/`SDNZonesUnavailable` injection flags cover the mechanism, but a
+      genuinely-observed three-way split (ok / pending / error, or ok / error / unknown) on live
+      hardware has not been captured.

@@ -454,14 +454,23 @@ func bondStatus(b *inventory.Bond, prov inventory.Provenance) Status {
 }
 
 // sdnZoneStatus paints a zone from its per-node realization status
-// (docs/api.md's GET /cluster/sdn/zones/{zone}/status "ok"|"pending"|
-// "error" vocabulary, mirrored in T-401's GET /sdn tree so the cockpit tree
-// and this map painting agree): red (StatusDown) if any node reports
-// "error" (the zone is broken there — e.g. its bridge is missing, AC4),
-// amber (StatusDegraded) if any node reports "pending" with no outright
-// error, unknown if PVE hasn't reported any per-node status yet, else ok.
-// "Error" wins over "pending" when a zone has both, since it's the more
-// severe condition.
+// (docs/api.md's GET /nodes/{node}/sdn/zones "ok"|"pending"|"error"
+// vocabulary — T-3701 replaced an invented per-zone
+// GET /cluster/sdn/zones/{zone}/status that PVE 9.2.4 returns 501 for —
+// mirrored in T-401's GET /sdn tree so the cockpit tree and this map
+// painting agree): red (StatusDown) if any node reports "error" (the zone
+// is broken there — e.g. its bridge is missing, AC4), amber
+// (StatusDegraded) if any node reports "pending" with no outright error,
+// unknown (StatusUnknown) if PVE hasn't reported any per-node status at
+// all, OR if any reporting node itself carries the vnprox-synthesized
+// "unknown" status (pve.ReconcileSDNZoneStatus's doc comment — a declared
+// member node PVE had nothing to say about, confirmed live on a real
+// two-node cluster, planning/reports/evidence/
+// pve-9.2.4-cluster-vnprox-dev.txt) with no outright error/pending
+// elsewhere, else ok. Priority when a zone has more than one of these:
+// error > pending > unknown > ok — a confirmed problem always wins over
+// "we don't know", and "we don't know" always wins over a silent ok, so a
+// gap in PVE's own reporting can never paint the same as a healthy zone.
 func sdnZoneStatus(z *inventory.SdnZone) Status {
 	if len(z.NodeStatus) == 0 {
 		return StatusUnknown
@@ -473,7 +482,11 @@ func sdnZoneStatus(z *inventory.SdnZone) Status {
 			continue
 		case strings.EqualFold(st, "error"):
 			return StatusDown
-		default: // "pending", or any other non-ok/non-error status PVE reports
+		case strings.EqualFold(st, "unknown"):
+			if worst == StatusOK {
+				worst = StatusUnknown
+			}
+		default: // "pending", or any other non-ok/non-error/non-unknown status PVE reports
 			worst = StatusDegraded
 		}
 	}

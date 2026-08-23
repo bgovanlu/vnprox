@@ -11,9 +11,16 @@ import (
 // Check family identifiers (docs/features/topology.md §6). These are the
 // wire values of Finding.Check.
 const (
-	CheckBridgeDivergence      = "bridge_divergence"
-	CheckMTUConsistency        = "mtu_consistency"
-	CheckSDNRealization        = "sdn_realization"
+	CheckBridgeDivergence = "bridge_divergence"
+	CheckMTUConsistency   = "mtu_consistency"
+	CheckSDNRealization   = "sdn_realization"
+	// CheckSDNZoneStatus (T-3701) is a zone's live PVE-reported per-node
+	// realization status (GET /nodes/{node}/sdn/zones) reporting anything
+	// other than "ok" — distinct from CheckSDNRealization above, which is a
+	// statically-computed membership/bridge comparison; see sdn.go's
+	// checkSDNZoneStatus doc comment for why the two are not the same
+	// signal.
+	CheckSDNZoneStatus         = "sdn_zone_status"
 	CheckPendingInterfaces     = "pending_interfaces"
 	CheckFileRuntimeDivergence = "file_runtime_divergence"
 

@@ -10,7 +10,11 @@ package drift_test
 // (some are firewall/SDN-apply/referential issues other features own; see
 // this test's per-mess-item commentary below), but every item that *does*
 // map to one of docs/features/topology.md §6's five families produces
-// exactly the finding(s) asserted here.
+// exactly the finding(s) asserted here. T-3701 adds a sixth finding on top
+// of the original five: checkSDNZoneStatus, a second and independent signal
+// for the same MESS 3 gap (see that assertion block below for why it's not
+// a duplicate of sdn_realization despite firing on the identical fixture
+// scenario).
 //
 // Acceptance criterion 4 ("File-vs-runtime check catches a
 // fixture-simulated manual ip link change") is covered by this same test:
@@ -142,6 +146,28 @@ func TestMessyBrownfield_ExactExpectedFindings(t *testing.T) {
 		t.Errorf("sdn realization gap should not be fixable")
 	}
 
+	// --- sdn_zone_status (T-3701) ----------------------------------------
+	// The same MESS 3 gap, observed a second, independent way: pve3's real
+	// per-node GET /nodes/{node}/sdn/zones poll (via internal/collect's
+	// pollSDN, exercised for real by this test's full pvemock round trip —
+	// not injected) reports zone-legacy "error" on pve3 because its bridge
+	// is genuinely missing there, matching internal/pvemock/sdn.go's own
+	// bridge-existence check. This is a distinct signal from sdn_realization
+	// above (a statically-computed membership/bridge comparison) even though
+	// this particular fixture scenario happens to trip both — see
+	// internal/drift/sdn.go's checkSDNZoneStatus doc comment.
+	zoneStatus := byCheck[drift.CheckSDNZoneStatus]
+	if len(zoneStatus) != 1 {
+		t.Fatalf("sdn_zone_status findings = %d, want 1: %+v", len(zoneStatus), zoneStatus)
+	}
+	assertNodes(t, zoneStatus[0], "pve3")
+	if zoneStatus[0].Fixable {
+		t.Errorf("sdn zone status finding should not be fixable")
+	}
+	if zoneStatus[0].Severity != drift.SeverityError {
+		t.Errorf("sdn_zone_status severity = %s, want error", zoneStatus[0].Severity)
+	}
+
 	// --- pending_interfaces ----------------------------------------------
 	// MESS 1: pve2's eno1 has a staged, unapplied edit.
 	pending := byCheck[drift.CheckPendingInterfaces]
@@ -165,12 +191,12 @@ func TestMessyBrownfield_ExactExpectedFindings(t *testing.T) {
 		t.Errorf("file/runtime finding ref = %v, want bridge:pve1:vmbr0", fr[0].Refs)
 	}
 
-	// Every finding's check name is one of the five documented families —
-	// guards against a stray/miscategorized finding slipping through.
+	// Every finding's check name is one of the documented families — guards
+	// against a stray/miscategorized finding slipping through.
 	wantChecks := map[string]bool{
 		drift.CheckBridgeDivergence: true, drift.CheckMTUConsistency: true,
-		drift.CheckSDNRealization: true, drift.CheckPendingInterfaces: true,
-		drift.CheckFileRuntimeDivergence: true,
+		drift.CheckSDNRealization: true, drift.CheckSDNZoneStatus: true,
+		drift.CheckPendingInterfaces: true, drift.CheckFileRuntimeDivergence: true,
 	}
 	for check := range byCheck {
 		if !wantChecks[check] {
@@ -178,7 +204,7 @@ func TestMessyBrownfield_ExactExpectedFindings(t *testing.T) {
 		}
 	}
 
-	if total := len(findings); total != 5 {
+	if total := len(findings); total != 6 {
 		names := make([]string, len(findings))
 		for i, f := range findings {
 			names[i] = f.Check + ":" + f.ID

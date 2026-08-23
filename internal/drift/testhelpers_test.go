@@ -86,6 +86,18 @@ func pveSDNZone(g *inventory.Graph, id, bridge string, nodes []string) {
 	g.ApplyPoll(inventory.SourcePVESDN, inventory.Scope{}, []inventory.Entity{z})
 }
 
+// pveSDNZoneStatus applies a cluster-scoped SDN zone carrying only an id
+// and a NodeStatus map (T-3701's checkSDNZoneStatus reads NodeStatus
+// directly and doesn't need Bridge/Nodes/Type populated the way
+// pveSDNZone's checkSDNRealization callers do).
+func pveSDNZoneStatus(g *inventory.Graph, id string, nodeStatus map[string]string) {
+	z := &inventory.SdnZone{
+		Ref: inventory.Ref{Kind: inventory.KindSDNZone, ID: id},
+		ID:  id, NodeStatus: nodeStatus,
+	}
+	g.ApplyPoll(inventory.SourcePVESDN, inventory.Scope{}, []inventory.Entity{z})
+}
+
 // pvePendingPhysNic applies one node's physical NIC as a pve-network
 // contribution carrying a Pending marker.
 func pvePendingPhysNic(g *inventory.Graph, node, name, pending string) {

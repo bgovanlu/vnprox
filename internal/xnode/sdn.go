@@ -1,9 +1,13 @@
 // sdn.go: docs/features/topology.md §6's third check family — an SDN zone
 // lists a node as a member (SdnZone.Nodes), but that node has no bridge named
-// SdnZone.Bridge, so GET /cluster/sdn/zones/{zone}/status would report that
-// node as status=error. Detection-only: creating the missing bridge needs a
-// physical-port decision no comparison can make. This is the exact logic
-// internal/drift previously carried inline in checkSDNRealization.
+// SdnZone.Bridge, so real PVE's per-node GET /nodes/{node}/sdn/zones
+// (T-3701) would report that node as status=error. Detection-only: creating
+// the missing bridge needs a physical-port decision no comparison can make.
+// This is the exact logic internal/drift previously carried inline in
+// checkSDNRealization. See internal/drift/sdn.go's own doc comment for why
+// this static membership/bridge comparison is a distinct signal from PVE's
+// own live-reported per-node status (internal/drift's separate
+// checkSDNZoneStatus family).
 
 package xnode
 
@@ -35,7 +39,12 @@ func SDNRealizationGaps(src Source) []Divergence {
 		if len(unrealized) == 0 {
 			continue
 		}
-		detail := fmt.Sprintf("SDN zone %s lists %s as member node(s) but bridge %s is not realized there (GET /cluster/sdn/zones/%s/status would report status=error)",
+		// The endpoint named here is operator-facing — it is what someone
+		// reads out of a finding and then goes and runs. It used to name
+		// GET /cluster/sdn/zones/{zone}/status, which PVE 9.2.4 answers with
+		// a 501 (T-3701). Status is per-NODE, so the check to hand them is
+		// one call per unrealized node.
+		detail := fmt.Sprintf("SDN zone %s lists %s as member node(s) but bridge %s is not realized there (GET /nodes/{node}/sdn/zones reports zone %s with status=error on those nodes)",
 			zone.ID, strings.Join(unrealized, ", "), zone.Bridge, zone.ID)
 		out = append(out, Divergence{
 			Family:  FamilySDNRealization,

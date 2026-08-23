@@ -11,6 +11,7 @@ package pve_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -298,12 +299,19 @@ func TestTicketAuth_SDNReads(t *testing.T) {
 		t.Errorf("zone.Type = %q, want vlan", zone.Type)
 	}
 
-	zoneStatus, err := c.GetSDNZoneStatus(ctx, "vlanz")
-	if err != nil {
-		t.Fatalf("GetSDNZoneStatus: %v", err)
-	}
-	if len(zoneStatus) != 3 {
-		t.Fatalf("GetSDNZoneStatus: expected 3 node rows, got %+v", zoneStatus)
+	// T-3701: the real endpoint is per-node, not per-zone — one call per
+	// cluster member, each answering every zone assigned to it.
+	for _, node := range []string{"pve1", "pve2", "pve3"} {
+		st, err := c.ListNodeSDNZoneStatus(ctx, node)
+		if err != nil {
+			t.Fatalf("ListNodeSDNZoneStatus(%s): %v", node, err)
+		}
+		if len(st) != 1 || st[0].Zone != "vlanz" || st[0].Status != "ok" {
+			t.Fatalf("ListNodeSDNZoneStatus(%s) = %+v, want one ok entry for vlanz", node, st)
+		}
+		if st[0].Node != node {
+			t.Fatalf("ListNodeSDNZoneStatus(%s): entry.Node = %q, want %q (filled in from the request, real PVE's wire shape carries no node field)", node, st[0].Node, node)
+		}
 	}
 
 	vnets, err := c.ListSDNVnets(ctx)
@@ -336,6 +344,73 @@ func TestTicketAuth_SDNReads(t *testing.T) {
 	}
 	if subnet.Gateway != "10.100.0.1" {
 		t.Errorf("subnet.Gateway = %q, want 10.100.0.1", subnet.Gateway)
+	}
+}
+
+// setMockSDNZonesUnavailable flips pvemock's per-node
+// MockOptions.SDNZonesUnavailable via its unauthenticated test/dev control
+// plane (POST /mock/nodes/{node}/sdn-zones-unavailable), mirroring
+// internal/change's own setSDNZoneStatusFail helper.
+func setMockSDNZonesUnavailable(t *testing.T, apiURL, node string, unavailable bool) {
+	t.Helper()
+	body := fmt.Sprintf(`{"unavailable":%t}`, unavailable)
+	resp, err := http.Post(apiURL+"/mock/nodes/"+node+"/sdn-zones-unavailable", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("setMockSDNZonesUnavailable: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("setMockSDNZonesUnavailable: status %d", resp.StatusCode)
+	}
+}
+
+// TestSDNZoneStatus_ReconcileAcrossDivergentNodes proves
+// pve.ReconcileSDNZoneStatus against a *real* cross-node divergence served
+// by pvemock (not a hand-rolled fake): vlanz names all three nodes as
+// members, pve3 is flagged SDNZonesUnavailable (T-3701 — modeling PVE's own
+// observed "local sdn network configuration is not yet generated" empty
+// response, planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt),
+// and pve1/pve2 answer normally. The reconciled result must report pve1/
+// pve2 "ok" and pve3 "unknown" — not silently omit pve3, which a reader
+// could mistake for "healthy".
+func TestSDNZoneStatus_ReconcileAcrossDivergentNodes(t *testing.T) {
+	ts := newMockServer(t, fixtureThreeNode)
+	c := newTicketClient(t, ts.URL, "root@pam", "vnprox-mock")
+	ctx := context.Background()
+
+	setMockSDNZonesUnavailable(t, ts.URL, "pve3", true)
+
+	zones, err := c.ListSDNZones(ctx)
+	if err != nil {
+		t.Fatalf("ListSDNZones: %v", err)
+	}
+
+	byNode := make(map[string][]pve.SDNZoneStatus, 3)
+	for _, node := range []string{"pve1", "pve2", "pve3"} {
+		st, err := c.ListNodeSDNZoneStatus(ctx, node)
+		if err != nil {
+			t.Fatalf("ListNodeSDNZoneStatus(%s): %v", node, err)
+		}
+		byNode[node] = st
+	}
+	if len(byNode["pve3"]) != 0 {
+		t.Fatalf("pve3 (flagged unavailable) = %+v, want an empty response", byNode["pve3"])
+	}
+
+	reconciled := pve.ReconcileSDNZoneStatus(zones, []string{"pve1", "pve2", "pve3"}, byNode)
+	got := reconciled["vlanz"]
+	if len(got) != 3 {
+		t.Fatalf("reconciled vlanz status = %+v, want 3 entries (one per member node)", got)
+	}
+	byGotNode := make(map[string]string, len(got))
+	for _, e := range got {
+		byGotNode[e.Node] = e.Status
+	}
+	want := map[string]string{"pve1": "ok", "pve2": "ok", "pve3": "unknown"}
+	for node, wantStatus := range want {
+		if byGotNode[node] != wantStatus {
+			t.Errorf("reconciled vlanz status for %s = %q, want %q (full: %+v)", node, byGotNode[node], wantStatus, got)
+		}
 	}
 }
 

@@ -207,9 +207,9 @@ func (e *injectedError) Error() string { return e.msg }
 // implementations of one seam" precedent this type's original ApplySDN-only
 // form already set. fail injects an sdn.apply task-level failure (position
 // 4 of TestApply_StepFailure_AtEachPosition); T-402's post-apply zone
-// health verification is exercised for real (GetSDNZoneStatus against
+// health verification is exercised for real (ListNodeSDNZoneStatus against
 // pvemock, which itself derives "error" from a genuinely missing bridge —
-// see internal/pvemock/sdn.go's handleSDNZoneStatus), not injected here.
+// see internal/pvemock/sdn.go's handleNodeSDNZonesStatus), not injected here.
 type fakePVEGateway struct {
 	client       *pve.Client
 	pollNode     string
@@ -321,18 +321,63 @@ func (g *fakePVEGateway) ApplySDN(ctx context.Context, affectedZones []string) (
 	if _, err := g.client.WaitTask(ctx, g.pollNode, upid, pve.WaitOptions{Interval: 5 * time.Millisecond, Timeout: 5 * time.Second}); err != nil {
 		return result, err
 	}
+	statusByZone, err := fakePostApplySDNZoneStatus(ctx, g.client, affectedZones)
+	if err != nil {
+		return result, err
+	}
 	for _, zoneID := range affectedZones {
-		statuses, err := g.client.GetSDNZoneStatus(ctx, zoneID)
-		if err != nil {
-			return result, err
-		}
 		zh := change.SDNZoneHealth{Zone: zoneID}
-		for _, st := range statuses {
+		for _, st := range statusByZone[zoneID] {
 			zh.Nodes = append(zh.Nodes, change.SDNNodeHealth{Node: st.Node, Status: st.Status, Detail: st.Detail})
 		}
 		result.Zones = append(result.Zones, zh)
 	}
 	return result, nil
+}
+
+// fakePostApplySDNZoneStatus mirrors cmd/vnproxd's own
+// postApplySDNZoneStatus (T-3701: real per-node GET /nodes/{node}/sdn/zones,
+// reconciled against affectedZones' declared node membership via
+// pve.ReconcileSDNZoneStatus) — a second, independent implementation
+// against the same real pve.Client/pvemock seam, per fakePVEGateway's own
+// doc comment's "two independent implementations of one seam" precedent.
+func fakePostApplySDNZoneStatus(ctx context.Context, client *pve.Client, affectedZones []string) (map[string][]pve.SDNZoneStatus, error) {
+	if len(affectedZones) == 0 {
+		return nil, nil
+	}
+	want := make(map[string]bool, len(affectedZones))
+	for _, z := range affectedZones {
+		want[z] = true
+	}
+	allZones, err := client.ListSDNZones(ctx)
+	if err != nil {
+		return nil, err
+	}
+	zones := make([]pve.SDNZone, 0, len(affectedZones))
+	for _, z := range allZones {
+		if want[z.ID] {
+			zones = append(zones, z)
+		}
+	}
+	clusterEntries, err := client.ClusterStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var nodeNames []string
+	for _, e := range clusterEntries {
+		if e.Type == "node" {
+			nodeNames = append(nodeNames, e.Name)
+		}
+	}
+	byNode := make(map[string][]pve.SDNZoneStatus, len(nodeNames))
+	for _, n := range nodeNames {
+		st, err := client.ListNodeSDNZoneStatus(ctx, n)
+		if err != nil {
+			return nil, err
+		}
+		byNode[n] = st
+	}
+	return pve.ReconcileSDNZoneStatus(zones, nodeNames, byNode), nil
 }
 
 func (g *fakePVEGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error) {

@@ -90,6 +90,7 @@ var allCheckNames = []string{
 	CheckRogueDHCPServer,
 	CheckScheduleMissed,
 	"sdn_realization", // internal/drift
+	"sdn_zone_status", // internal/drift (T-3701)
 	CheckServiceDown,
 	CheckServiceTrafficOnWrongNetwork,
 	"spec_drift",          // internal/drift

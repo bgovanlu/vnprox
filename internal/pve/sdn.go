@@ -176,15 +176,90 @@ func (c *Client) GetSDNZone(ctx context.Context, zone string) (*SDNZone, error) 
 	return &out, nil
 }
 
-// GetSDNZoneStatus calls GET /cluster/sdn/zones/{zone}/status: per-node
-// apply/health status for the zone.
-func (c *Client) GetSDNZoneStatus(ctx context.Context, zone string) ([]SDNZoneStatus, error) {
-	var out []SDNZoneStatus
-	path := fmt.Sprintf("/cluster/sdn/zones/%s/status", zone)
-	if err := c.do(ctx, "GET", path, requestParams{}, &out); err != nil {
+// sdnNodeZoneStatusWire is one entry of GET /nodes/{node}/sdn/zones's
+// response — see SDNZoneStatus's doc comment for why this carries only
+// "zone"/"status", confirmed live against PVE 9.2.4
+// (planning/reports/evidence/pve-9.2.4-sdn-zone-status.txt).
+type sdnNodeZoneStatusWire struct {
+	Zone   string `json:"zone"`
+	Status string `json:"status"`
+}
+
+// ListNodeSDNZoneStatus calls GET /nodes/{node}/sdn/zones: node's own
+// realization status for every zone it currently has something to report
+// on. This is the endpoint PVE 9.2.4 actually implements — the API is
+// per-NODE, not per-zone (T-3701: see SDNZoneStatus's doc comment for the
+// endpoint this replaced, and planning/tasks/T-3701-sdn-zone-status.md for
+// why it's an inversion of the call's axis, not a URL edit).
+//
+// A 200 with an empty array is a real, non-error response — confirmed live
+// against a second cluster node whose local SDN config had not yet been
+// generated (planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt:
+// `pvesh get /nodes/pve001/sdn/zones` returns `[]` on stdout with only a
+// human-readable warning on stderr, exit 0). Callers must not read "this
+// zone is absent from node's response" as "this zone is healthy on node" —
+// ReconcileSDNZoneStatus is the place that distinction is enforced.
+func (c *Client) ListNodeSDNZoneStatus(ctx context.Context, node string) ([]SDNZoneStatus, error) {
+	var wire []sdnNodeZoneStatusWire
+	path := fmt.Sprintf("/nodes/%s/sdn/zones", node)
+	if err := c.do(ctx, "GET", path, requestParams{}, &wire); err != nil {
 		return nil, err
 	}
+	out := make([]SDNZoneStatus, 0, len(wire))
+	for _, w := range wire {
+		out = append(out, SDNZoneStatus{Node: node, Zone: w.Zone, Status: w.Status})
+	}
 	return out, nil
+}
+
+// ReconcileSDNZoneStatus folds byNode (one entry per node that was
+// successfully polled via ListNodeSDNZoneStatus — a node whose poll failed
+// outright must simply be absent from byNode, not mapped to nil/empty)
+// against zones' own declared node membership (SDNZone.Nodes, or every name
+// in allNodes when a zone declares no restriction — real PVE's documented
+// "no --nodes means every cluster node" zone semantics; unconfirmed on this
+// project's own two-node cluster without creating an unrestricted zone,
+// flagged in planning/reports/needs-hardware-validation.md), grouping the
+// result by zone id.
+//
+// A member node that either was never polled or was polled but reported
+// nothing for that zone is folded in as an SDNZoneStatus with Status
+// "unknown" — never silently omitted. This matters because it is a real,
+// observed case, not a hypothetical: on the project's own two-node cluster,
+// one node answers a zone "error" while the other answers the very same
+// zone with no entry at all and no error
+// (planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt). "No rows
+// for this zone on this node" and "this zone is healthy on this node" are
+// different facts; every caller (internal/collect/pve.go's pollSDN,
+// internal/sdn.Service.Tree, cmd/vnproxd's pveGateway.ApplySDN) needs the
+// distinction preserved, not collapsed into an omission a reader could
+// mistake for "ok".
+func ReconcileSDNZoneStatus(zones []SDNZone, allNodes []string, byNode map[string][]SDNZoneStatus) map[string][]SDNZoneStatus {
+	out := make(map[string][]SDNZoneStatus, len(zones))
+	for _, z := range zones {
+		members := z.Nodes
+		if len(members) == 0 {
+			members = allNodes
+		}
+		for _, node := range members {
+			entries, polled := byNode[node]
+			if polled {
+				found := false
+				for _, e := range entries {
+					if e.Zone == z.ID {
+						out[z.ID] = append(out[z.ID], e)
+						found = true
+						break
+					}
+				}
+				if found {
+					continue
+				}
+			}
+			out[z.ID] = append(out[z.ID], SDNZoneStatus{Node: node, Zone: z.ID, Status: "unknown"})
+		}
+	}
+	return out
 }
 
 // ListSDNVnets calls GET /cluster/sdn/vnets.

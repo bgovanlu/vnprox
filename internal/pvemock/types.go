@@ -922,8 +922,8 @@ type MockOptions struct {
 	NetworkReloadFail bool `yaml:"network_reload_fail,omitempty"`
 
 	// SDNZoneStatusFail, when true, makes this node report "error" on
-	// GET /cluster/sdn/zones/{zone}/status for every zone it is a member
-	// of, regardless of whether its bridge actually exists (T-402: models
+	// GET /nodes/{node}/sdn/zones for every zone it is a member of,
+	// regardless of whether its bridge actually exists (T-402: models
 	// a node whose SDN apply task itself reported success but the node
 	// nonetheless failed to realize the config — a failure mode no
 	// pre-apply validator can predict, unlike a genuinely-missing bridge,
@@ -932,6 +932,21 @@ type MockOptions struct {
 	// fixture or POST /mock/nodes/{node}/sdn-status-fail, mirroring
 	// NetworkReloadFail's exact pattern.
 	SDNZoneStatusFail bool `yaml:"sdn_zone_status_fail,omitempty"`
+
+	// SDNZonesUnavailable, when true, makes this node's
+	// GET /nodes/{node}/sdn/zones answer an empty array unconditionally —
+	// no zone entries at all, regardless of what's actually assigned to
+	// this node or SDNZoneStatusFail's own setting (T-3701: models a node
+	// whose local SDN config has not yet been generated, "please reload" —
+	// confirmed live on a real two-node cluster,
+	// planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt — a
+	// genuinely different failure mode than "this node reports the zone
+	// unhealthy": PVE has *nothing to say* about the zone here, which a
+	// caller must not read as "healthy" just because no error entry
+	// appeared). Set per-node via the fixture or POST
+	// /mock/nodes/{node}/sdn-zones-unavailable, mirroring
+	// SDNZoneStatusFail's exact pattern.
+	SDNZonesUnavailable bool `yaml:"sdn_zones_unavailable,omitempty"`
 
 	// FirewallCompileFail, when true, makes GET /nodes/{node}/firewall/status
 	// (T-502's mock-only extension — see firewall.go's handleFirewallStatus
@@ -956,6 +971,9 @@ func (o MockOptions) merge(override *MockOptions) MockOptions {
 	}
 	if override.SDNZoneStatusFail {
 		out.SDNZoneStatusFail = true
+	}
+	if override.SDNZonesUnavailable {
+		out.SDNZonesUnavailable = true
 	}
 	if override.FirewallCompileFail {
 		out.FirewallCompileFail = true

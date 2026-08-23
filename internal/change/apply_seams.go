@@ -337,15 +337,21 @@ type SDNApplyResult struct {
 	Zones []SDNZoneHealth
 }
 
-// SDNZoneHealth is one zone's post-apply per-node status, as read from PVE's
-// GET /cluster/sdn/zones/{zone}/status.
+// SDNZoneHealth is one zone's post-apply per-node status, reconciled from
+// PVE's real per-node GET /nodes/{node}/sdn/zones (T-3701 — an invented
+// GET /cluster/sdn/zones/{zone}/status that PVE 9.2.4 returns 501 for used
+// to back this).
 type SDNZoneHealth struct {
 	Zone  string
 	Nodes []SDNNodeHealth
 }
 
 // SDNNodeHealth is one node's realization status for a zone. Status is
-// "ok"|"pending"|"error" (docs/api.md's NodeStatus shape, GET /sdn).
+// "ok"|"pending"|"error" (docs/api.md's NodeStatus shape, GET /sdn), or the
+// vnprox-synthesized "unknown" (pve.ReconcileSDNZoneStatus's doc comment)
+// for a declared member node PVE had nothing to report for at all — which
+// Healthy()/firstUnhealthy() below correctly treat as not "ok", not as a
+// pass.
 type SDNNodeHealth struct {
 	Node, Status, Detail string
 }

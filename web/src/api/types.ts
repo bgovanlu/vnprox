@@ -1907,9 +1907,12 @@ export interface FDBResponse {
  * (docs/features/sdn.md §1: "applied / pending / error"). */
 export interface SdnNodeStatus {
   node: string;
-  /** "ok" | "pending" | "error" in practice (docs/features/sdn.md §1), kept
-   * as a plain string since it's a server-controlled, open-ended enum
-   * (mirrors this file's other `kind` fields' convention). */
+  /** "ok" | "pending" | "error" in practice (docs/features/sdn.md §1), plus
+   * the server-synthesized "unknown" (T-3701: a declared member node PVE's
+   * own per-node status read had nothing to report for at all — not the
+   * same fact as that node being healthy). Kept as a plain string since
+   * it's a server-controlled, open-ended enum (mirrors this file's other
+   * `kind` fields' convention). */
   status: string;
   detail?: string;
 }

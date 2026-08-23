@@ -44,7 +44,7 @@ func (c *Collector) pvePollAll(ctx context.Context) error {
 	}
 
 	c.pollGuests(ctx, nodes, resources)
-	if err := c.pollSDN(ctx); err != nil {
+	if err := c.pollSDN(ctx, nodes); err != nil {
 		c.log.Warn("collect: polling SDN failed", "error", err)
 	}
 	c.pollFirewall(ctx, nodes, resources, true)
@@ -354,12 +354,21 @@ func sdnPendingByID(entries []pve.SDNPendingEntry) map[string]pve.PendingState {
 	return out
 }
 
-// pollSDN polls the cluster-wide SDN tree (zones, vnets, subnets, per-zone
-// status) into cluster-scoped (empty Node) SdnZone/SdnVnet/SdnSubnet
+// pollSDN polls the cluster-wide SDN tree (zones, vnets, subnets, per-node
+// zone status) into cluster-scoped (empty Node) SdnZone/SdnVnet/SdnSubnet
 // partials. Zone list and vnet list are treated as fatal to this step (the
-// two calls everything else here depends on); a single zone's status or a
-// single vnet's subnets failing is logged and skipped.
-func (c *Collector) pollSDN(ctx context.Context) error {
+// two calls everything else here depends on); a single vnet's subnets
+// failing, or a single node's zone-status poll failing, is logged and
+// skipped — the latter leaves every zone naming that node as a member
+// reporting "unknown" for it rather than silently omitted, via
+// pve.ReconcileSDNZoneStatus (see that function's doc comment: PVE's own
+// per-node endpoint can legitimately answer "nothing to report" for a zone
+// a node is genuinely a member of, and that is not the same fact as
+// healthy). nodes is pvePollAll's own cluster-status-derived membership
+// list — this step reads it rather than polling status per zone (T-3701:
+// the real endpoint is GET /nodes/{node}/sdn/zones, one call per node, not
+// per zone — strictly cheaper, and the only shape PVE 9.2.4 implements).
+func (c *Collector) pollSDN(ctx context.Context, nodes []string) error {
 	zones, err := c.pve.ListSDNZones(ctx)
 	if err != nil {
 		return fmt.Errorf("sdn zones: %w", err)
@@ -379,15 +388,16 @@ func (c *Collector) pollSDN(ctx context.Context) error {
 		subnets[v.ID] = subs
 	}
 
-	zoneStatus := make(map[string][]pve.SDNZoneStatus, len(zones))
-	for _, z := range zones {
-		st, statusErr := c.pve.GetSDNZoneStatus(ctx, z.ID)
+	statusByNode := make(map[string][]pve.SDNZoneStatus, len(nodes))
+	for _, n := range nodes {
+		st, statusErr := c.pve.ListNodeSDNZoneStatus(ctx, n)
 		if statusErr != nil {
-			c.log.Warn("collect: getting SDN zone status failed, skipping", "zone", z.ID, "error", statusErr)
+			c.log.Warn("collect: getting SDN zone status failed, skipping", "node", n, "error", statusErr)
 			continue
 		}
-		zoneStatus[z.ID] = st
+		statusByNode[n] = st
 	}
+	zoneStatus := pve.ReconcileSDNZoneStatus(zones, nodes, statusByNode)
 
 	pending := c.sdnPendingState(ctx, vnets)
 

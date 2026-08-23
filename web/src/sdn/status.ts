@@ -8,9 +8,14 @@
 // same as this file's EntityStatus values matching api/types.ts's.
 import type { EntityStatus, SdnNodeStatus } from "../api/types";
 
-/** Maps one PVE per-node SDN status ("ok"|"pending"|"error") onto the
+/** Maps one PVE per-node SDN status ("ok"|"pending"|"error", plus the
+ * vnprox-synthesized "unknown" — internal/pve.ReconcileSDNZoneStatus's doc
+ * comment: a declared member node PVE had nothing to report for at all,
+ * confirmed live on a real two-node cluster,
+ * planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt) onto the
  * shared EntityStatus vocabulary the map already paints with: error -> down
- * (red), pending -> degraded (amber), ok/"" -> ok, anything else -> unknown. */
+ * (red), pending -> degraded (amber), ok/"" -> ok, "unknown" or anything
+ * else unrecognized -> unknown (gray, "we don't know" — never silently ok). */
 export function sdnNodeEntityStatus(status: string): EntityStatus {
   const normalized = status.trim().toLowerCase();
   switch (normalized) {
@@ -28,7 +33,10 @@ export function sdnNodeEntityStatus(status: string): EntityStatus {
 
 /** Worst-of a zone's per-node statuses, mirroring
  * internal/topology/project.go's sdnZoneStatus exactly: "error" (down) wins
- * over "pending" (degraded); no reported status at all is "unknown". */
+ * over "pending" (degraded), which wins over "unknown" (a node PVE had
+ * nothing to report for is not the same fact as that node being healthy —
+ * it must move the aggregate off "ok", just less urgently than a confirmed
+ * problem), which wins over "ok"; no reported status at all is "unknown". */
 export function sdnZoneEntityStatus(nodeStatus: readonly SdnNodeStatus[]): EntityStatus {
   if (nodeStatus.length === 0) return "unknown";
   let worst: EntityStatus = "ok";
@@ -36,6 +44,7 @@ export function sdnZoneEntityStatus(nodeStatus: readonly SdnNodeStatus[]): Entit
     const s = sdnNodeEntityStatus(ns.status);
     if (s === "down") return "down";
     if (s === "degraded") worst = "degraded";
+    else if (s === "unknown" && worst === "ok") worst = "unknown";
   }
   return worst;
 }

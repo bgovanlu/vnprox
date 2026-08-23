@@ -78,6 +78,7 @@ var checkFuncs = []func(inventory.Snapshot) []Finding{
 	checkBridgeDivergence,
 	checkMTUConsistency,
 	checkSDNRealization,
+	checkSDNZoneStatus,
 	checkPendingInterfaces,
 	checkFileRuntimeDivergence,
 	checkVFSpoofcheckMismatch,

@@ -156,7 +156,11 @@ func (srv *Server) mountSDN(api chi.Router) {
 	api.Get("/cluster/sdn/zones/{zone}", srv.requirePrivilege(PrivSDNAudit, srv.handleSDNZoneGet))
 	api.Put("/cluster/sdn/zones/{zone}", srv.requirePrivilege(PrivSDNAllocate, srv.handleSDNZoneUpdate))
 	api.Delete("/cluster/sdn/zones/{zone}", srv.requirePrivilege(PrivSDNAllocate, srv.handleSDNZoneDelete))
-	api.Get("/cluster/sdn/zones/{zone}/status", srv.requirePrivilege(PrivSDNAudit, srv.handleSDNZoneStatus))
+	// T-3701: GET /cluster/sdn/zones/{zone}/status does not exist on real PVE
+	// 9.2.4 (it returns 501) — this mock used to invent it. The real
+	// endpoint is per-NODE: GET /nodes/{node}/sdn/zones (registered below,
+	// alongside this package's other /nodes/{node}/... routes).
+	api.Get("/nodes/{node}/sdn/zones", srv.requirePrivilege(PrivSDNAudit, srv.handleNodeSDNZonesStatus))
 
 	api.Get("/cluster/sdn/vnets", srv.requirePrivilege(PrivSDNAudit, srv.handleSDNVnetsList))
 	api.Post("/cluster/sdn/vnets", srv.requirePrivilege(PrivSDNAllocate, srv.handleSDNVnetCreate))
@@ -274,65 +278,103 @@ func (srv *Server) handleSDNZoneDelete(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, nil)
 }
 
-// zoneStatusEntry is one node's realization status for a zone, as reported
-// by GET /cluster/sdn/zones/{zone}/status. Real PVE surfaces per-node
-// health this way so the UI can show "applied / pending / error" per node
-// (docs/features/sdn.md §1).
+// zoneStatusEntry is one zone's realization status on a single node, as
+// reported by GET /nodes/{node}/sdn/zones — the endpoint real PVE 9.2.4
+// actually serves (confirmed live,
+// planning/reports/evidence/pve-9.2.4-sdn-zone-status.txt). This mock used
+// to invent GET /cluster/sdn/zones/{zone}/status instead (T-3701), which
+// real PVE returns 501 for. Real PVE's response carries only "zone" and
+// "status" per entry — no "node" (the {node} path segment already says
+// which node this is) and no detail/message explaining a non-ok status;
+// this mock matches that exactly (json tags below) rather than inventing an
+// explanation PVE itself doesn't give — see internal/pve.SDNZoneStatus's
+// doc comment, which this wire shape must keep matching.
 type zoneStatusEntry struct {
-	Node   string `json:"node"`
+	Zone   string `json:"zone"`
 	Status string `json:"status"` // ok|pending|error
-	Detail string `json:"detail,omitempty"`
 }
 
-func (srv *Server) handleSDNZoneStatus(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "zone")
-	srv.state.sdn.mu.RLock()
-	z, ok := srv.state.sdn.zones[id]
-	srv.state.sdn.mu.RUnlock()
+// zoneAssignedToNode reports whether zone z is realized on node: every name
+// in z.Nodes, or — when z.Nodes is empty — every node, matching real
+// Proxmox SDN's own well-documented "no --nodes restriction deploys the
+// zone cluster-wide" convention (the same assumption
+// pve.ReconcileSDNZoneStatus makes; the two must agree, or a zone created
+// with no explicit node list — the common case, e.g. every existing
+// SdnZoneCreateParams in this codebase's own test suite that omits Nodes —
+// would report a fabricated "unknown" on every node instead of the "ok" a
+// real deployment would show). Unconfirmed on this project's own cluster
+// specifically (creating an unrestricted zone would be a mutating write
+// against a live host) — flagged in
+// planning/reports/needs-hardware-validation.md.
+func zoneAssignedToNode(z SDNZoneSpec, node string) bool {
+	if len(z.Nodes) == 0 {
+		return true
+	}
+	for _, n := range z.Nodes {
+		if n == node {
+			return true
+		}
+	}
+	return false
+}
+
+// handleNodeSDNZonesStatus serves GET /nodes/{node}/sdn/zones: node's own
+// realization status for every zone assigned to it (T-3701). Confirmed live
+// against a real two-node cluster
+// (planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt) that PVE can
+// legitimately answer this with an empty array for a node whose local SDN
+// config has not yet been generated, regardless of what's actually
+// assigned there — MockOptions.SDNZonesUnavailable (settable per-node via
+// fixture or POST /mock/nodes/{node}/sdn-zones-unavailable, mirroring
+// SDNZoneStatusFail's exact pattern) reproduces that case so a test can
+// exercise real cross-node divergence (one node "error", a sibling node
+// answering the very same zone with nothing at all) against this mock
+// rather than only against hand-rolled fakes.
+func (srv *Server) handleNodeSDNZonesStatus(w http.ResponseWriter, r *http.Request) {
+	node := chi.URLParam(r, "node")
+	ns, ok := srv.state.node(node)
 	if !ok {
-		writeError(w, http.StatusNotFound, fmt.Sprintf("zone %q not found", id))
+		writeError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", node))
 		return
 	}
 
-	var out []zoneStatusEntry
-	for _, nodeName := range z.Nodes {
-		entry := zoneStatusEntry{Node: nodeName, Status: "ok"}
-		if z.Pending != PendingNone {
+	ns.mu.RLock()
+	unavailable := ns.mock.SDNZonesUnavailable
+	fail := ns.mock.SDNZoneStatusFail
+	ifaces := ns.network
+	ns.mu.RUnlock()
+
+	if unavailable {
+		writeData(w, http.StatusOK, []zoneStatusEntry{})
+		return
+	}
+
+	srv.state.sdn.mu.RLock()
+	zones := srv.state.sdn.zones
+	ids := sortedKeys(zones)
+	out := make([]zoneStatusEntry, 0, len(ids))
+	for _, id := range ids {
+		z := zones[id]
+		if !zoneAssignedToNode(z, node) {
+			continue
+		}
+		entry := zoneStatusEntry{Zone: z.ID, Status: "ok"}
+		switch {
+		case fail:
+			// T-402: a node-level injected failure (POST /mock/nodes/{node}/
+			// sdn-status-fail) always wins — it models a node whose SDN apply
+			// task itself reported success but which nonetheless failed to
+			// realize the config, independent of (and not detectable by) any
+			// static pre-apply check like bridge existence.
+			entry.Status = "error"
+		case z.Pending != PendingNone:
 			entry.Status = "pending"
-			entry.Detail = "zone has unapplied changes"
-		}
-		// T-402: a node-level injected failure (POST /mock/nodes/{node}/
-		// sdn-status-fail) always wins — it models a node whose SDN apply
-		// task itself reported success but which nonetheless failed to
-		// realize the config, independent of (and not detectable by) any
-		// static pre-apply check like bridge existence.
-		if ns, ok := srv.state.node(nodeName); ok {
-			ns.mu.RLock()
-			fail := ns.mock.SDNZoneStatusFail
-			ns.mu.RUnlock()
-			if fail {
-				entry.Status = "error"
-				entry.Detail = fmt.Sprintf("simulated sdn apply failure on node %q", nodeName)
-				out = append(out, entry)
-				continue
-			}
-		}
-		if z.Bridge != "" && (z.Type == "simple" || z.Type == "vlan") {
-			if ns, ok := srv.state.node(nodeName); ok {
-				ns.mu.RLock()
-				hasBridge := ifaceExists(ns.network, z.Bridge)
-				ns.mu.RUnlock()
-				if !hasBridge {
-					entry.Status = "error"
-					entry.Detail = fmt.Sprintf("bridge %q not found on node %q", z.Bridge, nodeName)
-				}
-			} else {
-				entry.Status = "error"
-				entry.Detail = fmt.Sprintf("node %q not found", nodeName)
-			}
+		case z.Bridge != "" && (z.Type == "simple" || z.Type == "vlan") && !ifaceExists(ifaces, z.Bridge):
+			entry.Status = "error"
 		}
 		out = append(out, entry)
 	}
+	srv.state.sdn.mu.RUnlock()
 	writeData(w, http.StatusOK, out)
 }
 

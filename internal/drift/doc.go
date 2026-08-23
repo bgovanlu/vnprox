@@ -15,7 +15,9 @@
 //   - mtu.go: MTU consistency along an L2 path (NIC->bond->bridge) and
 //     across same-named bridges cluster-wide (checkMTUConsistency).
 //   - sdn.go: SDN zone node-membership vs. actual bridge realization
-//     (checkSDNRealization).
+//     (checkSDNRealization), plus a zone's live PVE-reported per-node
+//     realization status (checkSDNZoneStatus, T-3701) — two distinct
+//     signals sharing one file; see sdn.go's own doc comment for why.
 //   - pending.go: pending-but-unapplied interfaces.new edits
 //     (checkPendingInterfaces).
 //   - filerun.go: interfaces file vs. runtime (netlink) divergence —

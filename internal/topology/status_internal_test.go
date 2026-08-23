@@ -207,6 +207,15 @@ func TestStatusOf_SdnZone(t *testing.T) {
 		{"any error node paints the zone down", map[string]string{"n1": "ok", "n2": "error"}, StatusDown},
 		{"a pending (no error) node degrades the zone", map[string]string{"n1": "ok", "n2": "pending"}, StatusDegraded},
 		{"error wins over pending when both are present", map[string]string{"n1": "pending", "n2": "error"}, StatusDown},
+		// T-3701: the vnprox-synthesized "unknown" status
+		// (pve.ReconcileSDNZoneStatus's doc comment) — a declared member
+		// node PVE had nothing to report for at all, confirmed live on a
+		// real two-node cluster. It must not paint the same as "ok" (that
+		// would silently hide the gap), but a confirmed error/pending
+		// elsewhere always outranks a mere "we don't know".
+		{"an unknown (unreported) node paints the zone unknown, not ok", map[string]string{"n1": "ok", "n2": "unknown"}, StatusUnknown},
+		{"error wins over unknown when both are present", map[string]string{"n1": "unknown", "n2": "error"}, StatusDown},
+		{"pending wins over unknown when both are present", map[string]string{"n1": "unknown", "n2": "pending"}, StatusDegraded},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -40,7 +40,23 @@ import (
 type PVEReader interface {
 	ListSDNZones(ctx context.Context) ([]pve.SDNZone, error)
 	ListSDNZonesRunning(ctx context.Context) ([]pve.SDNZone, error)
-	GetSDNZoneStatus(ctx context.Context, zone string) ([]pve.SDNZoneStatus, error)
+	// ClusterStatus/ListNodeSDNZoneStatus (T-3701) replaced a
+	// GetSDNZoneStatus(ctx, zone) built on GET
+	// /cluster/sdn/zones/{zone}/status — an endpoint PVE 9.2.4 does not
+	// implement (planning/tasks/T-3701-sdn-zone-status.md). The real
+	// endpoint is per-node, so Tree gathers the cluster's node list once
+	// (ClusterStatus, the same call every other cluster-node-list consumer
+	// in this codebase already uses — internal/peer, internal/federation,
+	// internal/auth, internal/verify) and calls ListNodeSDNZoneStatus once
+	// per node, then reconciles the result against each zone's own
+	// declared membership (pve.ReconcileSDNZoneStatus) — strictly cheaper
+	// (N nodes, not N zones) and, unlike the old per-zone shape, able to
+	// tell "this node has nothing to report for this zone" apart from
+	// "this zone is healthy on this node" (see ReconcileSDNZoneStatus's
+	// doc comment; confirmed live on a real two-node cluster,
+	// planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt).
+	ClusterStatus(ctx context.Context) ([]pve.ClusterStatusEntry, error)
+	ListNodeSDNZoneStatus(ctx context.Context, node string) ([]pve.SDNZoneStatus, error)
 	ListSDNVnets(ctx context.Context) ([]pve.SDNVnet, error)
 	ListSDNVnetsRunning(ctx context.Context) ([]pve.SDNVnet, error)
 	ListSDNSubnets(ctx context.Context, vnet string) ([]pve.SDNSubnet, error)
@@ -203,7 +219,7 @@ type Ipam struct {
 // see internal/pve/sdn_fabric.go's package doc comment for what each
 // protocol-conditional field means. NodeStatus is built from
 // ListSDNFabricNodes filtered by this fabric's ID, mirroring how Zone.
-// NodeStatus is built from GetSDNZoneStatus (Tree's own doc comment on the
+// NodeStatus is built from zoneNodeStatus (Tree's own doc comment on the
 // pattern) — except a fabric has no per-node *health* read in the captured
 // API (no /cluster/sdn/fabrics/fabric/{id}/status route exists the way a
 // zone's does), so NodeStatus here reports configured membership only:
@@ -293,11 +309,17 @@ type Subnet struct {
 }
 
 // NodeStatus is one node's realization status for a zone (GET
-// /cluster/sdn/zones/{zone}/status, docs/features/sdn.md §1: "every level
-// shows per-node realization status (applied / pending / error)").
+// /nodes/{node}/sdn/zones, reconciled across every cluster node by
+// zoneNodeStatus — see pve.ReconcileSDNZoneStatus's doc comment; T-3701
+// replaced an invented per-zone GET /cluster/sdn/zones/{zone}/status
+// endpoint. docs/features/sdn.md §1: "every level shows per-node
+// realization status (applied / pending / error)"). Status can also be
+// "unknown" — a vnprox-synthesized value, not part of real PVE's own
+// vocabulary — for a declared member node PVE had nothing to report for
+// (ReconcileSDNZoneStatus's doc comment).
 type NodeStatus struct {
 	Node   string `json:"node"`
-	Status string `json:"status"` // ok|pending|error
+	Status string `json:"status"` // ok|pending|error|unknown
 	Detail string `json:"detail,omitempty"`
 }
 
@@ -316,12 +338,45 @@ type PendingDiff struct {
 	ChangedFields []string       `json:"changedFields,omitempty"`
 }
 
+// zoneNodeStatus gathers every zone's per-node realization status in one
+// pass (T-3701): one ClusterStatus call for the cluster's node list, then
+// one ListNodeSDNZoneStatus call per node, reconciled against zones' own
+// declared membership via pve.ReconcileSDNZoneStatus — see that function's
+// doc comment for why a node that had nothing to report for a zone still
+// gets an entry (status "unknown") rather than being silently omitted.
+// Tolerates failure the same way the old per-zone reads did (Tree's own
+// doc comment): a failing ClusterStatus call returns an empty map (every
+// zone then renders with no NodeStatus at all, same as before this
+// package could reach PVE); a single node's status read failing just
+// leaves that node out of byNode, so ReconcileSDNZoneStatus reports
+// "unknown" for it wherever it's a declared zone member.
+func (s *Service) zoneNodeStatus(ctx context.Context, zones []pve.SDNZone) map[string][]pve.SDNZoneStatus {
+	entries, err := s.pve.ClusterStatus(ctx)
+	if err != nil {
+		return map[string][]pve.SDNZoneStatus{}
+	}
+	var nodeNames []string
+	for _, e := range entries {
+		if e.Type == "node" {
+			nodeNames = append(nodeNames, e.Name)
+		}
+	}
+	byNode := make(map[string][]pve.SDNZoneStatus, len(nodeNames))
+	for _, n := range nodeNames {
+		if st, statusErr := s.pve.ListNodeSDNZoneStatus(ctx, n); statusErr == nil {
+			byNode[n] = st
+		}
+	}
+	return pve.ReconcileSDNZoneStatus(zones, nodeNames, byNode)
+}
+
 // Tree fetches the current staged and running SDN trees from PVE and
-// assembles docs/api.md's GET /sdn response. Per-zone status lookups that
-// fail are logged nowhere (this package has no logger seam) but simply
-// leave that zone's NodeStatus empty rather than failing the whole
-// request — one zone's status endpoint erroring shouldn't blank the entire
-// cockpit.
+// assembles docs/api.md's GET /sdn response. A failing ClusterStatus call,
+// or a single node's zone-status poll failing, is logged nowhere (this
+// package has no logger seam) but simply leaves the zone(s) it would have
+// covered reporting "unknown" for that node (pve.ReconcileSDNZoneStatus)
+// rather than failing the whole request — one node's status read erroring
+// shouldn't blank the entire cockpit.
 func (s *Service) Tree(ctx context.Context) (Tree, error) {
 	staged, err := s.pve.ListSDNZones(ctx)
 	if err != nil {
@@ -360,6 +415,8 @@ func (s *Service) Tree(ctx context.Context) (Tree, error) {
 		vnetsByZone[v.Zone] = append(vnetsByZone[v.Zone], v)
 	}
 
+	zoneNodeStatus := s.zoneNodeStatus(ctx, staged)
+
 	zones := make([]Zone, 0, len(staged))
 	for _, z := range staged {
 		zone := Zone{
@@ -370,10 +427,8 @@ func (s *Service) Tree(ctx context.Context) (Tree, error) {
 		runObj, ok := runningZones[z.ID]
 		zone.Diff = buildDiff(string(zonePendingState[z.ID]), z, runObj, ok)
 
-		if st, statusErr := s.pve.GetSDNZoneStatus(ctx, z.ID); statusErr == nil {
-			for _, e := range st {
-				zone.NodeStatus = append(zone.NodeStatus, NodeStatus{Node: e.Node, Status: e.Status, Detail: e.Detail})
-			}
+		for _, e := range zoneNodeStatus[z.ID] {
+			zone.NodeStatus = append(zone.NodeStatus, NodeStatus{Node: e.Node, Status: e.Status, Detail: e.Detail})
 		}
 		sort.Slice(zone.NodeStatus, func(i, j int) bool { return zone.NodeStatus[i].Node < zone.NodeStatus[j].Node })
 		if zone.NodeStatus == nil {
@@ -532,7 +587,7 @@ func (s *Service) buildControllers(ctx context.Context) ([]Controller, error) {
 // buildFabrics fetches the fabric list plus the cluster-wide per-node
 // membership read, grouping the latter by fabric id — the same "sibling
 // per-node read, grouped by owning id" pattern Tree already uses for a
-// zone's own status (GetSDNZoneStatus), except fabrics have no independent
+// zone's own status (zoneNodeStatus), except fabrics have no independent
 // per-node health signal to poll (see Fabric's own doc comment). Pending
 // state comes from ListSDNFabricsPending, not from f.Pending — see
 // PVEReader's doc comment on why the latter is dead against real PVE.

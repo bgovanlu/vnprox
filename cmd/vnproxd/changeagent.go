@@ -636,18 +636,75 @@ func (g *pveGateway) ApplySDN(ctx context.Context, affectedZones []string) (chan
 		return result, err
 	}
 
+	statusByZone, err := postApplySDNZoneStatus(ctx, g.client, affectedZones)
+	if err != nil {
+		return result, fmt.Errorf("changeagent: reading post-apply sdn zone status: %w", err)
+	}
 	for _, zoneID := range affectedZones {
-		statuses, err := g.client.GetSDNZoneStatus(ctx, zoneID)
-		if err != nil {
-			return result, fmt.Errorf("changeagent: reading post-apply status for sdn zone %s: %w", zoneID, err)
-		}
 		zh := change.SDNZoneHealth{Zone: zoneID}
-		for _, st := range statuses {
+		for _, st := range statusByZone[zoneID] {
 			zh.Nodes = append(zh.Nodes, change.SDNNodeHealth{Node: st.Node, Status: st.Status, Detail: st.Detail})
 		}
 		result.Zones = append(result.Zones, zh)
 	}
 	return result, nil
+}
+
+// postApplySDNZoneStatus fetches every cluster node's real per-node SDN
+// zone status (pve.Client.ListNodeSDNZoneStatus, GET /nodes/{node}/sdn/zones
+// — T-3701 replaced an invented per-zone GET /cluster/sdn/zones/{zone}/status
+// that PVE 9.2.4 returns 501 for) and reconciles it against affectedZones'
+// own declared node membership (pve.ReconcileSDNZoneStatus), so a member
+// node PVE had nothing to report for gets an "unknown" entry rather than
+// silently passing this post-apply health gate — necessary in practice, not
+// just in theory: on the project's own two-node cluster one node can answer
+// a zone "error" while a sibling answers the very same zone with no entry
+// at all (planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt). A
+// zone absent from the current staged zone list (e.g. this changeset just
+// deleted it) contributes no health entries at all — nothing to verify.
+// Every node/API error here is fatal (unlike internal/collect's and
+// internal/sdn.Service's tolerant per-node reads): a post-apply health gate
+// that silently downgrades "couldn't check" to "didn't check" would defeat
+// the point of checking at all.
+func postApplySDNZoneStatus(ctx context.Context, client *pve.Client, affectedZones []string) (map[string][]pve.SDNZoneStatus, error) {
+	if len(affectedZones) == 0 {
+		return nil, nil
+	}
+	want := make(map[string]bool, len(affectedZones))
+	for _, z := range affectedZones {
+		want[z] = true
+	}
+	allZones, err := client.ListSDNZones(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing sdn zones: %w", err)
+	}
+	zones := make([]pve.SDNZone, 0, len(affectedZones))
+	for _, z := range allZones {
+		if want[z.ID] {
+			zones = append(zones, z)
+		}
+	}
+
+	clusterEntries, err := client.ClusterStatus(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing cluster nodes: %w", err)
+	}
+	var nodeNames []string
+	for _, e := range clusterEntries {
+		if e.Type == "node" {
+			nodeNames = append(nodeNames, e.Name)
+		}
+	}
+
+	byNode := make(map[string][]pve.SDNZoneStatus, len(nodeNames))
+	for _, n := range nodeNames {
+		st, err := client.ListNodeSDNZoneStatus(ctx, n)
+		if err != nil {
+			return nil, fmt.Errorf("node %s: %w", n, err)
+		}
+		byNode[n] = st
+	}
+	return pve.ReconcileSDNZoneStatus(zones, nodeNames, byNode), nil
 }
 
 // SDNConfig implements change.PVEGateway: reads the full staged (pending-

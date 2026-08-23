@@ -217,11 +217,25 @@ type SDNZone struct {
 	VrfVxlan  int          `json:"vrf_vxlan,omitempty"`
 }
 
-// SDNZoneStatus is one node's realization status for a zone
-// (GET /cluster/sdn/zones/{zone}/status).
+// SDNZoneStatus is one zone's realization status on a single node, as
+// reported by GET /nodes/{node}/sdn/zones (T-3701: this replaced a
+// GetSDNZoneStatus(ctx, zone) that built GET
+// /cluster/sdn/zones/{zone}/status — an endpoint PVE 9.2.4 returns 501 for;
+// planning/tasks/T-3701-sdn-zone-status.md). Real PVE's wire response
+// carries only "zone" and "status" per entry (confirmed live,
+// planning/reports/evidence/pve-9.2.4-sdn-zone-status.txt) — no per-entry
+// "node" (the {node} path segment already says which node, filled in here
+// by ListNodeSDNZoneStatus from its own argument) and no detail/message
+// explaining a non-ok status, so Detail is always "" for an entry PVE
+// itself produced. ReconcileSDNZoneStatus additionally synthesizes entries
+// with Status "unknown" for a zone member node PVE had nothing to say
+// about — see that function's doc comment; "unknown" is not part of real
+// PVE's own ok|pending|error vocabulary and only ever appears on a
+// vnprox-synthesized entry.
 type SDNZoneStatus struct {
 	Node   string `json:"node"`
-	Status string `json:"status"` // ok|pending|error
+	Zone   string `json:"zone"`
+	Status string `json:"status"` // ok|pending|error|unknown (unknown: see doc comment)
 	Detail string `json:"detail,omitempty"`
 }
 

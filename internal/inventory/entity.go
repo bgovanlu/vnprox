@@ -437,7 +437,11 @@ func (v *VlanIface) fieldMap() map[string]string {
 // --- SDN entities (single-source: pve-sdn) -------------------------------
 
 // SdnZone is a cluster-scoped SDN zone. NodeStatus records per-node
-// realization status from GET /cluster/sdn/zones/{zone}/status. Pending
+// realization status, reconciled from real PVE's per-node
+// GET /nodes/{node}/sdn/zones (T-3701 — pve.ReconcileSDNZoneStatus, one
+// call per cluster node rather than an invented per-zone status route PVE
+// 9.2.4 returns 501 for), and can carry the vnprox-synthesized "unknown"
+// for a declared member node PVE had nothing to report for at all. Pending
 // mirrors PVE's own staged-edit marker ("" | "new" | "changed" | "deleted",
 // see pve.PendingState) — added by T-401 alongside the same-named field
 // T-305 gave PhysNic/Bond/Bridge/VlanIface (docs/data-model.md's Pending

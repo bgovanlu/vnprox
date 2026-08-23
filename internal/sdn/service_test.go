@@ -16,7 +16,12 @@ import (
 // internal/pve client and internal/pvemock server — lives in
 // internal/api's golden /sdn test).
 type fakeReader struct {
-	zoneStatus         map[string][]pve.SDNZoneStatus
+	// clusterStatus/nodeZoneStatus (T-3701) replaced the old per-zone
+	// zoneStatus map: clusterStatus supplies ClusterStatus's node rows,
+	// nodeZoneStatus is keyed by node (matching ListNodeSDNZoneStatus's own
+	// per-node shape, GET /nodes/{node}/sdn/zones) rather than by zone.
+	clusterStatus      []pve.ClusterStatusEntry
+	nodeZoneStatus     map[string][]pve.SDNZoneStatus
 	subnets            map[string][]pve.SDNSubnet
 	subnetsRunning     map[string][]pve.SDNSubnet
 	subnetsPending     map[string][]pve.SDNPendingEntry
@@ -43,8 +48,11 @@ func (f *fakeReader) ListSDNZonesRunning(context.Context) ([]pve.SDNZone, error)
 func (f *fakeReader) ListSDNZonesPending(context.Context) ([]pve.SDNPendingEntry, error) {
 	return f.zonesPending, nil
 }
-func (f *fakeReader) GetSDNZoneStatus(_ context.Context, zone string) ([]pve.SDNZoneStatus, error) {
-	return f.zoneStatus[zone], nil
+func (f *fakeReader) ClusterStatus(context.Context) ([]pve.ClusterStatusEntry, error) {
+	return f.clusterStatus, nil
+}
+func (f *fakeReader) ListNodeSDNZoneStatus(_ context.Context, node string) ([]pve.SDNZoneStatus, error) {
+	return f.nodeZoneStatus[node], nil
 }
 func (f *fakeReader) ListSDNVnets(context.Context) ([]pve.SDNVnet, error) { return f.vnets, nil }
 func (f *fakeReader) ListSDNVnetsRunning(context.Context) ([]pve.SDNVnet, error) {
@@ -93,8 +101,15 @@ func TestTree_Structure(t *testing.T) {
 		zonesRunning: []pve.SDNZone{
 			{ID: "vlanz", Type: "vlan", Bridge: "vmbr0", Nodes: []string{"pve1", "pve2"}},
 		},
-		zoneStatus: map[string][]pve.SDNZoneStatus{
-			"vlanz": {{Node: "pve1", Status: "ok"}, {Node: "pve2", Status: "ok"}},
+		clusterStatus: []pve.ClusterStatusEntry{
+			{Type: "node", Name: "pve1"}, {Type: "node", Name: "pve2"},
+		},
+		// Node is set on each entry (matching what ListNodeSDNZoneStatus's
+		// real implementation always fills in from its own argument, even
+		// though real PVE's wire response itself carries no "node" field).
+		nodeZoneStatus: map[string][]pve.SDNZoneStatus{
+			"pve1": {{Node: "pve1", Zone: "vlanz", Status: "ok"}},
+			"pve2": {{Node: "pve2", Zone: "vlanz", Status: "ok"}},
 		},
 		vnets: []pve.SDNVnet{
 			{ID: "vnet1", Zone: "vlanz", Tag: 100},
@@ -317,7 +332,6 @@ func TestTree_PendingDiff_States(t *testing.T) {
 				zones:        []pve.SDNZone{z},
 				zonesRunning: tt.running,
 				zonesPending: zonesPending,
-				zoneStatus:   map[string][]pve.SDNZoneStatus{},
 			}
 			svc := NewService(reader)
 			tree, err := svc.Tree(context.Background())
@@ -368,14 +382,21 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
+// TestTree_ZoneStatusFailureDoesNotFailWholeRequest also proves T-3701's
+// "unknown" reconciliation directly: z1 declares pve1 as a member node,
+// ClusterStatus reports pve1 as a live cluster node, but nodeZoneStatus has
+// no entry for pve1 at all — the "node polled fine, but had nothing to say
+// about this zone" case confirmed live on a real two-node cluster
+// (pve.ReconcileSDNZoneStatus's doc comment). Tree must not fail, and must
+// not silently treat the gap as healthy.
 func TestTree_ZoneStatusFailureDoesNotFailWholeRequest(t *testing.T) {
 	reader := &fakeReader{
-		zones:        []pve.SDNZone{{ID: "z1", Type: "vlan"}},
-		zonesRunning: []pve.SDNZone{{ID: "z1", Type: "vlan"}},
-		// zoneStatus deliberately has no entry for "z1" — GetSDNZoneStatus
-		// returns an empty slice, not an error, but this exercises the
-		// "no status yet" path the same way a real failure would.
-		zoneStatus: map[string][]pve.SDNZoneStatus{},
+		zones:         []pve.SDNZone{{ID: "z1", Type: "vlan", Nodes: []string{"pve1"}}},
+		zonesRunning:  []pve.SDNZone{{ID: "z1", Type: "vlan", Nodes: []string{"pve1"}}},
+		clusterStatus: []pve.ClusterStatusEntry{{Type: "node", Name: "pve1"}},
+		// nodeZoneStatus deliberately has no entry for "pve1" at all —
+		// ListNodeSDNZoneStatus returns an empty slice, not an error.
+		nodeZoneStatus: map[string][]pve.SDNZoneStatus{},
 	}
 	svc := NewService(reader)
 	tree, err := svc.Tree(context.Background())
@@ -387,5 +408,8 @@ func TestTree_ZoneStatusFailureDoesNotFailWholeRequest(t *testing.T) {
 	}
 	if tree.Zones[0].NodeStatus == nil {
 		t.Fatalf("NodeStatus should be an empty slice, not nil (docs/features/topology.md-style array field contract)")
+	}
+	if len(tree.Zones[0].NodeStatus) != 1 || tree.Zones[0].NodeStatus[0].Status != "unknown" {
+		t.Fatalf("NodeStatus = %+v, want one entry with status \"unknown\" (a declared member node PVE had nothing to report for is not the same as healthy)", tree.Zones[0].NodeStatus)
 	}
 }

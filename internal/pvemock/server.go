@@ -168,6 +168,7 @@ func (srv *Server) buildRouter() chi.Router {
 		m.Get("/mess", srv.handleMockMess)
 		m.Post("/nodes/{node}/network-reload-fail", srv.handleMockSetNetworkReloadFail)
 		m.Post("/nodes/{node}/sdn-status-fail", srv.handleMockSetSDNZoneStatusFail)
+		m.Post("/nodes/{node}/sdn-zones-unavailable", srv.handleMockSetSDNZonesUnavailable)
 		m.Post("/nodes/{node}/firewall-compile-fail", srv.handleMockSetFirewallCompileFail)
 	})
 
