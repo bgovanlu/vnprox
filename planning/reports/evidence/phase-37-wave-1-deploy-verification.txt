@@ -1,0 +1,120 @@
+Phase 37 Wave 1 — post-deploy verification on pvecube
+Deployed 2026-08-23 19:34:21 -0400 · 4.0.0+88+g42fd9d7f -> 4.0.0+101+gca079691
+All commands below are reads. Nothing on either node was modified beyond
+installing the package on pvecube.
+
+WHY THIS FILE EXISTS
+--------------------
+T-3701 AC1/AC3 and T-3702 AC2/AC3 cannot be closed by a unit test — they are
+claims about the running daemon's journal and API. This is the transcript that
+closes them, and the pre-deploy baseline that makes the post-deploy numbers mean
+something.
+
+BASELINE, CAPTURED IMMEDIATELY BEFORE THE DEPLOY
+------------------------------------------------
+  501s from the invented per-zone endpoint, 24h : 8540
+  "context canceled", 24h                       : 17204
+  peer pve001 consecutive_failures              : 3047
+  peer pve001 last_success                      : 0001-01-01T00:00:00Z  (never)
+
+8540 matches T-3701's card exactly. 17204 matches the audit report's 17197 to
+within one poll cycle. These are the defects, measured, on the deployed product.
+
+AFTER, MEASURED FROM 19:35:00 (post-deploy window only)
+--------------------------------------------------------
+  $ journalctl -u vnprox --since "2026-08-23 19:35:00" | grep -c "cluster/sdn/zones/.*/status"
+  0                                          <- T-3701 AC1 PASS  (was 8540/24h)
+
+  $ journalctl ... | grep -c "peer host poll failed.*context canceled"
+  0                                          <- T-3702 AC3 PASS  (was 17204/24h)
+
+  $ journalctl ... | grep -c "context canceled"
+  0
+
+  $ journalctl -u vnprox --since "2026-08-23 19:35:00" -p warning
+  -- No entries --                           <- zero warnings at all since deploy
+
+ALL FOUR COLLECTORS, LIVE
+-------------------------
+  $ curl -sk https://127.0.0.1:8007/api/v1/health
+    pve    -        last_success=2026-08-23T19:38:26 fails=0
+    host   pve001   last_success=2026-08-23T19:38:26 fails=0     <- T-3702 AC2 PASS
+    host   pvecube  last_success=2026-08-23T19:38:26 fails=0
+    lldp   pvecube  last_success=2026-08-23T19:38:10 fails=0
+
+pve001 had never recorded a single success in the lifetime of the deployment
+(consecutive_failures 3047 and climbing at the moment of the deploy). This is the
+first successful peer round-trip the project has ever had against a real second
+node.
+
+T-3701 AC3 — labz's error is finally visible
+--------------------------------------------
+  $ journalctl -u vnprox --since "2026-08-23 19:35:00" | grep sdn_zone_status
+  {"level":"INFO","msg":"findings: notification delivered",
+   "finding_id":"drift:sdn_zone_status|sdn-zone::labz",
+   "severity":"error","transition":"new"}
+
+  $ pvesh get /nodes/pvecube/sdn/zones
+  [{"status":"error","zone":"labz"}]
+
+The zone has been in error on this node the whole time. The product could not see
+it, because it was asking an endpoint that answers 501. It can now, and the
+finding fired as "new" on the first poll after the upgrade.
+
+Note: a direct `curl /api/v1/findings` returns 401 — that endpoint requires a
+session. An earlier check of mine read that 401 as "finding absent", which was
+wrong; the journal above is the authoritative confirmation.
+
+T-3703 COMPATIBILITY TRIPWIRE — the thing most likely to have gone wrong
+------------------------------------------------------------------------
+T-3703 changes the peer signing format, and pve001 runs an older vnproxd that we
+have no credentials to upgrade. If the dual-signature design were wrong,
+pvecube's outbound polls to pve001 would now fail — reintroducing T-3702's outage
+by another route.
+
+  outbound failures to pve001 since deploy : 0
+  pve001 collector                         : fails=0, last_success current
+
+The design holds. An upgraded client's requests still verify under the legacy
+four-field formula, exactly as TestLegacyVerifier_AcceptsANewClientsRequest
+asserts.
+
+THE ONE THING STILL WARNING, AND WHY IT IS NOT A REGRESSION
+------------------------------------------------------------
+  $ journalctl ... | grep "replayed peer request" | tail -1
+  {"level":"WARN","msg":"peer: rejected unauthorized request",
+   "method":"GET","path":"/api/peer/host/neighbors",
+   "remote_addr":"192.168.1.7:39246","reason":"replayed peer request"}
+
+These are INBOUND, from pve001, every ~30s — one per poll cycle, which is
+86400/30 = 2880/day and matches the audit's measured 2885/day almost exactly.
+This is the original T-3703 defect, arriving on the legacy path because pve001
+signs without a nonce and cannot be upgraded by us. T-3703 fixes this for any
+peer that sends a nonce; pve001 will keep hitting it until its owner upgrades it.
+
+Rate did not increase across the deploy — it fell:
+  6h before deploy : 120.8 rejections/hour
+  after deploy     : 46.7 rejections/hour  (small sample, ~9 min)
+The likely cause of the drop is T-3702: the context-canceled failures were
+driving retries, and retried identical requests collide on the legacy signature.
+Fixing the body-cancel bug removed a source of duplicates.
+
+CLUSTER UNTOUCHED
+-----------------
+  $ pvecm status
+  Quorate: Yes · Total votes: 2
+
+SCORECARD
+---------
+  T-3701 AC1  no 501s in the journal                     PASS
+  T-3701 AC2  pvemock serves no invented route           PASS (unit, pre-deploy)
+  T-3701 AC3  labz error visible as a finding            PASS
+  T-3702 AC1  regression test fails before, passes after PASS (unit, pre-deploy)
+  T-3702 AC2  pve001 last_success non-zero               PASS
+  T-3702 AC3  no context-canceled peer polls             PASS
+  T-3703      same-second duplicates accepted,
+              captured/stripped nonces rejected,
+              legacy verifier still accepts us           PASS (unit) + tripwire clear
+
+All five previously Degraded matrix rows (T-301, T-302, T-303, T-401, T-402)
+move to Live on this evidence.

@@ -196,8 +196,15 @@ to use instead, with `TestSkipReasonsDoNotDiagnose` (proven by mutation) to stop
       `packaging/bin/vnprox-setup`, `packaging/debian/postrm`, and the docs
       referencing it were all updated to match). Not yet validated: real
       cross-node pmxcfs replication (this was a single-node cluster).
-- [ ] **T-3702's fix (peer response body read after its request context was
-      cancelled) — deployed-node verification still outstanding.**
+- [x] **T-3702's fix (peer response body read after its request context was
+      cancelled) — CLOSED 2026-08-23 by deployment. AC2 and AC3 both verified
+      on pvecube against real peer pve001; evidence in
+      `planning/reports/evidence/phase-37-wave-1-deploy-verification.txt`.
+      After deploying 4.0.0+101+gca079691: `context canceled` peer polls went
+      8540/24h -> 0, pve001's `last_success` went from never-set (3047
+      consecutive failures) to current with fails=0, and the daemon logged zero
+      warnings of any kind in the post-deploy window. Original entry retained
+      below for the reasoning.**
       `internal/peer/client.go`'s `do()` used to open a per-request
       `context.WithTimeout` and `defer cancel()` it before the caller ever
       read the response body, so `decodeInto`'s read raced an

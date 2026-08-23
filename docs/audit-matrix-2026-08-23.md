@@ -71,14 +71,14 @@ closed.
 | 2 | T-206 | Snapshots, time machine, audit UI | History as a product surface: snapshot browsing/diff/restore and the audit view. | Shipped | Documented | Covered | Live |
 | 2 | T-207 | Editing UI: changeset drawer, entity editors, guest NICs | The write-side UX: the drawer, the four entity editors, map drag-edits, guest NIC ops with bulk mode, and the apply/confirm flow. | Shipped | Documented | Covered | Live |
 | 2 | T-208 | Raw interfaces editor | The power-user escape hatch that stays inside the safety envelope. | Shipped | Documented | Covered | Live |
-| 3 | T-301 | Peer API: secret, HMAC, client/server | The authenticated intra-cluster channel every cluster feature rides on. | Shipped | Documented | Covered | Degraded |
-| 3 | T-302 | LLDP collection, switch merging, ports table | The physical layer: lldpd integration, cross-node switch entity merging, the VLAN cross-check, and the ports table. | Shipped | Documented | Covered | Degraded |
-| 3 | T-303 | Cluster fan-out | Make every read surface truly cluster-wide: remote host data via peers, merged queries, per-node staleness. | Shipped | Documented | Covered | Degraded |
+| 3 | T-301 | Peer API: secret, HMAC, client/server | The authenticated intra-cluster channel every cluster feature rides on. | Shipped | Documented | Covered | Live |
+| 3 | T-302 | LLDP collection, switch merging, ports table | The physical layer: lldpd integration, cross-node switch entity merging, the VLAN cross-check, and the ports table. | Shipped | Documented | Covered | Live |
+| 3 | T-303 | Cluster fan-out | Make every read surface truly cluster-wide: remote host data via peers, merged queries, per-node staleness. | Shipped | Documented | Covered | Live |
 | 3 | T-304 | Distributed rollback: per-node local timers | Extend T-205's safety to multi-node applies: each node arms its own local timer so no node's safety depends on cluster connectivity. | Shipped | Documented | Covered | Live |
 | 3 | T-305 | Drift detection | The cross-node consistency engine and its surfacing. | Shipped | Documented | Covered | Live |
 | 3 | T-306 | MAC/FDB browser (P1) | Cluster-wide "where does this MAC live" search. | Shipped | Documented | Covered | Live |
-| 4 | T-401 | SDN read: cockpit tree, map overlay, pending diff | Full visibility of the SDN stack before any SDN writes. | Shipped | Documented | Covered | Degraded |
-| 4 | T-402 | SDN ops & apply orchestration | SDN mutations through the change engine, with the orchestrated cluster apply. | Shipped | Documented | Covered | Degraded |
+| 4 | T-401 | SDN read: cockpit tree, map overlay, pending diff | Full visibility of the SDN stack before any SDN writes. | Shipped | Documented | Covered | Live |
+| 4 | T-402 | SDN ops & apply orchestration | SDN mutations through the change engine, with the orchestrated cluster apply. | Shipped | Documented | Covered | Live |
 | 4 | T-403 | Zone wizards | The five guided zone wizards with live topology preview. | Shipped | Documented | Covered | Live |
 | 4 | T-404 | EVPN/BGP status | FRR observability: peering matrix, session detail, VNI state, exit-node health. | Shipped | Documented | Covered | Live |
 | 4 | T-405 | Visual IPAM | The IPAM views, the multi-source merge with confidence labels, conflicts, and reserve/release ops. | Shipped | Documented | Covered | Live |
