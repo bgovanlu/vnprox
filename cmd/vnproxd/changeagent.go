@@ -632,8 +632,8 @@ func (g *pveGateway) ApplySDN(ctx context.Context, affectedZones []string) (chan
 	node := upidNode(upid)
 	result := change.SDNApplyResult{UPID: upid, Node: node}
 
-	if _, err := g.client.WaitTask(ctx, node, upid, pve.WaitOptions{Timeout: 5 * time.Minute}); err != nil {
-		return result, err
+	if _, waitErr := g.client.WaitTask(ctx, node, upid, pve.WaitOptions{Timeout: 5 * time.Minute}); waitErr != nil {
+		return result, waitErr
 	}
 
 	statusByZone, err := postApplySDNZoneStatus(ctx, g.client, affectedZones)

@@ -302,9 +302,9 @@ func TestTicketAuth_SDNReads(t *testing.T) {
 	// T-3701: the real endpoint is per-node, not per-zone — one call per
 	// cluster member, each answering every zone assigned to it.
 	for _, node := range []string{"pve1", "pve2", "pve3"} {
-		st, err := c.ListNodeSDNZoneStatus(ctx, node)
-		if err != nil {
-			t.Fatalf("ListNodeSDNZoneStatus(%s): %v", node, err)
+		st, statusErr := c.ListNodeSDNZoneStatus(ctx, node)
+		if statusErr != nil {
+			t.Fatalf("ListNodeSDNZoneStatus(%s): %v", node, statusErr)
 		}
 		if len(st) != 1 || st[0].Zone != "vlanz" || st[0].Status != "ok" {
 			t.Fatalf("ListNodeSDNZoneStatus(%s) = %+v, want one ok entry for vlanz", node, st)
@@ -358,7 +358,7 @@ func setMockSDNZonesUnavailable(t *testing.T, apiURL, node string, unavailable b
 	if err != nil {
 		t.Fatalf("setMockSDNZonesUnavailable: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("setMockSDNZonesUnavailable: status %d", resp.StatusCode)
 	}

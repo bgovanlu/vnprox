@@ -318,8 +318,8 @@ func (g *fakePVEGateway) ApplySDN(ctx context.Context, affectedZones []string) (
 		return change.SDNApplyResult{}, err
 	}
 	result := change.SDNApplyResult{UPID: upid, Node: g.pollNode}
-	if _, err := g.client.WaitTask(ctx, g.pollNode, upid, pve.WaitOptions{Interval: 5 * time.Millisecond, Timeout: 5 * time.Second}); err != nil {
-		return result, err
+	if _, waitErr := g.client.WaitTask(ctx, g.pollNode, upid, pve.WaitOptions{Interval: 5 * time.Millisecond, Timeout: 5 * time.Second}); waitErr != nil {
+		return result, waitErr
 	}
 	statusByZone, err := fakePostApplySDNZoneStatus(ctx, g.client, affectedZones)
 	if err != nil {

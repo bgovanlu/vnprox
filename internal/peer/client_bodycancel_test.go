@@ -58,7 +58,7 @@ func TestClient_DoesNotCancelResponseBodyBeforeItIsRead(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		half := len(data) / 2
-		if _, err := w.Write(data[:half]); err != nil {
+		if _, writeErr := w.Write(data[:half]); writeErr != nil {
 			return
 		}
 		flusher.Flush() // headers + partial body land now -- Do() can return
