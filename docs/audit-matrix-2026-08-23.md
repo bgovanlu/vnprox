@@ -18,7 +18,7 @@ daemon by a command, not from a card's claim about itself. Method is in §Method
 | 1 | T-103 | Inventory model & graph ★ | The normalized in-memory model everything reads: typed entities, edges, snapshotting, delta computation. | Shipped | Documented | Covered | Live |
 | 1 | T-104 | Collectors | The poll loops feeding inventory: PVE poller and local-host poller, with lifecycle and on-demand refresh. | Shipped | Documented | Covered | Live |
 | 1 | T-105 | Auth: PVE bridge, sessions, capabilities | Login with PVE credentials; | Shipped | Documented | Covered | Live |
-| 1 | T-106 | Topology builder, API & WS hub | Project inventory into the renderable topology contract; | Shipped | Documented | Covered | Shipped, inert |
+| 1 | T-106 | Topology builder, API & WS hub | Project inventory into the renderable topology contract; | Shipped | Documented | Covered | Live |
 | 1 | T-107 | Topology UI | The map: React Flow canvas, four layers, inspector, search, layouts — the product's home screen, read-only at this stage. | Shipped | Documented | Covered | Live |
 | 2 | T-201 | Changeset model, store, draft API | Changesets as data: the op type system, persistence, and draft CRUD API. | Shipped | Documented | Covered | Live |
 | 2 | T-202 | Validation framework + schema/referential validators | The layered validator pipeline and its first two classes, with machine-applicable fixes. | Shipped | Documented | Covered | Live |
@@ -229,7 +229,7 @@ daemon by a command, not from a card's claim about itself. Method is in §Method
 | 33 | T-3303 | Hosted instances + ecosystem: demo, registry, Terraform/Ansible | Verified against commit ac3a7c3f ("demo: real hosted public demo (T-3303), plus a bug it found | Shipped | Documented | Covered | Shipped, inert |
 | 34 | T-3401 | Design tokens: Stripe-inspired foundation | Establish the phase's visual vocabulary as tokens only — accent, radii, borders, shadows, type scale — so every later card styles against names, not raw values. | Shipped | Documented | Covered | Live |
 | 34 | T-3402 | Sidebar: grouped, collapsible, iconed, pinned-bottom | Replace NavRail with a Stripe-style Sidebar: light surface, grouped sections with muted section labels, collapsible groups with chevrons, real icons, an instance-identity chip at t | Shipped | Documented | Covered | Live |
-| 34 | T-3403 | Top bar + demo test-mode bar | Restyle the top bar to the reference — rounded search field, quieter ghost actions, account dropdown as a chip — and restyle DemoBanner as Stripe's dark full-width test-mode bar. | Shipped | Documented | Covered | Shipped, inert |
+| 34 | T-3403 | Top bar + demo test-mode bar | Restyle the top bar to the reference — rounded search field, quieter ghost actions, account dropdown as a chip — and restyle DemoBanner as Stripe's dark full-width test-mode bar. | Shipped | Documented | Covered | Live |
 | 34 | T-3404 | PageHeader + pill actions + underlined tabs, rolled out to every page | One shared header pattern — large title, optional description line, pill action buttons right-aligned, optional underlined tab row — replacing each page's ad-hoc <h1>/toolbar marku | Shipped | Documented | Covered | Live |
 | 34 | T-3405 | Core component restyle | Bring the shared primitives to the reference's look: pill-option buttons, quieter tables (muted uppercase-free headers, hairline row borders, no zebra), softer dialogs/drawers/toas | Shipped | Documented | Covered | Live |
 | 34 | T-3406 | followup-01 · Pre-existing page-local contrast and ARIA defects | Clear the quarantined a11y failures at their source, then delete the quarantine entries. | Shipped | Documented | Covered | Live |
@@ -243,62 +243,3 @@ daemon by a command, not from a card's claim about itself. Method is in §Method
 | 36 | T-3603 | Collector staleness offers a retry, and a way to the real problem | "no successful poll yet — context canceled" currently tells an operator that something is broken and nothing about what to do next. | Shipped | Documented | Covered | Live |
 | 36 | T-3604 | `service_down` offers to start the unit | dnsmasq and frr are SDN's DHCP and routing daemons; | Shipped | Documented | Covered | Live |
 | 36 | T-3605 | Prove it end to end, and write down the power that was added | All five cards delivered. The three banners in the screenshot that started this now offer their | Shipped | Documented | Covered | Live |
-
----
-
-## Method
-
-Cards were parsed from `planning/tasks/*.md`. For each task:
-
-- **Implementation** — T-ID references in non-test `.go`/`.ts`/`.tsx`, plus commit count and whether
-  a completion report exists. Six tasks carry no T-ID tag anywhere and were confirmed present by
-  inspecting their artifacts.
-- **Documentation** — T-ID references under `docs/`, then a second pass by feature name. Tag absence
-  is a weak signal: it produced 33 false negatives on the first pass, every one resolved on the
-  second.
-- **Tests** — T-ID references in `*_test.go`, `*.test.tsx?` and `web/e2e/*.spec.ts`, then a
-  sibling-file pass for the 23 that showed nothing. All 23 turned out to be covered. Six remaining
-  are tasks whose deliverable is a document or a distribution channel, marked N/A rather than
-  counted as a gap.
-- **Deployment** — the deployed build *is* current `main`, so every feature is present. The column
-  reports **reachability on pvecube** instead: config keys commented out in `/etc/vnprox` make a
-  feature inert; cluster features cannot be exercised on one node; five are actively degraded by
-  defects confirmed against the node on 2026-08-21.
-
-### Three ways this sweep was nearly wrong
-
-1. **Heading parsing.** Phases 22 and 23 separate card IDs from titles with an em-dash where every
-   other phase uses a middle dot. The first extraction returned **226** cards instead of 236 — ten
-   features silently absent. Caught only because a wave-level summary had no rows for 22 or 23 and
-   an independent count of unique T-IDs disagreed.
-2. **Tag absence read as absence of the thing.** See Documentation and Tests above.
-3. **Substring keyword matching.** `GitHub` matched a `hub` rule and marked repo scaffolding as
-   registry-gated; a bare `flow` rule swept up "Guided diagnosis flows" and "Topology UI". Every
-   status was re-derived with title-anchored, word-boundary patterns and the residue read by hand.
-
-### What this does not measure
-
-Evidence *of* implementation, documentation and test coverage — not their quality. A T-ID in a test
-file proves a test exists that names the task, not that it is a good test or that the acceptance
-criteria were met.
-
-## Gap found while running this audit: the unit suite has no flake visibility
-
-The e2e suite has `cmd/e2egate`, `web/e2e/quarantine.json` with hard expiries, and a 20-run trend
-in `var/e2e-runs/runs.jsonl`. The **2278-test vitest suite, which gates every push, has none of
-that.**
-
-It surfaced concretely. `TenantsPanel.test.tsx` timed out on a `findByRole` during a push and
-refused it; the file then passed 3/3 in isolation and the full suite passed 295/295 immediately
-after. Nothing was broken — Testing Library's `findBy*` default is a **1000ms** timeout, and the
-pre-push hook is `make ci`, which runs vitest alongside a cross-arm64 build, a fuzz run and a
-package build. A green suite was reported as a red one, with no record anywhere that the test is
-load-sensitive.
-
-Fixed at the source: `web/src/test/setup.ts` now sets `asyncUtilTimeout: 5000`. That is a ceiling,
-not a wait — `findBy*` polls and resolves as soon as the element appears, so passing tests are not
-slowed.
-
-**Still open:** a vitest run leaves no trend, so the next load-flake will also look like a
-regression and will also be diagnosed from scratch. The e2egate pattern is right there and is not
-applied to the suite that runs most often.
