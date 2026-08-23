@@ -1,5 +1,20 @@
 # vnprox — full-stack audit matrix
 
+> **SUPERSEDED for the per-feature sweep, 2026-08-23.** This document's §2/§3/§4 were taken at
+> `v3.0.4` on 2026-08-06 and, as the note below already says, were never re-run. They now predate
+> phases 25–36 entirely. **[`audit-matrix-2026-08-23.md`](audit-matrix-2026-08-23.md) is the current
+> per-feature matrix**: all 226 task cards across 37 waves, with implementation / documentation /
+> test / deployment status derived mechanically from the tree at `42fd9d7f` and from the running
+> daemon on pvecube.
+>
+> What this file still has that the new one does not: §5's prose analysis, the eight-column
+> backend/GUI/API/Help split, and the hardware-validation column. It is kept for those, not for its
+> per-feature marks.
+>
+> One finding here is now closed. §7 ended on "ten of them ship a backend an operator cannot reach";
+> re-measured on 2026-08-23, **71 of 72 API route groups have a frontend caller**, the exception
+> being `/api/v1/openapi.json`, which is a machine-readable spec and correctly has no UI.
+
 **Audit date:** 2026-08-06 · **Commit:** `6c0957e` · **Sweep taken against:** `v3.0.4` · **Deployed at sweep time:** `3.0.4+43+g6c0957e` (pvecube) · **Current release: `v4.0.0`** (2026-08-14) — this document's §2/§3/§4 numbers were never re-run against it; see the note below and §7
 
 This is a mechanical sweep of the whole stack: feature area × backend × GUI × API × docs × tests × hardware validation. Every figure below is derived from the repository at the commit above by a command recorded in the *Method* section, not from a task report's own claim about itself.
