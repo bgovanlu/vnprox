@@ -243,3 +243,62 @@ daemon by a command, not from a card's claim about itself. Method is in §Method
 | 36 | T-3603 | Collector staleness offers a retry, and a way to the real problem | "no successful poll yet — context canceled" currently tells an operator that something is broken and nothing about what to do next. | Shipped | Documented | Covered | Live |
 | 36 | T-3604 | `service_down` offers to start the unit | dnsmasq and frr are SDN's DHCP and routing daemons; | Shipped | Documented | Covered | Live |
 | 36 | T-3605 | Prove it end to end, and write down the power that was added | All five cards delivered. The three banners in the screenshot that started this now offer their | Shipped | Documented | Covered | Live |
+
+---
+
+## Method
+
+Cards were parsed from `planning/tasks/*.md`. For each task:
+
+- **Implementation** — T-ID references in non-test `.go`/`.ts`/`.tsx`, plus commit count and whether
+  a completion report exists. Six tasks carry no T-ID tag anywhere and were confirmed present by
+  inspecting their artifacts.
+- **Documentation** — T-ID references under `docs/`, then a second pass by feature name. Tag absence
+  is a weak signal: it produced 33 false negatives on the first pass, every one resolved on the
+  second.
+- **Tests** — T-ID references in `*_test.go`, `*.test.tsx?` and `web/e2e/*.spec.ts`, then a
+  sibling-file pass for the 23 that showed nothing. All 23 turned out to be covered. Six remaining
+  are tasks whose deliverable is a document or a distribution channel, marked N/A rather than
+  counted as a gap.
+- **Deployment** — the deployed build *is* current `main`, so every feature is present. The column
+  reports **reachability on pvecube** instead: config keys commented out in `/etc/vnprox` make a
+  feature inert; cluster features cannot be exercised on one node; five are actively degraded by
+  defects confirmed against the node on 2026-08-21.
+
+### Three ways this sweep was nearly wrong
+
+1. **Heading parsing.** Phases 22 and 23 separate card IDs from titles with an em-dash where every
+   other phase uses a middle dot. The first extraction returned **226** cards instead of 236 — ten
+   features silently absent. Caught only because a wave-level summary had no rows for 22 or 23 and
+   an independent count of unique T-IDs disagreed.
+2. **Tag absence read as absence of the thing.** See Documentation and Tests above.
+3. **Substring keyword matching.** `GitHub` matched a `hub` rule and marked repo scaffolding as
+   registry-gated; a bare `flow` rule swept up "Guided diagnosis flows" and "Topology UI". Every
+   status was re-derived with title-anchored, word-boundary patterns and the residue read by hand.
+
+### What this does not measure
+
+Evidence *of* implementation, documentation and test coverage — not their quality. A T-ID in a test
+file proves a test exists that names the task, not that it is a good test or that the acceptance
+criteria were met.
+
+## Gap found while running this audit: the unit suite has no flake visibility
+
+The e2e suite has `cmd/e2egate`, `web/e2e/quarantine.json` with hard expiries, and a 20-run trend
+in `var/e2e-runs/runs.jsonl`. The **2278-test vitest suite, which gates every push, has none of
+that.**
+
+It surfaced concretely. `TenantsPanel.test.tsx` timed out on a `findByRole` during a push and
+refused it; the file then passed 3/3 in isolation and the full suite passed 295/295 immediately
+after. Nothing was broken — Testing Library's `findBy*` default is a **1000ms** timeout, and the
+pre-push hook is `make ci`, which runs vitest alongside a cross-arm64 build, a fuzz run and a
+package build. A green suite was reported as a red one, with no record anywhere that the test is
+load-sensitive.
+
+Fixed at the source: `web/src/test/setup.ts` now sets `asyncUtilTimeout: 5000`. That is a ceiling,
+not a wait — `findBy*` polls and resolves as soon as the element appears, so passing tests are not
+slowed.
+
+**Still open:** a vitest run leaves no trend, so the next load-flake will also look like a
+regression and will also be diagnosed from scratch. The e2egate pattern is right there and is not
+applied to the suite that runs most often.

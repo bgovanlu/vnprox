@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PresenceIndicator } from "./PresenceIndicator";
 import type { PresenceResponse } from "../api/types";
@@ -25,8 +25,20 @@ async function renderIndicator(response: PresenceResponse, currentUser?: string)
       <PresenceIndicator changesetId="cs-1" currentUser={currentUser} />
     </QueryClientProvider>,
   );
-  // Let the query settle.
-  await screen.findByTestId("presence-indicator").catch(() => undefined);
+  // Let the query settle by waiting for the thing that actually settles it —
+  // the presence fetch resolving — rather than by awaiting a `findBy` that is
+  // *expected* to reject and swallowing it.
+  //
+  // The old idiom (`await screen.findByTestId(...).catch(() => undefined)`)
+  // worked, but it paid Testing Library's full async timeout on every call,
+  // by construction: two of these cases assert the indicator is ABSENT, so
+  // the find can only ever time out. That made the helper's cost equal to
+  // whatever `asyncUtilTimeout` happens to be — invisible at the 1000ms
+  // default, and an instant failure when the shared setup raised it to
+  // 5000ms and collided with vitest's own 5000ms testTimeout.
+  await waitFor(() => {
+    expect(getPresence).toHaveBeenCalled();
+  });
   return view;
 }
 

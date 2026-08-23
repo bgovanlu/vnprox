@@ -30,6 +30,13 @@ export default defineConfig({
     css: true,
     setupFiles: ["./src/test/setup.ts"],
     restoreMocks: true,
+    // Must stay comfortably ABOVE src/test/setup.ts's `asyncUtilTimeout`
+    // (5000ms). Vitest's default testTimeout is also 5000ms, so a
+    // `findBy*` allowed to run its full course would hit the per-test
+    // ceiling at the same moment and report "test timed out" instead of
+    // the assertion that actually failed — which is a much worse error
+    // message, and is how raising asyncUtilTimeout first broke this suite.
+    testTimeout: 20_000,
     // Playwright specs (e2e/) are a separate, opt-in runner (`npm run
     // e2e`) — vitest must not pick them up via its default include glob.
     exclude: [...configDefaults.exclude, "e2e/**"],
