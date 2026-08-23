@@ -1,6 +1,10 @@
 # T-3707 · The hosted-service decision
 
-**Status: awaiting the owner. Nothing here is decided.**
+**Status: DECIDED 2026-08-23 by the owner (brian). See the decision table at the bottom.**
+
+**Summary of the answer:** the registry **will** exist; compatibility telemetry **will** exist; a
+public hosted demo **will not**. Two of the three groups earn implementation cards; the demo group
+is closed as deliberately unhosted.
 
 Eleven shipped features are inert because they need a service that nobody has stood up. That is a
 product decision, and it has been deferred by never being asked rather than by being answered. This
@@ -88,16 +92,33 @@ stops it being reopened.
 
 | Group | Going to exist? | Decided by | Date | Reason |
 |---|---|---|---|---|
-| A — registry / hub | *unanswered* | | | |
-| B — hosted demo | *unanswered* | | | |
-| C — telemetry | *unanswered* | | | |
+| A — registry / hub | **YES** | brian | 2026-08-23 | The client side is already built, hardened and gated; the ecosystem features are worth the operational commitment. Earns an infrastructure card. |
+| B — hosted demo | **NO** | brian | 2026-08-23 | `--demo` ships to anyone who installs the package and is the evaluation path. A public internet-facing instance is not worth its exposure and dataset-reset burden. Closed as deliberately unhosted. |
+| C — telemetry | **YES** | brian | 2026-08-23 | Lowest operational burden of the three, and the highest value right now: the project was wrong about its own test environment for five days. Earns a card. |
 
-## What happens next, either way
+## Consequences, now that it is answered
 
-- **Yes** → the group earns an implementation card in a future phase, scoped to standing the service
-  up. The client-side work is done; the card is infrastructure and operations.
-- **No** → the affected rows in `docs/audit-matrix-2026-08-23.md` change from `Shipped, inert` to
-  **`Shipped, deliberately unhosted`**, and the matrix's gap count drops by that many. Add a line to
-  this page so the next audit finds the answer instead of re-raising the question.
+### Group A — YES → `T-3709`
+The seven cards stay `Shipped, inert` **pending the service**, which is now a scheduled obligation
+rather than an open question. See `planning/tasks/T-3709-hosted-registry.md`. The obligations named
+above are real and inherited: signing key custody, the vetting bar for the "vetted" tier, revocation,
+and an availability expectation. None of them are client-side code, and none of them are optional
+once the first user points an installation at the registry.
 
-Until this table is filled in, T-3707 is the one card in Phase 37 that no agent can close.
+### Group B — NO → closed
+`T-2802` and the hosted half of `T-2801` move from `Shipped, inert` to
+**`Shipped, deliberately unhosted`** in `docs/audit-matrix-2026-08-23.md`. They are no longer a gap
+and must not be re-reported as one.
+
+Note `T-2801`'s built-in `--demo` mode was never the question — it is a separate daemon and being
+off on a production node is the intended state. The audit's classification of it as inert was
+misleading, and is corrected in the matrix.
+
+`T-3303` spans groups A and B. It stays open under A; only its demo half is closed.
+
+### Group C — YES → `T-3710`
+See `planning/tasks/T-3710-compat-telemetry.md`. Consent, retention and a privacy statement are part
+of the card, not follow-ups — and so is the commitment to read what arrives, because telemetry
+nobody reads is worse than none.
+
+**T-3707 is closed.** Any future audit that finds these features inert should find this page first.
