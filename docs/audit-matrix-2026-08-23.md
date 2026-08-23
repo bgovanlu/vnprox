@@ -1,9 +1,52 @@
 # vnprox — feature audit matrix
 
-**Audit date:** 2026-08-23 · **Commit:** `42fd9d7f` · **Deployed:** `4.0.0+88+g42fd9d7f` on pvecube (PVE 9.2.4, single node)
+**Audit date:** 2026-08-23 · **Commit:** `42fd9d7f` · **Deployed:** `4.0.0+88+g42fd9d7f` on pvecube
+(PVE 9.2.4, ~~single node~~ — see the correction below)
 
 236 task cards across 37 waves. Every cell is derived from the repository and from the running
 daemon by a command, not from a card's claim about itself. Method is in §Method.
+
+## Corrections since publication
+
+Two of this matrix's four status axes were wrong on the day it was written. Both are recorded here
+rather than silently patched, because how they were wrong is more useful than the corrected value.
+
+### 1. "single node" is false, and it invalidated the whole `Shipped, unproven` column
+
+pvecube is a member of a **quorate two-node corosync cluster**, `vnprox-dev`, with `pve001` at
+192.168.1.7 — formed **2026-08-18, five days before this audit ran.** `pvecm status` reports
+`Quorate: Yes`. Evidence: `planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt`.
+
+Every one of the 17 `Shipped, unproven` rows was classified on the premise that a second node did
+not exist. That premise came from `CLAUDE.md` and from
+`planning/reports/needs-hardware-validation.md`, both of which said so — **and the audit repeated
+them instead of running one command against the node.** This is the same failure that produced the
+SDN-zone defect the audit itself reported, and that CLAUDE.md explicitly warns about. The Method
+section's claim that every cell is derived by a command does not hold for this column.
+
+The 17 rows are not re-scored here; they are re-scored by evidence in T-3705. What is corrected is
+the premise, so nothing downstream keeps inheriting it. `CLAUDE.md` is fixed as of `36927119`.
+
+The real remaining limit is **authorisation, not hardware**: we hold no credentials for `pve001` and
+may not modify it. It is observable through pvecube's `pvesh` and peerable, which covers most
+validation, but anything requiring a change *on* that node is blocked on its owner.
+
+### 2. `Shipped, inert` conflated "switched off" with "deficient"
+
+T-3707 asked the owner whether the hosted services eleven of those rows wait on are going to exist.
+Answered 2026-08-23 — see `planning/hosted-services-decision.md`:
+
+- **Registry / hub — YES.** The 7 rows stay pending, now against scheduled work (`T-3709`).
+- **Telemetry (T-2503) — YES.** Pending `T-3710`.
+- **Hosted demo — NO.** `T-2801` and `T-2802` are reclassified **`Shipped, deliberately unhosted`**
+  and are no longer a gap. Do not re-report them as one.
+
+`T-2801` also shows the conflation directly: its built-in `--demo` mode is a separate daemon, and
+being off on a production node is the *intended* state, not a deficiency. Scoring it `inert`
+alongside genuinely blocked features made a correct configuration look like a defect.
+
+`T-3303` spans both groups; it stays open under the registry decision, and only its demo half is
+closed.
 
 | Wave | Item | Feature | What it does | Implementation | Docs | Tests | Deployment |
 |---|---|---|---|---|---|---|---|
@@ -194,8 +237,8 @@ daemon by a command, not from a card's claim about itself. Method is in §Method
 | 27 | T-2704 | Point-in-time topology diff | Changesets record what vnprox did. | Shipped | Documented | Covered | Live |
 | 27 | T-2705 | Mutating MCP tools that stage, never apply | The MCP surface exposes nine read-only tools. | Shipped | Documented | Covered | Shipped, inert |
 | 27 | T-2706 | Compliance profiles and evidence export | All six cards have their own commit (3e4ef09, a4f00bb, 0ad45fe, 46c7ed2, 3213ef8, | Shipped | Documented | Covered | Live |
-| 28 | T-2801 | One-command install and built-in demo mode ★ | Evaluating vnprox currently requires a Proxmox cluster. | Shipped | Documented | Covered | Shipped, inert |
-| 28 | T-2802 | Hosted read-only demo and guided tour | The demo dataset from T-2801, published, turns a datasheet into something clickable. | Shipped | Documented | Covered | Shipped, inert |
+| 28 | T-2801 | One-command install and built-in demo mode ★ | Evaluating vnprox currently requires a Proxmox cluster. | Shipped | Documented | Covered | Shipped, deliberately unhosted |
+| 28 | T-2802 | Hosted read-only demo and guided tour | The demo dataset from T-2801, published, turns a datasheet into something clickable. | Shipped | Documented | Covered | Shipped, deliberately unhosted |
 | 28 | T-2803 | Hosted signed registry for blueprints and plugins | implementation · depends on: — context: internal/hub/, internal/blueprint/, internal/plugin/, T-2104 | Shipped | Documented | Covered | Shipped, inert |
 | 28 | T-2804 | Incident mode | When a network breaks, an operator needs the diagnosis ladder, a capture, the current findings, | Shipped | Documented | Covered | Live |
 | 28 | T-2805 | Multi-user presence and changeset locking | Nothing stops two operators staging conflicting changes to the same bridge at the same time. | Shipped | Documented | Covered | Live |
