@@ -291,6 +291,19 @@ type ServerOptions struct {
 	Now          func() time.Time
 	Version      string
 	MaxBodyBytes int64
+	// RequireNonce (T-3703), when true, makes authMiddleware refuse any
+	// request that doesn't carry a validly nonce-bound signature
+	// (HeaderNonce + HeaderNonceSignature) instead of falling back to
+	// the legacy four-field HeaderSignature check. Defaults to false
+	// (lenient) so an operator upgrading one node at a time doesn't lose
+	// legacy peers the moment the first node is patched — see
+	// authMiddleware's doc comment for the full compatibility story.
+	// This is a single, dumb switch: nothing in this package flips it
+	// automatically (no auto-detection of "every peer has upgraded"),
+	// by design — that determination is an operator's to make and
+	// record, once pve001 (or whichever peer) is known to send nonces
+	// too.
+	RequireNonce bool
 }
 
 // Server implements the /api/peer/* HTTP surface: the HMAC auth middleware

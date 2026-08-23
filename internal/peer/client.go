@@ -243,8 +243,30 @@ func (c *Client) do(ctx context.Context, p Peer, method, path string, body []byt
 
 	secret := c.opts.Secrets.Current()
 	ts := c.opts.Now().Unix()
+	// T-3703: a fresh nonce per request is what lets the verifier tell
+	// "the same request, legitimately sent twice inside one second" apart
+	// from an actual replay — see sign.go's canonicalRequest doc comment.
+	// generateNonce only fails if crypto/rand itself is broken (an
+	// unreadable entropy source), which is not a condition any retry or
+	// fallback here could sensibly recover from, so it's treated the same
+	// as any other request-construction failure.
+	nonce, err := generateNonce()
+	if err != nil {
+		return nil, fmt.Errorf("peer: %s: %w", p.Node, err)
+	}
+	requestURI := req.URL.RequestURI()
+	// HeaderSignature always carries the plain pre-T-3703, four-field
+	// signature (nonce == "") — never the nonce-bound one — so that
+	// pve001, an already-peered node running an older build this project
+	// has no credentials to upgrade, keeps verifying every request from
+	// this daemon exactly as it does today: it only ever reads this one
+	// header. HeaderNonce/HeaderNonceSignature are additive information a
+	// build that predates T-3703 simply never looks at. See
+	// authMiddleware's doc comment for the verifier side of this.
 	req.Header.Set(HeaderTimestamp, strconv.FormatInt(ts, 10))
-	req.Header.Set(HeaderSignature, sign(secret, method, req.URL.RequestURI(), body, ts))
+	req.Header.Set(HeaderSignature, sign(secret, method, requestURI, body, ts, ""))
+	req.Header.Set(HeaderNonce, nonce)
+	req.Header.Set(HeaderNonceSignature, sign(secret, method, requestURI, body, ts, nonce))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
