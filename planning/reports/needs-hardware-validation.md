@@ -196,6 +196,47 @@ to use instead, with `TestSkipReasonsDoNotDiagnose` (proven by mutation) to stop
       `packaging/bin/vnprox-setup`, `packaging/debian/postrm`, and the docs
       referencing it were all updated to match). Not yet validated: real
       cross-node pmxcfs replication (this was a single-node cluster).
+- [ ] **T-3702's fix (peer response body read after its request context was
+      cancelled) — deployed-node verification still outstanding.**
+      `internal/peer/client.go`'s `do()` used to open a per-request
+      `context.WithTimeout` and `defer cancel()` it before the caller ever
+      read the response body, so `decodeInto`'s read raced an
+      already-cancelled context; `http.Client.Timeout` (already set at
+      client construction) covers connect+redirects+body-read and needed no
+      help, so the fix deletes the `reqCtx`/`cancel` pair and builds the
+      request on the caller's own `ctx`
+      (`planning/reports/audit-2026-08-21-peer-body-cancel.md`). A new
+      regression test (`internal/peer/client_bodycancel_test.go`,
+      `TestClient_DoesNotCancelResponseBodyBeforeItIsRead`) reproduces this
+      deterministically via an explicit stream/flush/sleep synchronisation
+      point rather than relying on body size, and was confirmed to fail with
+      `context canceled` against the pre-fix code and pass after — this
+      closes the card's AC1.
+
+      AC2/AC3 need the fix running on a real cluster node polling a real
+      peer, which this session could not produce (CLAUDE.md: "Never apply
+      network changes outside the change engine" +this card's own "Do not
+      deploy anything" instruction) — the fix sits unstaged in the working
+      tree, not deployed. (Committed as `ceaa32df` shortly afterwards;
+      still not deployed.) **Pre-fix baseline captured for comparison, live
+      on pvecube, 2026-08-23** (so the post-fix re-check has a same-day
+      apples-to-apples reading): `GET /api/v1/health` shows
+      `{"name":"host","node":"pve001","last_success":"0001-01-01T00:00:00Z",
+      "last_error":"host links (pve001): context canceled",
+      "consecutive_failures":2369}` — `pve001` has *never once* recorded a
+      success. The journal shows 17,201 occurrences of `collect: peer host
+      poll failed, keeping last-known state` / `context canceled` in the
+      preceding 24h, matching the audit report's count almost exactly.
+      **Once this fix (or T-3702 generally) is deployed to pvecube**,
+      re-run both checks against the same node/peer pair
+      (`pve001`, `192.168.1.7:8007`) and tick this item: `last_success`
+      should go non-zero and `consecutive_failures` should reset, and no
+      new `context canceled` peer-poll WARNs should appear in the journal
+      after the deploy timestamp. Note the health endpoint's own naming is
+      confusing here — despite the audit report's phrasing ("needs a second
+      node, that is T-3704"), a second node (`pve001`) is already federated
+      with pvecube in this deployment; what's actually missing is simply
+      *this fix being deployed*, not a second node's existence.
 
 ## Multi-user presence and locking (T-2805)
 

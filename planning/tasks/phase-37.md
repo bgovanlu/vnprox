@@ -25,8 +25,17 @@ ordered by **severity first, and by what unblocks what second**, with that coupl
 **The one number that should drive scheduling:** a second node unblocks 17 features **and** the 156
 open items in `planning/reports/needs-hardware-validation.md`, and it is the only thing that can
 verify Wave 1's peer fixes. It has been treated as "needs hardware we don't have" for the whole
-project. It does not: `pvecube` reports `vmx` with `kvm_intel.nested=Y`, 8 cores, 12 GB free and
-97 GB on `local-lvm`. See T-3704.
+project.
+
+> **Amended 2026-08-23:** the second node already exists and is already clustered. `pvecube` and
+> `pve001` have formed the quorate corosync cluster `vnprox-dev` since 2026-08-18 — five days
+> before this matrix was written. Nothing needs to be built to unblock the 17. See the amendment
+> under Wave 2, and `planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt`.
+>
+> This is worth stating plainly as a process finding, because it is the same failure the SDN-zone
+> defect came from and that `CLAUDE.md` already warns about: **the limit was inferred from project
+> documentation rather than observed on the node.** One `pvecm status` would have answered it at
+> any point in the last five days. The audit that produced this phase did not run it.
 
 ---
 
@@ -106,60 +115,89 @@ verification need.
 
 ## Wave 2 — the 17 Unproven features (P1)
 
-Not one of these needs code. All 17 are blocked on the same missing thing, and so are Wave 1's peer
-fixes: **there is no second node.**
+Not one of these needs code. All 17 were recorded as blocked on the same missing thing: **there is
+no second node.**
 
-### T-3704 · A disposable two-node PVE cluster, nested on pvecube
-**model:** sonnet-5 · **size:** M · **depends:** — · **unblocks:** all of Wave 2, T-3702's AC2,
-and much of `needs-hardware-validation.md`
+> ### ⚠️ Amended 2026-08-23 — the premise was false
+>
+> There is a second node, and it is clustered. `pvecube` has been a member of a **quorate two-node
+> corosync cluster** named `vnprox-dev` since **2026-08-18**, with `pve001` at 192.168.1.7.
+> `pvecm status` reports `Quorate: Yes`, both nodes online, and cross-node `pvesh` reads work from
+> pvecube today. Evidence: `planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt`.
+>
+> This invalidates the premise of `CLAUDE.md`'s "one real node, no cluster" line, of the
+> "Shipped, unproven" column in `docs/audit-matrix-2026-08-23.md`, and of the 156 open items in
+> `needs-hardware-validation.md` — all of which *inferred* the limit rather than checking it. The
+> matrix was written five days after the cluster was formed.
+>
+> **T-3704 is therefore rewritten below, and heavily reduced.** Most of Wave 2 no longer waits on
+> anything.
 
-**This is the highest-leverage card in the phase.** The project has recorded "needs a real cluster"
-against 17 features and 156 validation items for months, on the assumption that it needs hardware
-nobody has. The hardware is already here:
+### T-3704 · Use the cluster that exists; build a lab only for what it cannot answer
+**model:** sonnet-5 · **size:** S (was M) · **depends:** — · **unblocks:** most of Wave 2
 
-```
-pvecube: 8 cores · 15 GB RAM (12 free) · vmx · kvm_intel.nested = Y
-         local 49 GB free · local-lvm 97 GB free · 3 guests, all stopped
-```
+The original card proposed building two nested PVE guests on pvecube to obtain a second node. That
+is now redundant for every *non-destructive* purpose, and building it anyway would burn 8 GB of RAM
+and 64 GB of disk reproducing something already running.
 
-**Deliverables**
-- Two nested PVE guests (`pve-lab-1`, `pve-lab-2`), 2 vCPU / 4 GB / 32 GB each, clustered **with
-  each other**. vnproxd deployed to `pve-lab-1`, polling `pve-lab-2` as a peer.
-- A build/teardown script under `scripts/`, so the lab is reproducible and disposable rather than a
-  pet. It is a fixture, not an environment.
-- `docs/development.md` gains a section on standing it up.
+**What `vnprox-dev` can answer, and should be used for immediately:** peer round-trips, fan-out,
+cross-node validation, drift between nodes, mixed-version peering, per-node API divergence. It is
+already demonstrating the last two without being asked — see the SDN-zone split in T-3701 below,
+and `pve001` running an older vnproxd than pvecube.
 
-**Do NOT cluster pvecube itself.** Creating a PVE cluster on it converts `/etc/pve` to a
-corosync-backed filesystem on a live host running the deployed product, and is not reversible in
-any pleasant way. Two disposable guests clustered with each other exercise every peer, fan-out and
-federation path without touching the machine the user depends on. **This constraint is the point of
-the card, not a footnote.**
+**What it cannot answer, and what the lab is now scoped to:**
+- **Anything destructive.** `vnprox-dev` is the user's live cluster. Partition behaviour,
+  quorum loss, killing a node mid-rollback, deliberately corrupting drift — none of that may be
+  done here.
+- **Anything on `pve001` requiring root.** This project has **no SSH credentials for `pve001` and
+  no authorisation to modify it.** It is observable through pvecube's `pvesh` and reachable as a
+  vnprox peer; it is not ours to change or upgrade. Any plan that depends on deploying to it is
+  blocked, not merely slow — see T-3703's compatibility constraint, which this fact drove.
+- **Quorum with a survivor**, which needs three nodes. Two cannot demonstrate it.
+- **Physical behaviour** — no real NICs in a nested guest, so no bond failover, no LACP against a
+  real switch, no media-type branch beyond `PORT_TP`. Unchanged from the original card.
 
-**Honest limits, so the next agent does not overclaim.** A nested lab proves *protocol* — peer
-round-trips, fan-out, distributed rollback, drift between nodes, cross-node validation. It does not
-prove *physical* behaviour: no real NICs, so no bond failover, no LACP against a real switch, no
-media-type branch beyond `PORT_TP`. And a two-node corosync cluster has no quorum without
-`two_node: 1` or a qdevice; whichever is chosen must be written down, because it changes what
-partition behaviour the lab can demonstrate.
+**Deliverables (reduced)**
+- A build/teardown script under `scripts/` for a disposable nested lab, used **only** for the
+  destructive subset above. It is a fixture, not an environment. `proxmox-ve_9.2-1.iso` is already
+  staged in `/var/lib/vz/template/iso/` on pvecube (1 706 178 560 bytes, verified against the
+  publisher's `content-length`).
+- `docs/development.md` gains a section covering both: how to talk to `vnprox-dev`, and how to
+  stand up the disposable lab for the cases that must not touch it.
+- Correct `CLAUDE.md`'s "one real node, no cluster" line. It is load-bearing — it is the reason 17
+  features sat unproven — and leaving it stale would let the same mistake recur.
 
-### T-3705 · Run the blocked register against the lab
-**model:** sonnet-5 · **size:** L · **depends:** T-3704 · **proves:** T-301, T-303, T-801, T-1101,
+**Still do NOT cluster pvecube with anything new**, and do not alter `vnprox-dev`'s membership.
+It is a live cluster running the deployed product.
+
+### T-3705 · Run the blocked register against the real cluster
+**model:** sonnet-5 · **size:** L · **depends:** T-3704 only for the destructive subset ·
+**proves:** T-301, T-303, T-801, T-1101,
 T-1102, T-1201, T-1203, T-1407, T-1803, T-1906, T-2001, T-2303, T-2410, T-2602, T-2703, T-2902,
 T-3201
 
 **Deliverables**
-- Work `planning/reports/needs-hardware-validation.md` top to bottom against the lab, closing each
-  item with a transcript in `planning/reports/evidence/` or restating precisely why the nested lab
-  cannot answer it.
-- Re-run T-3702's acceptance criterion 2 here: it is the first real peer round-trip the project has
-  ever had, and the fix shipped in Wave 1 will have been verified only by a unit test until now.
+- Work `planning/reports/needs-hardware-validation.md` top to bottom against `vnprox-dev`, closing
+  each item with a transcript in `planning/reports/evidence/` or restating precisely why it cannot
+  be answered. Read-only and non-destructive items can be closed **now**; the destructive subset
+  waits for T-3704's lab.
+- Re-run T-3702's acceptance criteria 2 and 3 here. **They need a deployment, not a new node** —
+  `pve001` is already peered and already failing with the exact signature the fix removes
+  (`consecutive_failures: 2382`, `last_success` never set). This is the first real peer round-trip
+  the project has ever had.
 - `T-2410`'s `cluster-ssh` packaging job, which has never run.
 
 **Acceptance criteria**
 1. Every one of the 17 rows moves to `Live` or to a *stated* reason it cannot.
 2. The open count in `needs-hardware-validation.md` falls, and every remaining item says which of
-   "needs real NICs" / "needs three+ nodes" / "needs a physical switch" blocks it. "Needs hardware"
-   on its own is what let this sit for months.
+   "needs real NICs" / "needs three+ nodes" / "needs a physical switch" / "needs root on `pve001`,
+   which we do not have" / "is destructive, needs the T-3704 lab" blocks it. "Needs hardware" on
+   its own is what let this sit for months — and it was not even true.
+
+**Deploy ordering, which matters.** T-3703 changes the peer signing format and `pve001` cannot be
+upgraded by us. Read T-3703's compatibility note before deploying anything to pvecube, and verify
+after deployment that pvecube→`pve001` polling still succeeds. If it does not, T-3703 has
+reintroduced T-3702's failure through a different mechanism and must be rolled back.
 
 ---
 
@@ -234,6 +272,8 @@ establishes. Do not invent a second mechanism.
 
 ## Sequencing
 
+Original:
+
 ```
 Wave 1  T-3701 ──┐                     (independent, ship first)
         T-3702 ──┼── verifiable only after T-3704
@@ -243,6 +283,28 @@ Wave 2  T-3704 ───► T-3705 ───► closes the 17, and Wave 1's ACs
 Wave 3  T-3707  (owner decision, no dependency — can start today)
         T-3708  (independent)
 ```
+
+Amended 2026-08-23, once `vnprox-dev` was found to exist. The critical path is now a **deploy**,
+not a build:
+
+```
+Wave 1  T-3701 ──┐   verifiable against vnprox-dev NOW (the two nodes
+        T-3702 ──┼──   already disagree on /nodes/{node}/sdn/zones)
+        T-3703 ──┘
+           │
+           └──► DEPLOY to pvecube ──► closes T-3702 AC2+AC3
+                    │                  (watch pve001 polling; see T-3703)
+Wave 2  T-3705 ─────┴──► closes the 17 and most of the 156, no lab needed
+        T-3704  reduced: a lab for the destructive subset only
+        T-3706 ───► closes 7 of the 29   (needs the lab — flows must not
+                                          be switched on over live traffic)
+Wave 3  T-3707  (owner decision, no dependency — can start today)
+        T-3708  (independent)
+```
+
+**The blocker is no longer hardware; it is authorisation.** `pve001` is reachable and clustered but
+this project has no root on it, so anything requiring a change *on* that node — including upgrading
+its vnproxd — is blocked on the owner, not on engineering.
 
 `T-3707` blocks on nobody and gates eleven features: **ask it first**, even though it ships last.
 

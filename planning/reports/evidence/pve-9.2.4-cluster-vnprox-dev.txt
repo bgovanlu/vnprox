@@ -1,0 +1,123 @@
+Evidence: a real two-node PVE cluster already exists
+Captured 2026-08-23 from pvecube (192.168.1.9), read-only, during Phase 37 Wave 1.
+
+WHY THIS FILE EXISTS
+--------------------
+CLAUDE.md states "you have **one** real node — pvecube, PVE 9.2.4, root SSH — and
+**no cluster**", and docs/audit-matrix-2026-08-23.md classifies 17 features as
+"Shipped, unproven" on the grounds that they "cannot be exercised on one node".
+planning/reports/needs-hardware-validation.md carries 156 open items on the same
+premise, and phase-37.md's T-3704 proposes building a nested two-node lab to
+resolve it.
+
+All of that is out of date. pvecube has been a member of a quorate two-node
+corosync cluster since 2026-08-18. This transcript is the proof, so the premise
+is not re-derived from documentation a third time.
+
+$ pvecm status
+  Cluster information
+  -------------------
+  Name:             vnprox-dev
+  Config Version:   2
+  Transport:        knet
+  Secure auth:      on
+
+  Quorum information
+  ------------------
+  Date:             Sun Aug 23 18:40:50 2026
+  Quorum provider:  corosync_votequorum
+  Nodes:            2
+  Node ID:          0x00000001
+  Ring ID:          1.1d
+  Quorate:          Yes
+
+  Votequorum information
+  ----------------------
+  Expected votes:   2
+  Highest expected: 2
+  Total votes:      2
+  Quorum:           2
+  Flags:            Quorate
+
+  Membership information
+  ----------------------
+      Nodeid      Votes Name
+  0x00000001          1 192.168.1.9 (local)
+  0x00000002          1 192.168.1.7
+
+$ cat /etc/pve/corosync.conf
+  nodelist {
+    node { name: pve001  nodeid: 2  quorum_votes: 1  ring0_addr: 192.168.1.7 }
+    node { name: pvecube nodeid: 1  quorum_votes: 1  ring0_addr: 192.168.1.9 }
+  }
+  quorum { provider: corosync_votequorum }
+  totem {
+    cluster_name: vnprox-dev
+    config_version: 2
+    secauth: on
+    link_mode: passive
+    ip_version: ipv4-6
+    token_coefficient: 125
+  }
+
+$ stat -c '%n %y' /etc/pve/nodes/*
+  /etc/pve/nodes/pve001  2026-08-18 09:06:01 -0400     <- cluster formed
+  /etc/pve/nodes/pvecube 2023-10-25 03:49:02 -0400
+
+CROSS-NODE READS WORK FROM pvecube
+----------------------------------
+$ pvesh get /cluster/resources --type node
+  node/pvecube  status online  maxcpu 8  maxmem 16480653312
+  node/pve001   status online  maxcpu 8  maxmem 16486416384
+
+$ pvesh get /nodes/pve001/status
+  {"boot-info":{"mode":"efi","secureboot":0},"cpuinfo":{"cores":6,"cpus":8,...
+
+pve001 is a genuine PVE node, not merely a vnprox peer: port 8006 is open and it
+answers /nodes/{node} cluster-wide reads through pvecube's own pvesh.
+
+A CROSS-NODE DIVERGENCE, VISIBLE ON THE FIRST TRY
+-------------------------------------------------
+This is the endpoint T-3701 is about, and the two nodes do not agree:
+
+$ pvesh get /nodes/pvecube/sdn/zones
+  [{"status":"error","zone":"labz"}]
+
+$ pvesh get /nodes/pve001/sdn/zones
+  local sdn network configuration is not yet generated, please reload
+  []
+
+Per-node SDN status is therefore not a formality: on this cluster, right now,
+one node reports a zone in error and the other reports no zones at all, with a
+human-readable warning on stderr and an empty array on stdout. Any implementation
+that fetches from a single node and presents the result as cluster truth is
+wrong, and any test whose fixture returns the same payload for every node cannot
+detect that it is wrong.
+
+vnprox's own peering, independently confirmed:
+$ curl -sk https://127.0.0.1:8007/api/v1/health
+  {"name":"host","node":"pve001","last_success":"0001-01-01T00:00:00Z",
+   "last_error":"host links (pve001): context canceled",
+   "consecutive_failures":2382}
+pve001 runs vnproxd 4.0.0+39+g0f970685+dirty — an older build than pvecube's
+4.0.0+88+g42fd9d7f. Mixed-version peering is live today, not hypothetical.
+
+WHAT THIS CHANGES
+-----------------
+- T-3704 ("build a nested two-node lab") is no longer the way to get a second
+  node for protocol validation. A real one exists and is quorate.
+- T-3705 can run against vnprox-dev directly. Read-only and non-destructive
+  items can be closed now.
+- T-3702's AC2/AC3 need a deployment, not a new node.
+
+WHAT THIS DOES NOT CHANGE
+-------------------------
+vnprox-dev is the user's LIVE cluster, and pve001 is a host this project has no
+SSH credentials for and no authorisation to modify. It is therefore usable for
+observation, not for destruction. Anything that requires breaking a node —
+partition and quorum-loss behaviour, distributed rollback mid-failure, corrupting
+drift deliberately — still needs a disposable lab, and still must not be done
+here. Two nodes also cannot demonstrate quorum with a survivor; that needs three.
+
+Neither node was modified in producing this transcript. Every command above is a
+read.
