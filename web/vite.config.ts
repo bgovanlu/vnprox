@@ -40,5 +40,16 @@ export default defineConfig({
     // Playwright specs (e2e/) are a separate, opt-in runner (`npm run
     // e2e`) — vitest must not pick them up via its default include glob.
     exclude: [...configDefaults.exclude, "e2e/**"],
+    // T-3708: cmd/vitestgate reads the JSON report to apply the quarantine,
+    // the hard-expiry rule and the run-history trend — the same relationship
+    // cmd/e2egate has to the Playwright suite's JSON reports (T-2505). The
+    // human-readable "default" reporter stays alongside it; vitestgate's own
+    // verdict line is what `make test` actually gates on, but a developer
+    // reading the terminal live still wants per-test output as it happens.
+    // outputFile is relative to this file's directory (web/), matching
+    // cmd/vitestgate's --report default of web/test-results/vitest.json;
+    // test-results/ is already gitignored (see web/e2e's use of the same
+    // directory for shard reports).
+    reporters: ["default", ["json", { outputFile: "./test-results/vitest.json" }]],
   },
 });

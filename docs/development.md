@@ -186,6 +186,49 @@ recovering from, and the check caught exactly that mistake while this manifest w
 setting; `ci.yml` runs **one shard per runner** across a four-leg matrix, with a required `e2e-gate`
 job that collects the reports. See `T-2505-input-02` for why that distinction is load-bearing.
 
+### The vitest suite has the same flake visibility (`T-3708`)
+
+`cmd/e2egate` (above) gives the e2e suite a quarantine with hard expiries and a flake trend computed
+from run history. The vitest suite — 2,281 tests as of this writing, which gates **every push**
+through the pre-push `make ci` hook — had none of it until `T-3708`. The gap showed up for real:
+`TenantsPanel.test.tsx` timed out on a `findByRole` under `make ci`'s concurrent load, refused a
+push, then passed 3/3 alone and 295/295 in-suite immediately after. Nothing recorded that the test
+was load-sensitive rather than broken (fixed in `2cd48367` — see the comments in
+`web/src/test/setup.ts` and `web/vite.config.ts`'s `testTimeout` for the two-part fix and why the
+second part was needed), so the next occurrence would have been diagnosed from scratch.
+
+`cmd/vitestgate` closes that gap **using the same mechanism**, not a second one:
+`internal/vitestgate` parses vitest's own JSON reporter output into `internal/e2egate`'s
+`Outcome`/`ShardReport` shape (vitest is not sharded — one process, one report, so the whole run
+becomes a single `e2egate.ShardReport`) and hands it to `e2egate.Evaluate`, `e2egate.Trend` and the
+quarantine logic unmodified, imported rather than reimplemented. Only the presentation strings
+differ (`vitestgate: PASS`, not `e2e gate: PASS`) — reusing `Verdict.Summary()`'s exact text would
+have made a vitest failure print as if it were an e2e one.
+
+```
+make test                          go test ./... && vitest run, gated by vitestgate
+make vitest-trend                  per-test flake rate over the recorded vitest run history
+go run ./cmd/vitestgate gate       what `make test` actually runs after vitest
+```
+
+**vitest's own exit code is not the verdict**, the same relationship the e2e shards have to
+`cmd/e2egate`: `make test` runs `npm run test` (vitest writes `web/test-results/vitest.json` via the
+`json` reporter configured in `web/vite.config.ts`, alongside the human-readable `default` reporter)
+and does **not** abort on a nonzero exit — `cmd/vitestgate gate` reads that report and decides pass
+or fail: an unquarantined failure fails the build, an **expired** quarantine fails the build whether
+or not its test failed, and every run is appended to `var/vitest-runs/runs.jsonl` (gitignored, like
+`var/e2e-runs/`) so the flake trend is computed rather than curated.
+
+**Quarantine** lives in `cmd/vitestgate/quarantine.json` — not under `web/`, so that this mechanism's
+own config travels with the tool that reads it. Same rules as the e2e quarantine: file, the test's
+full title (describe ancestry joined by `internal/e2egate.TitleSeparator`, `" › "`), a reason of at
+least 20 characters, a ticket, an expiry no more than 42 days out.
+`internal/vitestgate`'s `TestRepoQuarantineIsValid` re-checks that file against the real clock on
+every `make check`. It ships seeded with the `TenantsPanel.test.tsx` entry from the incident above —
+not because the test is currently flaky (the underlying fix landed in `2cd48367`), but so the record
+starts non-empty and the hard-expiry mechanism has something real to expire: it is due `2026-09-20`,
+at which point it fails the build until someone re-triages it.
+
 ## The mock PVE server (`internal/pvemock`)
 
 The single most important dev asset: an HTTP server faithfully imitating the PVE API surface vnprox uses (`/access/ticket`, `/cluster/*`, `/nodes/*/network`, `/nodes/*/qemu|lxc`, SDN + firewall endpoints, task polling), driven by YAML fixture files in `testdata/clusters/` — e.g. `single-node.yaml`, `three-node-vlan.yaml`, `evpn-lab.yaml`, `messy-brownfield.yaml` (drift, conflicts, stale configs on purpose). It simulates: ticket auth + CSRF, permission-dependent 403s, task lifecycle with delays, `interfaces.new` staging semantics, and SDN pending/apply state. Host-level reads (`internal/host`) are interfaced so fixtures can back them too (`host.Reader` implementations: `real` and `fixture`).

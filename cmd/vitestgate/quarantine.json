@@ -1,0 +1,12 @@
+{
+  "comment": "T-3708. Tests whose failure is tolerated until a stated date. An entry needs a file, the test's FULL title (describe ancestry joined to the test title by ' › ', matching internal/e2egate's TitleSeparator and web/e2e/quarantine.json's own convention), a reason saying what is actually known about the flake, the ticket that will remove or re-triage the entry, and an expiry no more than 42 days out. On the day after `expires` the build fails whether or not the test did — an expiry nobody enforces is a disabled test wearing a deadline. internal/vitestgate's TestRepoQuarantineIsValid checks this file on every `make check`, so an entry that quietly expires reddens the tree without anyone re-running vitest. Empty is the healthy state; keeping it that way is the point.",
+  "entries": [
+    {
+      "file": "src/governance/TenantsPanel.test.tsx",
+      "title": "TenantsPanel (T-3002 AC3) › concludes nothing about scopes or members before the detail read resolves",
+      "reason": "Seeded by T-3708, not currently reproducing: this file's bare `findByRole(\"button\", {name: /Team Blue/})` timed out under `make ci`'s concurrent load (cross-arm64 build + fuzz + package running alongside vitest) and refused a push, then passed 3/3 alone and 295/295 in-suite immediately after. Fixed in 2cd48367 by raising Testing Library's asyncUtilTimeout to 5000ms (web/src/test/setup.ts) and vitest's testTimeout to 20s (web/vite.config.ts) — see both files' comments for why the second was needed. Kept here with a hard expiry, per T-3708, so a recurrence under heavier load is recognised as the same class rather than diagnosed from scratch.",
+      "ticket": "T-3708",
+      "expires": "2026-09-20"
+    }
+  ]
+}

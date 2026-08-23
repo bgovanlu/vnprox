@@ -18,7 +18,7 @@ FUZZTIME ?= 60s
 GOLANGCI_LINT_VERSION := v2.12.2
 GOVULNCHECK_VERSION   := v1.5.0
 
-.PHONY: build dev test lint check deb mockpve openapi contract-export conformance-external record record-mock soak perf e2e e2e-whole e2e-trend compat-matrix ci install-hooks
+.PHONY: build dev test lint check deb mockpve openapi contract-export conformance-external record record-mock soak perf e2e e2e-whole e2e-trend vitest-trend compat-matrix ci install-hooks
 
 # --- readiness gates -----------------------------------------------------
 # Each *_READY variable is non-empty once the task that owns that piece has
@@ -70,11 +70,17 @@ dev: ## backend against pvemock + Vite dev server, hot reload
 # exercises. To build/test the real probe on a Linux dev host, run
 # `go test -tags ebpf ./internal/flow/hostsample/...` explicitly; it is
 # not part of `make build`/`make test`/`make check`.
-test: ## go test ./... && vitest run
+test: ## go test ./... && vitest run, gated by cmd/vitestgate (T-3708: quarantine, hard expiries, flake trend)
 	$(GO) test ./...
 	@if [ -n "$(WEB_READY)" ]; then \
 		echo ">> web: running vitest"; \
-		cd $(WEB_DIR) && npm run test; \
+		vitest_status=0; \
+		(cd $(WEB_DIR) && npm run test) || vitest_status=$$?; \
+		if [ "$$vitest_status" -ne 0 ]; then \
+			echo ">> web: vitest exited $$vitest_status; vitestgate decides the verdict, not this exit code (T-3708)"; \
+		fi; \
+		echo ">> web: vitestgate gate (quarantine + hard expiries + run history)"; \
+		$(GO) run ./cmd/vitestgate gate; \
 	else \
 		echo ">> web: not yet implemented (T-005), skipping vitest"; \
 	fi
@@ -348,6 +354,9 @@ e2e-whole: ## the same suite in ONE process on 8006/8007 — the pre-T-2505 arra
 
 e2e-trend: ## per-test flake rate over the recorded run history (T-2505 AC6)
 	$(GO) run ./cmd/e2egate trend
+
+vitest-trend: ## per-test flake rate over the recorded vitest run history (T-3708, the e2e-trend equivalent for `make test`)
+	$(GO) run ./cmd/vitestgate trend
 
 ports: ## show every port this repo's tooling binds, and what is holding them now
 	@. packaging/test/lib/ports.sh && ports_report
