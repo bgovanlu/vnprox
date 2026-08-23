@@ -220,15 +220,20 @@ func (c *Client) do(ctx context.Context, p Peer, method, path string, body []byt
 		return nil, fmt.Errorf("peer: %s: %w: circuit open", p.Node, ErrPeerUnreachable)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, c.opts.RequestTimeout)
-	defer cancel()
-
 	target := fmt.Sprintf("%s://%s%s", c.opts.Scheme, p.Addr, path)
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(reqCtx, method, target, bodyReader)
+	// The request context is the caller's ctx, unwrapped: c.httpClient's
+	// Timeout (set at construction, see NewClient) already bounds the whole
+	// call including the body read, so a second, request-scoped
+	// context.WithTimeout here would only buy an extra way to cancel the
+	// response body out from under decodeInto before it runs -- which is
+	// exactly what used to happen, since do() returns (and any deferred
+	// cancel of a request-scoped context fires) before the caller has read
+	// the body at all. See planning/reports/audit-2026-08-21-peer-body-cancel.md.
+	req, err := http.NewRequestWithContext(ctx, method, target, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("peer: building request to %s: %w", p.Node, err)
 	}
