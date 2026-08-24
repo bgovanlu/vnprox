@@ -14,9 +14,33 @@ sit inert not because code is missing but because the service they point at does
 So this card is **infrastructure and operations**. Read that as a warning about where the effort
 actually is: the parts that are hard here are the parts that are not Go.
 
-## The obligations, which are the real deliverable
+## The obligations — ANSWERED 2026-08-24
 
-The decision page records these as what "yes" commits to. They are not follow-ups.
+These were the real deliverable, and the owner has now decided all four. What remains is
+implementing them faithfully, not choosing them.
+
+| Obligation | Decision |
+|---|---|
+| Signing key custody | **Sigstore / keyless OIDC** |
+| "Vetted" tier | **Automated checks only** (hygiene, not human vouching) |
+| Revocation | A published deny-list keyed on the transparency-log entry |
+| Availability | GitHub-served static index; degrade cleanly when unreachable |
+| Hosting | **GitHub-native** — signed static index, no server of ours |
+
+Three consequences that are easy to get wrong, so they are called out:
+
+1. **The vetted badge must not read as if a person vouched.** Automated checks certify a capability
+   manifest, absence of undeclared privileges, and a reproducible build. That is hygiene. Wording it
+   as endorsement is the trust-laundering failure this card exists to avoid — **the badge copy is a
+   deliverable of this card**, and it should be reviewed against what the checks actually prove.
+2. **Sigstore is a dependency, not an absence of one.** Trading a private key for public
+   transparency-log infrastructure is a good trade here, but it is a third party in the trust path
+   and operators are entitled to know that. Say so in the operator docs.
+3. **Revocation changes shape under keyless signing.** There is no key to rotate. The client has to
+   learn that a signature it can still cryptographically verify is no longer trusted — which is a
+   deny-list lookup, and is the half of this card most likely to be skipped.
+
+The original framing of these obligations follows, retained because the reasoning still applies.
 
 1. **A signing key, and somewhere safe to keep it.** The client verifies signatures; something has
    to produce them. Decide custody before anything is published, because rotating a key that

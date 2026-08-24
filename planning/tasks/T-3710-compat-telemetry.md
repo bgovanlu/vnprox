@@ -16,10 +16,22 @@ three groups: an endpoint that accepts a small opt-in payload.
 
 The client side is already shipped, documented and tested. This card is the endpoint and the policy.
 
+## Hosting — decided 2026-08-24
+
+The owner chose **GitHub-native where possible** for the hosted-service group. That works for
+T-3709's registry, which is a static signed index. **It does not work here.** A static host cannot
+accept a submission, so this card needs the one genuinely dynamic piece of infrastructure in the
+whole group — and it should be scoped and named as such rather than assumed to come free with the
+registry decision.
+
+Keep it as small as the job allows: an endpoint that accepts a small opt-in payload and stores it.
+The privacy and retention obligations below are what make it non-trivial, not the request handling.
+
 ## Deliverables
 
 - **The endpoint.** Accepts the payload `internal/` already produces — read what the client actually
-  sends before designing the receiver, and do not let the two drift.
+  sends before designing the receiver, and do not let the two drift. It is the only server-side
+  component either hosted-service card requires; size it accordingly.
 - **Consent that is real.** Opt-in means off until someone turns it on, with what is collected
   visible at the moment of the choice, not only in documentation. Verify the daemon sends nothing at
   all before consent — a test, not an assurance.

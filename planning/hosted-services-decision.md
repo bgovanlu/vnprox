@@ -100,10 +100,26 @@ stops it being reopened.
 
 ### Group A — YES → `T-3709`
 The seven cards stay `Shipped, inert` **pending the service**, which is now a scheduled obligation
-rather than an open question. See `planning/tasks/T-3709-hosted-registry.md`. The obligations named
-above are real and inherited: signing key custody, the vetting bar for the "vetted" tier, revocation,
-and an availability expectation. None of them are client-side code, and none of them are optional
-once the first user points an installation at the registry.
+rather than an open question. See `planning/tasks/T-3709-hosted-registry.md`.
+
+**The four obligations are answered, 2026-08-24, by the owner.** They were listed as the deliverable
+precisely so they could not be left implicit:
+
+| Obligation | Decision | Consequence |
+|---|---|---|
+| **Signing key custody** | **Sigstore / keyless OIDC** | No long-lived private key to hold, protect or rotate. Signatures bind to an identity plus a transparency log. Trades key custody for a dependency on public Sigstore infrastructure — which is a real dependency and must be stated to operators, not hidden. |
+| **"Vetted" tier** | **Automated checks only** | The badge certifies *hygiene*, not trustworthiness: declared capability manifest, no undeclared privileges, reproducible build. It scales with no review queue. **The client must not word the badge as if a human vouched for the plugin** — that is the trust-laundering failure the card warned about, and the wording is now a T-3709 deliverable. |
+| **Revocation** | Follows from Sigstore | With keyless signing, revocation is not "rotate a secret" — it is a published deny-list the client consults, keyed on the transparency-log entry. Still a deliverable; still must be demonstrated end to end. |
+| **Availability** | Follows from hosting (below) | A static, GitHub-served index has GitHub's availability and no server of ours to keep up. The client must degrade to "cannot reach the registry" rather than to something resembling a signature failure. |
+
+### Hosting — GitHub-native where possible
+Decided 2026-08-24. The registry is a **signed static index** served from the repository / Releases /
+Pages: nothing of ours to run, patch, or keep available, which is what makes the availability
+obligation cheap enough to actually honour.
+
+Telemetry (Group C) still needs a small **dynamic** endpoint — a static host cannot accept a
+submission. That is the one piece of real infrastructure either card requires, and `T-3710` scopes
+it explicitly rather than letting it ride along on this decision.
 
 ### Group B — NO → closed
 `T-2802` and the hosted half of `T-2801` move from `Shipped, inert` to
