@@ -17,6 +17,34 @@ Check items off with the PVE version tested.
 > which every check skipped exits non-zero reporting `0 passed`. Both exist so a green run cannot
 > be produced by accident and filed here.
 
+> **`T-3705` (2026-08-23) worked this file against `vnprox-dev`, the real quorate 2-node PVE
+> cluster `pve-9.2.4-cluster-vnprox-dev.txt` first proved exists.** New/updated evidence:
+> `planning/reports/evidence/T-3705-pvecube-2026-08-23.txt` and
+> `planning/reports/evidence/T-3705-register-burndown-2026-08-23.txt`. Closed this pass: one
+> `T-1906` item (cert-chain shape — see the Peer API section below; the mixed-version-rollout item
+> under the same entry was briefly marked closed and then correctly reopened in the same session —
+> see that item's own note for why). Three new sections were added below for five cards (T-2602,
+> T-2902, T-1201/T-1407, T-2001, T-2703) that the 17-row matrix re-score named but this file had
+> never carried a dedicated entry for. `docs/audit-matrix-2026-08-23.md` §3 has the full 17-row
+> disposition, including which six moved to `Live` on their own primary-source evidence (T-801,
+> T-1101, T-1102, T-1803, T-2303, T-3201 — the first three's own completion reports explicitly
+> disclaim ever needing hardware validation) and needed no live command here beyond checking the
+> report, plus T-2410 (see below). **Not attempted this session**: a full top-to-bottom
+> re-verification of every one of the ~150 other open items below — this pass targeted the 17
+> matrix-named cards and whatever else the same commands touched along the way. The bulk of the
+> items below (bond/LACP hardware, guest-agent probes, flow-exporter interop, custom switch
+> drivers, and similar) are unchanged from before this session and still carry accurate,
+> already-precise blockers from prior sessions.
+
+> `T-2410`'s `cluster-ssh` packaging job **ran to completion and passed** this session, after 5
+> failed attempts whose root cause turned out to be two concurrent agent processes both running
+> `make build` against the same `web/node_modules` directory at once, plus a separate `PATH` gap
+> (`go` missing from a non-interactive shell's `PATH`). With those resolved, the job passed clean,
+> including the previously-unexercised debt-sweep-item-8 PVE-token-copy check. One green run, not
+> the three consecutive runs AC3 asks for. See
+> `planning/reports/evidence/T-2410-cluster-ssh-pass-2026-08-23.log` (full transcript) and
+> `planning/reports/evidence/T-2410-cluster-ssh-attempt-2026-08-23.txt` (the failed attempts).
+
 ## Deploy-time validation, 2026-08-05 (pvecube, pve-manager/9.2.4, kernel 7.0.14-4-pve, single node)
 
 Obtained while deploying this arc's merged work, not through T-1801's harness. Single node, so
@@ -142,13 +170,14 @@ to use instead, with `TestSkipReasonsDoNotDiagnose` (proven by mutation) to stop
       cluster. **T-1801's harness (`planning/validation/`) does not exist
       yet**, so these live here, phrased as harness steps ready to be lifted
       into it verbatim when it lands. Capture on hardware:
-      - [ ] The **actual certificate chain** `pveproxy`/vnproxd serves on
-            8007 on a real node: is the leaf (`/etc/pve/local/pve-ssl.pem`)
-            issued *directly* by `pve-root-ca.pem`, or is there an
-            intermediate? Does the served chain include the issuer, or only
-            the leaf? Pinning a root works either way only if the peer sends
-            enough of the chain — capture it (`openssl s_client -connect
-            <node>:8007 -showcerts`) and keep it as a fixture.
+      - [x] The **actual certificate chain — CLOSED, `T-3705`, 2026-08-23.** Captured on both real
+            nodes: `openssl s_client -connect <node>:8007 -showcerts` serves a **1-certificate
+            chain — the leaf only, no intermediate** — on both pvecube and pve001. The leaf's
+            issuer line is `pve-root-ca.pem`'s own subject line verbatim (a self-signed root), so
+            it is issued *directly* by the pinned root with no intermediate anywhere in this
+            cluster. `internal/peer.Trust` pins the root itself and never needs the server to send
+            the issuer, so a leaf-only served chain is sufficient in practice, confirmed rather
+            than inferred. Evidence: `planning/reports/evidence/T-3705-pvecube-2026-08-23.txt` §1a.
       - [x] The leaf's **SANs — confirmed on real hardware, `T-3201`, 2026-08-18.** Both nodes'
             leaf certs (`pve-ssl.pem`) DO carry a management IP SAN, but pvecube's is **stale**
             (`192.168.100.99`, not its real `192.168.1.9` — `T-1906-bug-01`, first flagged
@@ -166,18 +195,38 @@ to use instead, with `TestSkipReasonsDoNotDiagnose` (proven by mutation) to stop
             such a node's peer certificate is *not* issued by
             `pve-root-ca.pem`, so pinning will reject it. Confirm and
             document the intended posture (`[peer] ca_file` pointed at the
-            operator's own CA bundle is the designed answer).
+            operator's own CA bundle is the designed answer). **Blocked:
+            neither real node has a custom cert installed, and installing
+            one is a live PVE config change — is destructive, needs the
+            T-3704 lab.**
       - [ ] **Rotation on iron**: `pvecm updatecerts -f`, then confirm peers
             recover within one reload interval with no daemon restart, and
-            that the WARN/INFO log transitions look right.
+            that the WARN/INFO log transitions look right. **Blocked: this
+            is a mutating `pvecm` call against the live cluster — is
+            destructive, needs the T-3704 lab.**
       - [ ] `/etc/pve/pve-root-ca.pem` **availability** during a
             `pve-cluster` restart: how long it is absent, and that the
             last-known-good behaviour (keep verifying against the previously
             loaded anchor, WARN) is what actually happens rather than a
-            fail-closed blip.
-      - [ ] **Mixed-version rollout**: a node still running a pre-T-1906
-            build serving traffic to a pinned peer — the pinned side is the
-            client, so this should be unaffected, but confirm no asymmetry.
+            fail-closed blip. **Blocked: restarting `pve-cluster` on either
+            live node is destructive, needs the T-3704 lab.**
+      - [ ] **Mixed-version rollout — re-examined `T-3705`, 2026-08-23, and reopened: an earlier
+            pass in this same session closed this on a mistaken inference, corrected here rather
+            than left wrong.** The mistake: pve001 running an older build
+            (`4.0.0+39+g0f970685+dirty`) than pvecube was read as "a peer still on a pre-T-1906
+            build." Checked directly instead of assumed:
+            ```
+            $ git merge-base --is-ancestor f5ec68e4 0f970685 && echo "YES ancestor"
+            YES ancestor
+            ```
+            `f5ec68e4` ("Merge T-1906: pin the cluster CA for peer-API TLS") **is** an ancestor of
+            `0f970685` — pve001's build already carries the pinning fix, despite being 39 commits
+            behind pvecube's 101. This cluster's version skew never actually straddled T-1906, so
+            the scenario this item asks about — a genuinely pre-T-1906 peer talking to a pinned
+            one — remains unobserved here. (What *did* get confirmed twice, and stays closed: the
+            pinned side unaffected by the *other* peer running an older build generally — see
+            T-3702/T-3703's own mixed-version evidence — which is a related but distinct claim
+            from this specific one.)
 - [x] **`/etc/pve/priv/vnprox/cluster.secret` under pmxcfs (T-608, validated
       2026-07-12 against a real PVE 9.2.4 node, "pvecube")**: found two real
       bugs, both fixed. (1) pmxcfs rejects `link(2)` outright with `EPERM`
@@ -244,6 +293,65 @@ to use instead, with `TestSkipReasonsDoNotDiagnose` (proven by mutation) to stop
       node, that is T-3704"), a second node (`pve001`) is already federated
       with pvecube in this deployment; what's actually missing is simply
       *this fix being deployed*, not a second node's existence.
+
+## Canary apply and peer write-path parity (T-3705, 2026-08-23)
+
+Two cards from the 17-row matrix re-score with no prior dedicated section here. Both genuinely
+need a live network-config write against the real cluster that this read-only session would not
+make without authorization. Evidence: `planning/reports/evidence/T-3705-pvecube-2026-08-23.txt`.
+
+(T-801, the changeset-time cross-node consistency validator, was also named in the 17 but turned
+out to be a mis-classification, not a real gap: `planning/reports/T-801.md` itself states "No
+hardware-validation items — this is pure, in-process comparison logic." It never depended on a
+second node in the first place, the same way T-1101/T-1102 didn't — see `docs/audit-matrix-
+2026-08-23.md` §3. As supporting-not-required evidence: its shared `internal/xnode.
+BridgeDivergences`/`CrossNodeMTU` primitives are exercised continuously by the live drift engine
+against real per-node inventory from both nodes, with zero false-positive cross-node findings
+across 5 days of real polling — confirmed by enumerating every `finding_id` family the journal has
+ever logged.)
+
+- [ ] **T-2602 (canary/staged multi-node apply) has never run against real hardware.**
+      `changeset_apply_stages` (the table a staged apply's per-stage state lives in) has zero rows
+      in the live store; the four most recent real changesets are all single-node. **Blocked: is
+      destructive — running a real staged apply against `vnprox-dev` is a live network-config
+      change, needs the T-3704 lab (or explicit operator sign-off).**
+- [ ] **T-2902 (peer host-write safety parity + audit attribution) has only ever seen read
+      traffic.** Every peer route this cluster has exercised in its lifetime is a read
+      (`/host/links`: 93,747 calls; `/host/neighbors`: 47,165; `/host/dhcp-leases`: 15,760) — the
+      five write routes it covers (`/host/stage-interfaces`, `/host/ifreload`, `/host/restore`,
+      `/host/discard-staged`, `/host/lldp/install`) have zero matches anywhere in the journal,
+      because no apply has ever targeted the peer node. **Blocked: is destructive — needs a real
+      apply against a peer node, needs the T-3704 lab (or explicit operator sign-off).**
+
+## Federation family: needs a second real PVE cluster, not more nodes (T-3705, 2026-08-23)
+
+Four cards from the 17-row matrix re-score share one root cause that doesn't fit this file's
+usual four hardware-blocker categories. Confirmed by a direct, read-only `sqlite3 -readonly`
+query against the live store (`planning/reports/evidence/T-3705-pvecube-2026-08-23.txt` §4):
+`clusters`, `external_subnets`, `wireguard_tunnels`, `wireguard_peers`, and `pinned_spec` are all
+**zero rows** — none of these features has ever been configured on this install.
+
+- [ ] **T-1201 (federation core) / T-2001 (federation cluster editor UI).** Federation attaches
+      additional, separate PVE *clusters* as registry entries. `vnprox-dev` is one corosync
+      cluster with two nodes — that is not a second cluster to federate with, and no second real
+      PVE cluster exists anywhere in this environment. **Blocked: none of the four stated
+      categories fit precisely. The honest gap is "no second PVE cluster exists to attach,"
+      distinct from "needs 3+ nodes" — building one is new infrastructure beyond this task's
+      scope, not a hardware limit on `vnprox-dev` itself.**
+- [ ] **T-1407 (tunnel-aware federation transport).** Needs both a second federated cluster *and*
+      a live WireGuard tunnel between them; `wireguard_tunnels` is also 0 rows. Same non-fitting
+      blocker as above, compounded by the missing tunnel.
+- [ ] **T-1203 (cross-cluster IPAM)'s remaining gap — a concrete NetBox/phpIPAM write client —
+      needs a real external IPAM instance**, unrelated to PVE node/cluster count entirely; already
+      recorded under its own section above with this same conclusion.
+
+## Config-as-code (T-2703): unconfigured, not a node-count question (T-3705, 2026-08-23)
+
+- [ ] **T-2703 (drift-to-git reconciliation) depends on T-2701's git-backed spec sync, which has
+      never been configured on this install.** `grep -c '^\[git\]' /etc/vnprox/vnprox.toml` → 0,
+      and the journal has zero git/PR-related log lines across its full history. **Blocked: needs
+      a real git remote wired up with credentials, an app-configuration action this task's
+      read-only mandate does not cover — not a hardware or node-count limit.**
 
 ## Multi-user presence and locking (T-2805)
 
@@ -1739,22 +1847,25 @@ close it. This change adds `copy_pve_token_to_node` (scp -p straight to the fina
 path, `chown root:root`/`chmod 0600` reasserted explicitly, then `systemctl restart vnprox`), called
 for every node the SSH rollout succeeds on, with a manual fallback recipe printed when it can't run.
 
-- [ ] **Not validated against a real multi-node PVE cluster.** This environment has exactly one real
-      node (`pvecube`) and no cluster (CLAUDE.md) — a genuine `install.sh` SSH rollout across two or
-      more real PVE nodes, with a real `pveum`-issued token and a real second node's `vnprox.service`
-      actually authenticating to PVE afterward, has never been exercised. What *was* checked:
-      `bash -n` syntax and code review against `packaging/bin/vnprox-setup`'s own token-file handling
-      (same path, same 0600 root:root convention). `packaging/test/cluster-ssh.sh`'s 3-container
-      harness was extended in this same change (pve1 now also gets `packaging/test/fakepveum` on
-      `PATH`, so its own `vnprox-setup` run produces a real token file the SSH rollout can copy to
-      pve2/pve3, with new assertions that the copy lands byte-identical and root:root 0600 on both)
-      but was **not executed** here — it needs `podman` plus real container network access
-      (`apt-get install openssh-server` inside each container) that this task's scoped verification
-      list didn't cover, and running it risked colliding with concurrent workstreams sharing this
-      worktree's ports. Run `packaging/test/cluster-ssh.sh` and confirm on a real two-node (or more)
-      PVE cluster: the token file lands byte-identical on every subsequent node, with root:root 0600
-      permissions, and `vnproxctl status`'s "PVE API health" reports healthy on each one without a
-      manual copy.
+- [x] **The container-simulated 3-node rollout — CLOSED, `T-3705`, 2026-08-23.**
+      `packaging/test/cluster-ssh.sh` ran to completion after 5 earlier attempts failed inside
+      `make build` itself (root cause: two concurrent agent processes both running `make build`
+      against the same `web/node_modules` at once, plus a `PATH` gap for a non-interactive shell —
+      not a defect in the harness; see `planning/reports/evidence/T-2410-cluster-ssh-attempt-
+      2026-08-23.txt`). The clean run: `ALL CHECKS PASSED`, including the exact check this item
+      asks for — `install.sh step 8 copied pve1's PVE API token to pve2 and pve3 (debt sweep item
+      8, 2026-08-19)` — plus the cluster-secret replication and same-port checks. Full transcript:
+      `planning/reports/evidence/T-2410-cluster-ssh-pass-2026-08-23.log` (1,026 lines).
+      **Still not the same claim as a real multi-node PVE cluster**: three podman containers with
+      fake `pveversion`/`pvecm` stubs (per the script's own header) is a real SSH rollout onto a
+      real second/third `sshd`, but not real PVE, and this project has no way to re-run
+      `install.sh` against a genuine second PVE node — `vnprox-dev`'s `pve001` isn't root-accessible
+      to us, and re-running install against `pvecube` itself would mutate the live deployed
+      product. **One green run, not the three repeated runs a flake-proofing pass would want**
+      (T-2410's own card opened on "green locally... red on the runner" — a single pass doesn't
+      rule out the same intermittency recurring). **Blocked (residual): needs root on `pve001`
+      (a real second PVE node to onboard) or the T-3704 lab; the container-level claim itself is
+      now closed.**
 
 ## T-3503 — NIC media type: the fibre / direct-attach branch (2026-08-20)
 
@@ -1793,12 +1904,15 @@ could *not* reach:
 
 - [ ] **Fan-out to a peer.** The one exercised call named the node the daemon runs on, so the peer
       round-trip — the request crossing to a node this daemon does not own, and the result coming
-      back — is still entirely unobserved. This is the same limit as every other cluster entry
-      above, and the one most likely to hide a real defect, since the local path skips the transport
-      whose failure modes matter.
+      back — is still entirely unobserved. `vnprox-dev` now has a second node (`pve001`), so this is
+      no longer blocked by node count — but starting/stopping a real systemd unit on `pve001` is a
+      live mutation to a node this project has no authorization to change (`T-3705`, 2026-08-23).
+      **Blocked: needs root on `pve001`, which this project does not have.**
 - [ ] **Partial success across a cluster.** A finding that names several nodes offers one button;
       what the operator sees when it succeeds on two nodes and fails on a third is covered by
-      `NodeResultsList`'s unit tests and by nothing else. Needs more than one node by definition.
+      `NodeResultsList`'s unit tests and by nothing else. Exercising this for real means a
+      service-start action that touches both nodes at once, including `pve001` — same constraint as
+      immediately above. **Blocked: needs root on `pve001`, which this project does not have.**
 - [ ] **A node unreachable at press time.** Distinct from "systemd refused", which *is* now
       observed (id 142, the dnsmasq refusal). An unreachable peer fails in the transport rather
       than in the unit, and that error text has never been rendered from a real failure.

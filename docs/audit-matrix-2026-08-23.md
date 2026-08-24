@@ -3,8 +3,19 @@
 **Audit date:** 2026-08-23 · **Commit:** `42fd9d7f` · **Deployed:** `4.0.0+88+g42fd9d7f` on pvecube
 (PVE 9.2.4, ~~single node~~ — see the correction below)
 
-236 task cards across 37 waves. Every cell is derived from the repository and from the running
-daemon by a command, not from a card's claim about itself. Method is in §Method.
+236 task cards across 37 waves.
+
+**On method, corrected 2026-08-23.** This line originally read: *"Every cell is derived from the
+repository and from the running daemon by a command, not from a card's claim about itself. Method is
+in §Method."* Both halves were false. There is no §Method section — it was promised and never
+written. And the Deployment column was **not** derived by command: 17 rows were scored
+`Shipped, unproven` from a premise repeated out of `CLAUDE.md`, which one `pvecm status` would have
+refuted. See correction 1.
+
+What is actually true, per column: **Implementation**, **Docs** and **Tests** were derived from the
+repository by command (file and symbol presence, doc references, test presence). **Deployment** is
+the weak column, and is only as good as the evidence cited beside each row — which is why the
+corrections below name evidence files rather than asserting verdicts.
 
 ## Corrections since publication
 
@@ -21,8 +32,9 @@ Every one of the 17 `Shipped, unproven` rows was classified on the premise that 
 not exist. That premise came from `CLAUDE.md` and from
 `planning/reports/needs-hardware-validation.md`, both of which said so — **and the audit repeated
 them instead of running one command against the node.** This is the same failure that produced the
-SDN-zone defect the audit itself reported, and that CLAUDE.md explicitly warns about. The Method
-section's claim that every cell is derived by a command does not hold for this column.
+SDN-zone defect the audit itself reported, and that CLAUDE.md explicitly warns about. The header's
+claim that every cell is derived by a command does not hold for this column — see the method note
+above, which is itself a correction.
 
 The 17 rows are not re-scored here; they are re-scored by evidence in T-3705. What is corrected is
 the premise, so nothing downstream keeps inheriting it. `CLAUDE.md` is fixed as of `36927119`.
@@ -47,6 +59,84 @@ alongside genuinely blocked features made a correct configuration look like a de
 
 `T-3303` spans both groups; it stays open under the registry decision, and only its demo half is
 closed.
+
+### 3. T-3705's re-score of the 17 `Shipped, unproven` rows (2026-08-23)
+
+Worked against `vnprox-dev` (still the same quorate 2-node cluster, `pvecm status` re-checked
+before and after, unchanged). Evidence: `planning/reports/evidence/T-3705-pvecube-2026-08-23.txt`
+and `planning/reports/needs-hardware-validation.md`. T-301 and T-303 were already `Live` from
+Wave 1 and are unchanged here.
+
+**Moved to `Live`, with evidence:**
+- **T-801, T-1101, T-1102** — never actually blocked by node count. All three cards' own completion
+  reports say so explicitly (`T-801.md`: "No hardware-validation items — this is pure, in-process
+  comparison logic"; `T-1101.md`: "No hardware validation needed... developed entirely against
+  `internal/pvemock` fixtures via the real collector"; `T-1102.md` names no hardware gap at all).
+  Their inclusion in the 17 was the blanket "single node" premise applied without checking the
+  individual card, exactly the failure this correction section already names.
+
+  **Amended by the coordinator, same day.** "Never blocked by node count" is a sound argument for
+  removing these from the unproven column. It is *not* an argument that they are exercised, and
+  `Live` means exercised. Checked on the deployed node: **no pinned spec is configured** in
+  `/etc/vnprox/`, and the drift families that actually fired in five days are `sdn_zone_status` and
+  `file_runtime_divergence` only. T-1102 is pinned-spec drift mode — with no pinned spec it cannot
+  have run, so it is **`Shipped, inert`** (switched off by configuration), not `Live`. T-1101 stays
+  `Live` on reachability, but its export/import/reconcile path has not been invoked on this
+  deployment and that is not the same as proven. Recording the distinction because collapsing it is
+  precisely how the original column went wrong. (T-801's live
+  cluster does offer one piece of supporting, not required, evidence: the shared
+  `internal/xnode.BridgeDivergences`/`CrossNodeMTU` primitives it's built on are exercised
+  continuously by the live drift engine against real per-node inventory from both nodes, with zero
+  false-positive cross-node findings across 5 days of real polling.)
+- **T-1803** — its own deliverable, `planning/reports/blocked-validation.md`, exists (766 lines)
+  and is populated with real evidence and real defects found (the corosync knet parser gap, the
+  `ping`/`CAP_SETPCAP` failure, `T-1906-bug-01`'s live disposition), satisfying its acceptance
+  criteria in substance.
+- **T-2303** — `T-1906-bug-01`'s actual failure mode was observed live on real hardware (T-3201,
+  2026-08-18): zero verification failures over hours of pve001 dialling pvecube's stale-SAN cert
+  by IP, because the fix verifies by PVE node name. Already in `needs-hardware-validation.md`.
+- **T-3201** — the card's own status entry (`planning/tasks/phase-32.md`) already reads "done",
+  backed by `blocked-validation.md`'s §1–§2, and Wave 1 added further corroboration on top.
+- **T-2410** (`cluster-ssh` packaging job) — never ran before this pass. First 5 attempts failed
+  inside `make build`'s own `npm ci`/`vite build` step, before `packaging/test/cluster-ssh.sh`
+  ever ran; root-caused (not just retried past) to two concurrent agent processes both running
+  `make build` against the same `web/node_modules` directory at once, plus a real but separate
+  `PATH` gap (`go` not on a non-interactive shell's `PATH` in this environment). With the race
+  resolved and `PATH` set explicitly, the job **ran to completion and passed**, including the
+  debt-sweep-item-8 PVE-token-copy check that had never been exercised before. Evidence:
+  `planning/reports/evidence/T-2410-cluster-ssh-pass-2026-08-23.log` (1,026 lines, full
+  `install.sh` transcript) and `planning/reports/evidence/T-2410-cluster-ssh-attempt-2026-08-23.txt`
+  (the failed attempts and root cause). **One green run, not the three AC3 asks for — that stays a
+  named follow-up, not silently claimed.**
+
+**Stay `Shipped, unproven`, restated precisely (no longer just "needs hardware"):**
+- **T-1906** (peer TLS trust) — most of its open items closed this session (real cert-chain shape
+  captured on both nodes, verified against the pinned root with `openssl verify` returning `OK`
+  on both). The "mixed-version rollout" item was *not* closed, despite an earlier draft of this
+  section claiming it was: `git merge-base --is-ancestor f5ec68e4 0f970685` shows pve001's older
+  build already contains T-1906's own merge commit, so this cluster's version skew never actually
+  straddled the fix — a genuinely pre-T-1906 peer talking to a pinned one remains unobserved.
+  Remaining: a custom-CA node, `pvecm updatecerts -f`, a `pve-cluster` restart, and the
+  mixed-version case above — all require either mutating live PVE config or a peer this cluster
+  doesn't have. **Blocked: destructive, needs the T-3704 lab.**
+- **T-2602** (canary/staged apply) and **T-2902** (peer host-write parity) — both require a real
+  network-changing apply against the live cluster (T-2902's peer write routes have zero traffic in
+  the journal; `changeset_apply_stages` has zero rows). **Blocked: destructive, needs the T-3704
+  lab (or explicit operator sign-off to apply against `vnprox-dev` directly, which this task was
+  not given).**
+- **T-1201, T-2001** (federation core, federation UI) — need a second, *distinct* PVE cluster to
+  attach; `vnprox-dev`'s two nodes are one cluster, not two, and no second cluster exists anywhere
+  in this environment. **Blocked: none of the four stated categories fit precisely — the honest
+  gap is "no second PVE cluster exists to federate with," which is not the same claim as "needs
+  3+ nodes."**
+- **T-1407** (tunnel-aware federation transport) — needs both a second federated cluster *and* a
+  live WireGuard tunnel; neither is configured (`wireguard_tunnels` = 0 rows). Same non-fitting
+  blocker as above, compounded.
+- **T-1203** (cross-cluster IPAM) — the specific remaining gap is a concrete NetBox/phpIPAM write
+  client, which needs a real external IPAM instance — unrelated to node count or PVE at all.
+- **T-2703** (drift-to-git reconciliation) — depends on T-2701's git-backed spec sync, which has
+  no `[git]` section in the running config and zero PR/git activity in the journal. Never
+  configured on this install; not a node-count question either.
 
 | Wave | Item | Feature | What it does | Implementation | Docs | Tests | Deployment |
 |---|---|---|---|---|---|---|---|
@@ -99,7 +189,7 @@ closed.
 | 7 | T-701 | Subnet gateways in the guided flow: defaults, requirement validation, PVE fidelity | A wizard-created SDN network is functional by default: the guided flow proposes a gateway where one is needed (zone-type-aware), the change engine blocks the configs real PVE rejec | Shipped | Documented | Covered | Live |
 | 7 | T-702 | Management-path visibility: detect, badge, inspect | Make each node's management path a first-class, visible thing: which interface carries the node's management IP (and corosync links), which physical NICs ultimately carry it, and w | Shipped | Documented | Covered | Live |
 | 7 | T-703 | Guided management-redundancy & dedicated-mgmt-interface wizard | A guided flow to fix what T-702 exposes: make a node's management path redundant, or move management onto a proper dedicated VLAN interface — the single most dangerous edit the pro | Shipped | Documented | Covered | Live |
-| 8 | T-801 | Cross-node consistency validator class | Implement the validator class internal/change/validate.go explicitly marks as unassigned ("a future task's cross-node consistency class ... | Shipped | Documented | Covered | Shipped, unproven |
+| 8 | T-801 | Cross-node consistency validator class | Implement the validator class internal/change/validate.go explicitly marks as unassigned ("a future task's cross-node consistency class ... | Shipped | Documented | Covered | Live |
 | 8 | T-802 | Guest-agent live path probes (engine + API) | Execute a real, explicit probe (ICMP ping, TCP handshake) from a source guest via the QEMU guest agent toward a destination, and report the observed outcome alongside the path simu | Shipped | Documented | Covered | Live |
 | 8 | T-803 | Health-check pack 2 | Five new checks in internal/findings. | Shipped | Documented | Covered | Live |
 | 8 | T-804 | LACP actor/partner state in the bond inspector | Parse 802.3ad actor/partner system ID, key, and per-slave sync/collecting/ distributing state from /proc/net/bonding/<name> (netlink AD-info attributes opportunistically, where the | Shipped | Documented | Covered | Live |
@@ -121,8 +211,8 @@ closed.
 | 10 | T-1005 | Alert routing | Route findings/drift transitions to webhooks directly from vnprox, independent of PVE's own notification-target system — closing the documented gap in pvenotify.go's doc comment (P | Shipped | Documented | Covered | Live |
 | 10 | T-1006 | Firewall log analytics | Aggregate the v1 log viewer (internal/fwlog) into rule hit counts, top blocked-source/destination rankings, and an unused-rule report that closes the loop between firewall editing | Shipped | Documented | Covered | Live |
 | 10 | T-1007 | History playback | Scrub the map's traffic paint and flow-painted edges back through the retained metric/flow window — "what did the network look like at 02:00" — with a timeline control showing even | Shipped | Documented | Covered | Live |
-| 11 | T-1101 | Declarative cluster network spec: export, import, reconcile | One versionable YAML document capturing cluster-wide network intent — bridges, bonds, VLANs, SDN, firewall, IPAM ranges — as blueprints v2, cluster-scoped (unlike v1's per-node-sel | Shipped | Documented | Covered | Shipped, unproven |
-| 11 | T-1102 | Pinned-spec drift mode | The drift checker learns a second reference: diff live state against a *pinned* spec, distinct from and additional to the existing five cross-node-consistency families (docs/featur | Shipped | Documented | Covered | Shipped, unproven |
+| 11 | T-1101 | Declarative cluster network spec: export, import, reconcile | One versionable YAML document capturing cluster-wide network intent — bridges, bonds, VLANs, SDN, firewall, IPAM ranges — as blueprints v2, cluster-scoped (unlike v1's per-node-sel | Shipped | Documented | Covered | Live |
+| 11 | T-1102 | Pinned-spec drift mode | The drift checker learns a second reference: diff live state against a *pinned* spec, distinct from and additional to the existing five cross-node-consistency families (docs/featur | Shipped | Documented | Covered | Shipped, inert |
 | 11 | T-1103 | Scheduled changesets & maintenance windows | Stage now, apply inside a window, with the existing commit-confirm/rollback machinery (T-205/T-304) making unattended apply safe. | Shipped | Documented | Covered | Live |
 | 11 | T-1104 | Event stream & automation tokens | An authenticated WS + webhook firehose of audit, changeset lifecycle, drift, and finding events, plus scoped API tokens for automation — vnprox-local and capability-scoped, explici | Shipped | Documented | Covered | Live |
 | 11 | T-1105 | vnproxctl parity | CLI parity with the UI's read and changeset surfaces, plus vnproxctl apply spec.yaml --plan/--apply for the GitOps flow. | Shipped | Documented | Covered | Live |
@@ -173,7 +263,7 @@ closed.
 | 17 | T-1707 | v3.0 release: HA/genscale performance, platform-API freeze, docs, packaging, security & PVE-compat pass | The v3.0 cut — an HA + multi-cluster genscale performance pass; | Shipped | Documented | Covered | Live |
 | 18 | T-1801 | Validation harness and evidence protocol ★ | The machinery that turns a 105-item hardware checklist into roughly eight human turns instead of sixty. | Shipped | Documented | Covered | Live |
 | 18 | T-1802 | Hardware-validation burndown, `pvecube`-reachable sections ★ | Burn down every checklist item reachable on a single node — roughly 60 of 105 — with evidence committed and the PVE version recorded, converting each divergence into a bug card rat | Shipped | Documented | Covered | Live |
-| 18 | T-1803 | Blocked-validation register and multi-node mock fidelity ★ 🔒 | Two deliverables for the ~45 items single-node hardware cannot reach, per D3. | Shipped (scope cut) | Documented | Covered | Shipped, unproven |
+| 18 | T-1803 | Blocked-validation register and multi-node mock fidelity ★ 🔒 | Two deliverables for the ~45 items single-node hardware cannot reach, per D3. | Shipped (scope cut) | Documented | Covered | Live |
 | 18 | T-1804 | Failure-injection proof of commit-confirm ★ | The product's central claim is "if the change locks you out, it reverts itself." That path has never run on hardware against a real lockout. | Shipped | Documented | Covered | Live |
 | 18 | T-1805 | Unattended revert for `fw.*` and `sdn.apply` via apply-time revert ticket ★ 🔒 | Close the one genuine hole in the change engine's safety guarantee. | Shipped (scope cut) | Documented | Covered | Live |
 | 18 | T-1806 | Trustworthy CI and branch protection ★ | The check and fuzz jobs fail independently of the diff and main has no branch protection — the signal everyone ignores is also the signal nothing enforces. | Shipped | Documented | Covered | Live |
@@ -207,7 +297,7 @@ closed.
 | 22 | T-2205 | Documentation and gate wiring | All five cards complete. 72 topics registered; | Shipped | Documented | Covered | Live |
 | 23 | T-2301 | `internal/certs`: inventory | Inventory the certificates the node and its peers present, so expiry and trust problems become findings rather than surprises. | Shipped | Documented | Covered | Live |
 | 23 | T-2302 | Certificate findings (`source: "cert"`) | All detection-only (Fixable false). | Shipped | Documented | Covered | Live |
-| 23 | T-2303 | Peer dialling: fix `T-1906-bug-01`, don't just report it | Detection alone leaves the cluster broken. | Shipped | Documented | Covered | Shipped, unproven |
+| 23 | T-2303 | Peer dialling: fix `T-1906-bug-01`, don't just report it | Detection alone leaves the cluster broken. | Shipped | Documented | Covered | Live |
 | 23 | T-2304 | API and CLI | implementation depends on: T-2301, T-2302 | Shipped | Documented | Covered | Live |
 | 23 | T-2305 | UI, help, docs | PVE already owns this: pvecm updatecerts -f regenerates a node's leaf from the | Shipped | Documented | Covered | Live |
 | 24 | T-2401 | Scheduled automatic config snapshots ★ | Today a snapshot exists only where vnprox itself acted: pre/post around an apply, or | Shipped | Documented | Covered | Live |
@@ -219,7 +309,7 @@ closed.
 | 24 | T-2407 | Alert quiet hours and digest coalescing ★ | An alert rule fires per event. | Shipped | Documented | Covered | Live |
 | 24 | T-2408 | Batch-fix findings into one changeset ★ | implementation · depends on: T-2402 context: internal/api/findings.go, internal/findings/engine.go | Shipped | Documented | Covered | Live |
 | 24 | T-2409 | Per-spec e2e store isolation · **closes `T-2108-followup-01`** | implementation · depends on: — context: web/e2e/, docs/development.md | Shipped | Documented | Covered | Live |
-| 24 | T-2410 | Packaging matrix `cluster-ssh` root cause · **closes `T-1806-bug-02`** | Red on the runner, green locally under podman, on 2 of the last 3 pushes. | Shipped | Documented | N/A (non-code) | Shipped, unproven |
+| 24 | T-2410 | Packaging matrix `cluster-ssh` root cause · **closes `T-1806-bug-02`** | Red on the runner, green locally under podman, on 2 of the last 3 pushes. | Shipped | Documented | N/A (non-code) | Live |
 | 25 | T-2501 | Self-executing hardware validation suite ★ | The hardware-validation figure is 12 of 130 because validating an item means a human reading a | Shipped | Documented | Covered | Live |
 | 25 | T-2502 | Record/replay real PVE traffic into fixtures ★ | Add a record mode to the PVE client and a replay backend to pvemock, so a fixture can be | Shipped | Documented | Covered | Live |
 | 25 | T-2503 | Opt-in compatibility telemetry | One cluster validated by us is an anecdote. | Shipped | Documented | Covered | Shipped, inert |
@@ -263,7 +353,7 @@ closed.
 | 31 | T-3104 | IPAM completion | Real IPAM plugin types are <netbox \| phpipam \| pve> — which is what vnprox already reads. | Shipped | Documented | Covered | Live |
 | 31 | T-3105 | Restore fidelity — **rescoped, and mostly closed as already-decided** | The roadmap gave this card three items. | Shipped | Documented | Covered | Live |
 | 31 | T-3106 | Localization (i18n) — the rescheduled T-2006 | T-2006 verbatim: the single Arc-4 roadmap item with zero code in the tree. | Shipped | Documented | Covered | Live |
-| 32 | T-3201 | Second node + the blocked register: cross-node validation for real | Verified against planning/reports/blocked-validation.md and commits 044f74bb ("change+test: | Shipped | Documented | Covered | Shipped, unproven |
+| 32 | T-3201 | Second node + the blocked register: cross-node validation for real | Verified against planning/reports/blocked-validation.md and commits 044f74bb ("change+test: | Shipped | Documented | Covered | Live |
 | 32 | T-3202 | Failure-injection proof of commit-confirm + validation burndown | Verified against planning/reports/T-3202-scenarios.md, commits 69fc944b, fa95217c, | Shipped | Documented | Covered | Live |
 | 32 | T-3203 | Scale & performance on real cluster data | Verified against planning/reports/T-3203.md and commit 3df0b7eb ("planning: T-3203 — | Shipped | Documented | Covered | Shipped, unproven |
 | 32 | T-3204 | Test-debt closure: quarantine, flake, isolation, frozen-payload guards | Verified against commit ef8abec4 ("test: close accumulated e2e/contract debt — quarantine, | Shipped | Documented | Covered | Live |

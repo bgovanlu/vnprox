@@ -1,0 +1,131 @@
+T-2410 — attempting scripts/ci-local.sh cluster-ssh (2026-08-23)
+Local podman job (packaging/test/cluster-ssh.sh), entirely local — no
+connection to pvecube/pve001. Run from the repo working tree.
+
+Attempt 1: `bash scripts/ci-local.sh cluster-ssh`
+  -> FAIL in 10s. `.ci-local/cluster-ssh.log` tail:
+     "npm error code ENOENT ... enoent ENOENT: no such file or directory,
+     stat '/home/brian/.npm/_cacache/content-v2/sha512/...'" during
+     `make build`'s `npm ci` in web/.
+
+Ran `npm cache verify`: "Missing content: 180" — repaired.
+
+Attempt 2: same command, no ALLOW_DIRTY -> refused: "precondition failed:
+working tree is dirty; CI runs a clean checkout." (The tree has unrelated
+concurrent work in progress from other tasks — confirmed pre-existing via
+`git status` before this session started.)
+
+Attempt 3: `ALLOW_DIRTY=1 bash scripts/ci-local.sh cluster-ssh`
+  -> FAIL in 53s. `make build`'s `npm ci` again produced dozens of
+  `npm warn tar TAR_ENTRY_ERROR ENOENT` lines against `web/node_modules/`
+  (es-toolkit, react-dom, eslint-plugin-react-hooks, elkjs,
+  @napi-rs/wasm-runtime — a different, larger set of packages than attempt
+  1), then `make: *** [Makefile:36: build] Error 217`.
+
+Isolated the step: `cd web && npm ci` standalone succeeded cleanly
+("added 373 packages in 15s", no warnings) immediately afterward, with no
+other npm/node process running (`ps aux` clean) — so the corruption is not
+a stable, reproducible state; it recurs under fresh conditions.
+
+Attempt 4: `ALLOW_DIRTY=1 bash scripts/ci-local.sh cluster-ssh`
+  -> FAIL in 2s. Same `npm ci` TAR_ENTRY_ERROR pattern recurred inside
+  `make build` even though a standalone `npm ci` had just succeeded
+  seconds earlier in the same directory.
+
+Attempt 5: `rm -rf web/node_modules` then re-ran the full job.
+  -> FAIL in 16s. `npm ci` itself now succeeded inside the job ("added 373
+  packages, and audited 374 packages in 15s", no warnings), but the
+  subsequent `tsc --noEmit && vite build` step crashed:
+    "/home/brian/vnprox/web/node_modules/typescript/lib/_tsc.js:34522
+     SyntaxError: Invalid or unexpected token"
+  — a corrupted/truncated `typescript` package on disk.
+
+Follow-up: `npm cache clean --force`, `rm -rf web/node_modules`, fresh
+`npm ci` -> succeeded ("added 373 packages in 27s") but again logged
+`TAR_ENTRY_ERROR ENOENT` for several files inside the just-installed
+`typescript` package, and `node -e "require('typescript')"` immediately
+failed with `MODULE_NOT_FOUND`.
+
+Conclusion: the `cluster-ssh` job itself never ran (the failure is
+entirely inside `make build`'s npm/web step, before `packaging/test/
+cluster-ssh.sh` is ever invoked). Every failure is a different package
+each time, always the same `TAR_ENTRY_ERROR ENOENT` / truncated-extraction
+signature from npm's own tarball extraction — consistent with this dev
+sandbox's filesystem dropping entries under concurrent/rapid tar
+extraction, not with anything in the packaging script or in T-2410's fix.
+This matches this project's already-known local npm/CI flakiness (see
+memory: "vnprox CI: flaky check/fuzz", "vnprox local CI + release").
+
+**Superseded below — it did run to completion, later in this same session.**
+
+=====================================================================
+Attempt 6 (concurrent agent A) / continued attempts (concurrent agent B):
+the real cause of attempts 1–5's corruption, and the eventual PASS
+=====================================================================
+
+This file's "Conclusion" above was written by one of two agent processes
+working T-3705 in parallel against this same repo checkout — this task
+deliberately forked sub-agents for research, and at least one of them
+independently decided to also attempt this job. **Both were running
+`make build` (and therefore `npm ci`/`vite build`) against the same
+`web/node_modules` directory at overlapping times.** Two concurrent `npm
+ci` runs racing to delete-and-repopulate the same `node_modules` tree is
+sufficient on its own to produce exactly the symptom both attempts saw —
+a different package corrupted or truncated each time, never the same
+twice, "succeeds standalone, fails inside the job seconds later" — without
+needing to invoke any sandbox/filesystem theory at all. This is the
+mundane explanation and it fits the evidence better than a filesystem
+fault: once one of the two processes stopped running `npm ci` against
+this tree, the very next attempt (below) passed cleanly on the first try.
+
+A second, real contributing bug (independent of the race): `go: command
+not found`. `scripts/ci-local.sh`'s `job_cluster_ssh` calls `make build`,
+which invokes `$(GO) build`; this dev environment's `go` binary lives at
+`~/.local/go/bin/go`, which is on an interactive shell's `PATH` but not
+necessarily on a non-interactive `bash -lc` shell's PATH depending on how
+it's invoked — one attempt failed at the Go build step specifically with
+`go: command not found` until `PATH="$HOME/.local/go/bin:$PATH"` was set
+explicitly alongside `nvm use 22`. `docs/development.md`'s environment
+setup should be checked for whether this is already documented; if the
+local Go install isn't on the default PATH `ci-local.sh` inherits, every
+job that calls `make build` (not just `cluster-ssh`) is exposed to this,
+not only under an agent's non-interactive shell.
+
+Attempt 6, after the race ended (only one process building) and with an
+explicit PATH covering both go and Node 22:
+
+  $ rm -rf web/node_modules && cd web && npm ci   # clean, no other process running
+  $ export PATH="$HOME/.local/go/bin:$PATH"
+  $ source ~/.nvm/nvm.sh && nvm use 22
+  $ ALLOW_DIRTY=1 bash scripts/ci-local.sh cluster-ssh
+
+  >> [cluster-ssh] PASS in 531s — /home/brian/vnprox/.ci-local/cluster-ssh.log
+
+Full log tail (`.ci-local/cluster-ssh.log`, final ~10 lines):
+
+  >> cluster-ssh.sh: verifying: vnprox installed on all three nodes, all reporting the same port
+    pve1: listen port = 8008
+    pve2: listen port = 8008
+    pve3: listen port = 8008
+  >> cluster-ssh.sh: verifying: the cluster secret is the SAME file content on all three nodes (simulated pmxcfs replication)
+  >> cluster-ssh.sh: verifying: install.sh step 8 copied pve1's PVE API token to pve2 and pve3 (debt sweep item 8, 2026-08-19)
+  ALL CHECKS PASSED
+
+The full 1026-line log is preserved at
+`planning/reports/evidence/T-2410-cluster-ssh-pass-2026-08-23.log` for
+anyone who wants the complete install.sh transcript (step 1/9 cluster
+detection through step 9, the port-8007-conflict fallback to 8008, the
+SSH rollout to pve2/pve3, per-node `vnproxctl doctor` output, and the
+three post-hoc verification checks quoted above).
+
+**Verdict: T-2410's `cluster-ssh` job ran to completion in this session,
+end to end, and passed — including the debt-sweep-item-8 PVE-token-copy
+check that had never been exercised before (see this file's own register
+entry, "Debt sweep item 8", 2026-08-19).** The five earlier failed
+attempts were not evidence of a defect in `packaging/test/cluster-ssh.sh`
+or T-2410's fix; they were a self-inflicted race between two concurrent
+agent processes sharing one working tree's `node_modules`, plus one real
+but mundane PATH gap in how a non-interactive shell finds this
+environment's Go install. Neither is a finding about the product. AC3 of
+T-2410 (three consecutive green runs) is not fully met by a single pass —
+that is left as a follow-up rather than claimed here.

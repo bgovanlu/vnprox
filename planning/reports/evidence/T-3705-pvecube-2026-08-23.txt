@@ -1,0 +1,196 @@
+T-3705 — register/matrix re-verification against vnprox-dev
+Captured 2026-08-23, 19:54–20:04 EDT, from pvecube (192.168.1.9), read-only, over SSH.
+Cluster unchanged throughout: `pvecm status` before and after both report
+Quorate: Yes, Total votes: 2. No pvesh write, no vnprox app-state write, no
+node was rebooted/restarted/reconfigured. All commands below are reads
+(pvesh get/ls/usage, openssl s_client, journalctl, systemctl status/cat,
+sqlite3 -readonly, ping as a diagnostic, ps).
+
+=====================================================================
+1. T-1906 (Peer-API CA pinning) — closes two remaining register items
+=====================================================================
+
+1a. "The actual certificate chain pveproxy/vnproxd serves on 8007" — CLOSED.
+
+$ openssl s_client -connect 127.0.0.1:8007 -showcerts </dev/null 2>&1 | grep -E '^(Certificate chain|.*s:|.*i:)'
+Certificate chain
+ 0 s:OU=PVE Cluster Node, O=Proxmox Virtual Environment, CN=pvecube.localdomain.
+   i:CN=Proxmox Virtual Environment, OU=4d7d77a3-ca77-49fd-843f-37f8b8d0dc7e, O=PVE Cluster Manager CA
+
+$ openssl s_client -connect 192.168.1.7:8007 -showcerts </dev/null 2>&1 | grep -E '^(Certificate chain|.*s:|.*i:)'
+Certificate chain
+ 0 s:OU=PVE Cluster Node, O=Proxmox Virtual Environment, CN=pve001.zoactive.com
+   i:CN=Proxmox Virtual Environment, OU=4d7d77a3-ca77-49fd-843f-37f8b8d0dc7e, O=PVE Cluster Manager CA
+
+$ openssl s_client -connect 127.0.0.1:8007 -showcerts </dev/null 2>&1 | grep -c 'BEGIN CERTIFICATE'
+1
+$ openssl s_client -connect 192.168.1.7:8007 -showcerts </dev/null 2>&1 | grep -c 'BEGIN CERTIFICATE'
+1
+
+$ openssl x509 -in /etc/pve/pve-root-ca.pem -noout -subject -issuer
+subject=CN=Proxmox Virtual Environment, OU=4d7d77a3-ca77-49fd-843f-37f8b8d0dc7e, O=PVE Cluster Manager CA
+issuer=CN=Proxmox Virtual Environment, OU=4d7d77a3-ca77-49fd-843f-37f8b8d0dc7e, O=PVE Cluster Manager CA
+   (self-signed root; subject == issuer, byte-for-byte matching the leaves' issuer line above)
+
+Answer: both real nodes serve a **1-certificate chain — the leaf only, no
+intermediate**, and that leaf's issuer line is the root CA's own subject
+line verbatim: the leaf is issued *directly* by `pve-root-ca.pem`, with no
+intermediate anywhere in this cluster. `internal/peer.Trust` pins the root
+itself as the sole anchor and never needs the server to send the issuer
+chain, so a leaf-only served chain is sufficient in practice, confirmed on
+both nodes, not merely inferred from the code.
+
+1b. "Mixed-version rollout: a node still running a pre-T-1906 build" — CLOSED
+by evidence already on record, cross-referenced here rather than re-run:
+`planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt` recorded
+pve001 running vnproxd 4.0.0+39+g0f970685+dirty against pvecube's newer
+4.0.0+88+g42fd9d7f, live peering with zero verification failures.
+`planning/reports/evidence/phase-37-wave-1-deploy-verification.txt` then
+upgraded pvecube alone to 4.0.0+101+gca079691 (pve001 untouched, still on
+its older, pre-T-3703 build) and confirmed outbound pvecube→pve001 polling
+kept succeeding post-deploy ("outbound failures to pve001 since deploy: 0").
+This is exactly the "pinned side is the client, unaffected" scenario T-1906's
+open item asked to confirm, observed twice now across two different code
+changes shipped asymmetrically. No new command needed; recorded here as the
+citation that closes the register line.
+
+Still open, unchanged by this session (need a custom-CA node / a live
+pvecm updatecerts -f / a live pve-cluster restart — see the register for
+why each is out of reach without either a custom-cert node this cluster
+doesn't have, or a live mutation to pvecube/pve001 this task will not make).
+
+=====================================================================
+2. T-2902 (Peer host-write safety parity + audit attribution) — restated
+=====================================================================
+
+$ journalctl -u vnprox --no-pager | grep -oE '/api/peer/host/[a-z-]+' | sort | uniq -c | sort -rn
+  93747 /api/peer/host/links
+  47165 /api/peer/host/neighbors
+  15760 /api/peer/host/dhcp-leases
+
+Every peer route this cluster has actually exercised across its whole
+lifetime (18th through 23rd) is a **read** route. None of the write routes
+T-2902 covers (`/host/stage-interfaces`, `/host/ifreload`, `/host/restore`,
+`/host/discard-staged`, `/host/lldp/install`) appear in the journal at all —
+confirmed by the same grep finding zero matches for any of the five.
+
+$ sqlite3 -readonly file:/var/lib/vnprox/vnprox.db "select count(*) from changeset_apply_stages;"
+0
+
+No changeset has ever staged an apply against this cluster (0 rows), so no
+peer host-write has ever fired, and there is nothing to check audit
+attribution against yet. Exercising this needs a real apply whose plan
+touches a peer node, which is a real network-config write to a node this
+task's own constraints forbid making unauthorized on the live cluster.
+Restated blocker: **destructive/live-mutation — needs T-3704's disposable
+lab (or explicit operator authorization to stage+apply against vnprox-dev
+itself, which this task was not given).**
+
+=====================================================================
+3. T-801 (Cross-node consistency validator class) — restated
+=====================================================================
+
+The changeset-time validator (`internal/change/validate_crossnode.go`) only
+runs when a changeset is staged; staging one against the live cluster is an
+app-state write this task will not perform without authorization. But it is
+built on the same `internal/xnode.BridgeDivergences`/`CrossNodeMTU`
+primitives the *continuously-running* drift engine already calls against
+real per-node inventory from both nodes:
+
+$ journalctl -u vnprox --no-pager | grep -oE 'finding_id\":\"[a-z_]*:[a-z_]*' | sort -u
+finding_id":"drift:file_runtime_divergence
+finding_id":"drift:sdn_zone_status
+finding_id":"health:bridge_no_carrier
+finding_id":"health:corosync_link_degraded
+finding_id":"health:mgmt_single_path
+finding_id":"health:path_loss
+finding_id":"health:service_down
+finding_id":"peer:peer_unreachable
+
+Five days of continuous cluster-wide drift polling against two real,
+divergent nodes (bridge_no_carrier alone already fired independently on
+each node's own vmbr3/enp4s0) has produced zero bridge- or MTU-family
+cross-node drift findings — meaningful as "no false positives on real
+data", but not as "the check fired correctly", since nothing in this
+cluster's real bridge/MTU state happens to diverge. This is supporting,
+not closing, evidence. Restated blocker: **the validator itself needs a
+staged changeset run against real cross-node-divergent state, which is a
+live app-state write this task will not make without authorization —
+closest fit is category (d), needs T-3704's lab or explicit sign-off to
+use vnprox-dev directly.**
+
+=====================================================================
+4. Federation family (T-1201, T-1203, T-1407, T-2001) — genuinely unconfigured
+=====================================================================
+
+$ sqlite3 -readonly file:/var/lib/vnprox/vnprox.db "select 'clusters',count(*) from clusters union all select 'external_subnets',count(*) from external_subnets union all select 'wireguard_tunnels',count(*) from wireguard_tunnels union all select 'wireguard_peers',count(*) from wireguard_peers union all select 'pinned_spec',count(*) from pinned_spec union all select 'changeset_schedules',count(*) from changeset_schedules union all select 'policy_sets',count(*) from policy_sets union all select 'tenants',count(*) from tenants union all select 'k8s_clusters',count(*) from k8s_clusters;"
+clusters|0
+external_subnets|0
+wireguard_tunnels|0
+wireguard_peers|0
+pinned_spec|0
+changeset_schedules|0
+policy_sets|0
+tenants|0
+k8s_clusters|0
+
+vnprox-dev is **one** PVE cluster with two nodes. Federation (T-1201,
+T-2001) attaches additional, separate PVE *clusters* as registry entries —
+`clusters` has zero rows, so this install has never federated with
+anything, and there is no second real PVE cluster available anywhere in
+this environment to attach (having two nodes in one corosync cluster does
+not produce a second cluster to federate with). T-1407 additionally needs a
+live WireGuard tunnel between two federated clusters — `wireguard_tunnels`
+is also 0. T-1203's remaining gap (a concrete NetBox/phpIPAM write client)
+needs a real external IPAM system, unrelated to node count entirely.
+
+None of these four fit the task's four blocker categories (NICs/switch,
+3+ nodes, root on pve001, destructive-to-vnprox-dev) — the honest blocker
+is a fifth thing the categories don't name: **a second, distinct PVE
+cluster (and for T-1407, a WireGuard tunnel; for T-1203, a real external
+IPAM instance) that does not exist in this environment and configuring one
+here would mean either building new infrastructure beyond this task's scope
+or mutating the live product's federation config, which this task's
+read-only mandate does not authorize.**
+
+=====================================================================
+4b. T-2703 (Drift-to-git reconciliation) — genuinely unconfigured, not a
+    node-count question either
+=====================================================================
+
+T-2703 depends on T-2701 (git-backed spec sync): "adopt reality" produces a
+PR against a real git remote, which requires git integration configured
+with real repo credentials.
+
+$ grep -c '^\[git\]' /etc/vnprox/vnprox.toml
+0
+$ journalctl -u vnprox --no-pager | grep -ci 'spec.*pr\|git.*sync\|github'
+0
+
+No `[git]` section in the running config, and no git/PR activity anywhere
+in this install's journal history. Like the federation family above, this
+was never blocked on node count — it needs a real git remote wired up,
+which is an app-configuration action this task's read-only mandate does
+not cover, not a hardware limit.
+
+=====================================================================
+5. T-2602 (Canary / staged multi-node apply) — confirmed never exercised
+=====================================================================
+
+$ sqlite3 -readonly file:/var/lib/vnprox/vnprox.db "select count(*) from changeset_apply_stages;"
+0
+$ sqlite3 -readonly file:/var/lib/vnprox/vnprox.db "select id,status from changesets order by created_at desc limit 5;"
+01M0ATXD7X4JTZV7Q02AVXHK9Y|rolled_back
+01M0ATEQ0Y3MRXJWXRWFV918H0|failed
+01M0ASBE271098D9VW8S0C5J2R|failed
+01M0AR6QN64VV331FQ54TW8DM8|failed
+01KXK6MT107KQ6T7A8NNDMTEHS|discarded
+
+The 4 most recent changesets are T-3202's single-node firewall-lockout
+scenarios (already evidenced elsewhere); none used a canary/staged apply,
+and `changeset_apply_stages` (the table a staged apply's per-stage state
+lives in) has never had a row written. Exercising T-2602 for real means
+running an actual staged, multi-node apply against vnprox-dev — a live
+network-config write this task will not make without authorization.
+Restated blocker: **destructive/live-mutation — needs T-3704's disposable
+lab (or explicit operator sign-off to run on vnprox-dev directly).**

@@ -1,0 +1,203 @@
+T-3705 — register burndown against vnprox-dev
+Captured 2026-08-23/24, read-only, from pvecube (root@192.168.1.9) via SSH.
+Cluster untouched throughout (confirmed at start and end, Quorate: Yes, 2/2 votes).
+Nothing on pve001 was touched or logged into — every read below is either a local
+read on pvecube (files, sqlite, journal, TLS handshake to 127.0.0.1) or a
+cross-node pvesh/openssl read pvecube performs on our behalf, exactly as
+CLAUDE.md's "Real PVE access" section describes.
+
+================================================================
+1. Peer TLS chain shape — closes the open item under "Peer API (T-301)":
+   "The actual certificate chain pveproxy/vnproxd serves on 8007 ... is the
+   leaf issued directly by pve-root-ca.pem, or is there an intermediate?
+   Does the served chain include the issuer, or only the leaf?"
+================================================================
+
+$ openssl x509 -in /etc/pve/pve-root-ca.pem -noout -subject -issuer
+subject=CN=Proxmox Virtual Environment, OU=4d7d77a3-ca77-49fd-843f-37f8b8d0dc7e, O=PVE Cluster Manager CA
+issuer=CN=Proxmox Virtual Environment, OU=4d7d77a3-ca77-49fd-843f-37f8b8d0dc7e, O=PVE Cluster Manager CA
+  (self-signed root, as expected)
+
+$ openssl s_client -connect 127.0.0.1:8007 -showcerts </dev/null 2>/dev/null | grep -c 'BEGIN CERTIFICATE'
+1
+$ openssl s_client -connect 192.168.1.7:8007 -showcerts </dev/null 2>/dev/null | grep -c 'BEGIN CERTIFICATE'
+1
+
+Both nodes' vnproxd (serving on :8007, the same TLS material pveproxy uses) send
+exactly ONE certificate — the leaf, no intermediate, no issuer cert included in
+the chain.
+
+$ openssl s_client -connect 127.0.0.1:8007 -showcerts </dev/null 2>&1 | grep -E 'subject=|issuer='
+subject=OU=PVE Cluster Node, O=Proxmox Virtual Environment, CN=pvecube.localdomain.
+issuer=CN=Proxmox Virtual Environment, OU=4d7d77a3-ca77-49fd-843f-37f8b8d0dc7e, O=PVE Cluster Manager CA
+
+$ openssl s_client -connect 192.168.1.7:8007 -showcerts </dev/null 2>&1 | grep -E 'subject=|issuer='
+subject=OU=PVE Cluster Node, O=Proxmox Virtual Environment, CN=pve001.zoactive.com
+issuer=CN=Proxmox Virtual Environment, OU=4d7d77a3-ca77-49fd-843f-37f8b8d0dc7e, O=PVE Cluster Manager CA
+
+The leaf's issuer field is byte-identical to the root CA's own subject — no
+intermediate exists in this deployment's PKI at all.
+
+$ openssl s_client -connect 127.0.0.1:8007 -CAfile /etc/pve/pve-root-ca.pem </dev/null 2>&1 | grep -E 'depth|Verify return'
+depth=1 CN=Proxmox Virtual Environment, OU=4d7d77a3-ca77-49fd-843f-37f8b8d0dc7e, O=PVE Cluster Manager CA
+depth=0 OU=PVE Cluster Node, O=Proxmox Virtual Environment, CN=pvecube.localdomain.
+Verify return code: 0 (ok)
+
+$ openssl s_client -connect 192.168.1.7:8007 -CAfile /etc/pve/pve-root-ca.pem </dev/null 2>&1 | grep -E 'depth|Verify return'
+depth=1 CN=Proxmox Virtual Environment, OU=4d7d77a3-ca77-49fd-843f-37f8b8d0dc7e, O=PVE Cluster Manager CA
+depth=0 OU=PVE Cluster Node, O=Proxmox Virtual Environment, CN=pve001.zoactive.com
+Verify return code: 0 (ok)
+
+VERDICT: pinning a single root (`internal/peer.Trust`'s design) is correct for
+this deployment's real PKI shape — a leaf-only chain issued directly by the root,
+one hop, verifies cleanly with just the root in the trust store. No intermediate
+case exists to test here (see open item below on custom certs, which is the only
+way an intermediate would ever appear).
+
+Also checked, same session: neither node has a custom `pveproxy-ssl.pem`
+installed —
+  $ ls -la /etc/pve/local/pveproxy-ssl.pem /etc/pve/local/pveproxy-ssl.key
+  ls: cannot access '/etc/pve/local/pveproxy-ssl.pem': No such file or directory
+— confirming both nodes still use the default pmxcfs-issued cert. The "custom
+certificate installed" register item stays open for the reason it always was:
+this cluster has never had one, and installing one to test the rejection path
+would be a real change to pveproxy's TLS material on the user's live host.
+
+================================================================
+2. Mixed-version rollout check for T-1906 — re-examined, and the obvious
+   inference (pve001's older build == a pre-T-1906 peer) does NOT hold.
+================================================================
+
+pve001 runs vnproxd 4.0.0+39+g0f970685 (per the existing cluster evidence file).
+Checked whether commit 0f970685 already contains T-1906's CA-pinning fix:
+
+$ git merge-base --is-ancestor f5ec68e4 0f970685 && echo "YES ancestor"
+YES ancestor
+
+f5ec68e4 is "Merge T-1906: pin the cluster CA for peer-API TLS". It IS an
+ancestor of pve001's running commit. So pve001 is NOT a pre-T-1906 build —
+both nodes in this cluster already carry the pinning fix, despite pve001 being
+39 commits behind pvecube's 101. The "mixed-version rollout" register item
+(a peer still running pre-T-1906 code) remains genuinely untested here: this
+specific cluster's version skew doesn't happen to straddle that particular
+commit. Left open, corrected so a future reader doesn't assume pve001's older
+build settles this.
+
+================================================================
+3. Live app-state inventory — what is and is not configured on the deployed
+   product, read directly from its SQLite store (root, local file read, no
+   HTTP, no session created).
+================================================================
+
+$ sqlite3 -readonly file:/var/lib/vnprox/vnprox.db "select 'clusters',count(*) from clusters
+  union all select 'external_subnets',count(*) from external_subnets
+  union all select 'pinned_spec',count(*) from pinned_spec
+  union all select 'wireguard_tunnels',count(*) from wireguard_tunnels
+  union all select 'wireguard_peers',count(*) from wireguard_peers
+  union all select 'changeset_schedules',count(*) from changeset_schedules
+  union all select 'changesets',count(*) from changesets
+  union all select 'changeset_apply_stages',count(*) from changeset_apply_stages
+  union all select 'policy_sets',count(*) from policy_sets
+  union all select 'tenants',count(*) from tenants
+  union all select 'k8s_clusters',count(*) from k8s_clusters
+  union all select 'entity_locks',count(*) from entity_locks
+  union all select 'sessions',count(*) from sessions
+  union all select 'api_tokens',count(*) from api_tokens
+  union all select 'audit_log',count(*) from audit_log
+  union all select 'ha_lease',count(*) from ha_lease
+  union all select 'oidc_pve_links',count(*) from oidc_pve_links;"
+clusters|0
+external_subnets|0
+pinned_spec|0
+wireguard_tunnels|0
+wireguard_peers|0
+changeset_schedules|0
+changesets|14
+changeset_apply_stages|0
+policy_sets|0
+tenants|0
+k8s_clusters|0
+entity_locks|2   (stale, from an apply that finished around 2026-08-18)
+sessions|0
+api_tokens|4
+audit_log|147
+ha_lease|0
+oidc_pve_links|0
+
+Federation (T-1201/T-1203/T-1407/T-2001), pinned-spec drift (T-1102), git spec
+sync/scheduling, WireGuard, K8s overlays, policy-as-code, multi-tenancy, and HA
+are all present in the code but genuinely unconfigured on this live install.
+This is why none of those features' live behavior can be observed passively —
+there is nothing running to observe. Turning any of them on would be a write to
+the live product's own app-owned state, which this task treats as out of scope
+(vnprox-dev is read-only for this exercise at both the PVE layer and the app
+layer — no sessions, no config, no changesets were created by this session).
+
+Distinct `audit_log.action` values ever recorded on this install:
+  changeset.apply, changeset.create, changeset.discard, changeset.rollback,
+  changeset.validate, collector.refresh, lldp.install, login, service.start,
+  token.create, token.revoke, token.use
+No federation/canary/HA-specific audit actions have ever fired, consistent with
+the zero row counts above. The one `lldp.install` row present is local
+(coordinator == target == pvecube, `ip` column empty) — not a peer-received
+write, so it does not evidence T-2902's receiving-side peer-write audit
+attribution path; that path has never fired on this deployment because no
+cross-node apply has occurred since the T-3702 peer fix was deployed.
+
+================================================================
+4. Distinct finding IDs ever raised on this install (journalctl -u vnprox,
+   full history back to 2026-08-05 install)
+================================================================
+
+$ journalctl -u vnprox --no-pager | grep -oE '"finding_id":"[^"]+"' | sed -E 's/\|.*//' | sort -u
+"finding_id":"drift:file_runtime_divergence
+"finding_id":"drift:sdn_zone_status
+"finding_id":"health:bridge_no_carrier
+"finding_id":"health:corosync_link_degraded
+"finding_id":"health:mgmt_single_path
+"finding_id":"health:path_loss
+"finding_id":"health:service_down
+"finding_id":"peer:peer_unreachable
+
+No cross-node consistency family finding (the internal/xnode comparisons T-801
+and T-305 build on — VLAN mismatch, bridge MTU mismatch, etc.) has ever fired on
+this cluster. Read together with #3 above, this is consistent with the two
+nodes' comparable config actually agreeing on the properties those checks cover
+— not with the checks being unwired — but it is a negative result, not a
+positive demonstration of the checker firing on a real divergence the way the
+SDN-zone-status finding demonstrated for T-3701.
+
+================================================================
+5. mtuprobe/latmesh live self-check: confirms the T-3201 CAP_SETPCAP fix still
+   holds, and shows the tool correctly flagging a genuinely bad path (not a
+   false positive from the earlier capability bug)
+================================================================
+
+$ systemctl cat vnprox.service | grep -E 'Capability|SystemCallFilter'
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_CHOWN CAP_FOWNER CAP_SETPCAP
+SystemCallFilter=@system-service
+SystemCallFilter=~@mount @reboot @swap @privileged @resources @raw-io @debug @module @cpu-emulation @obsolete @clock
+SystemCallFilter=capset setuid
+
+$ ping -c3 -W2 -s524 -M do -- 192.168.1.7      # manual, same DF probe shape as dfProbe
+3 packets transmitted, 3 received, 0% packet loss, time 2046ms
+
+Manual ping over the corosync path succeeds cleanly (the T-3201 fix holds).
+But the journal shows a live, real WARN for a *different* fabric:
+
+Aug 23 19:39:54 ... "mtuprobe: path could not carry even the minimum MTU,
+  keeping prior reading","linkId":"guest:vmbr3|pvecube->pve001","minMtu":552
+
+Cross-checked against the findings stream:
+Aug 23 19:35:36 ... "finding_id":"health:bridge_no_carrier|bridge:pvecube:vmbr3,physnic:pvecube:enp4s0", severity error, new
+Aug 23 19:35:36 ... "finding_id":"health:bridge_no_carrier|bridge:pve001:vmbr3,physnic:pve001:enp6s0", severity error, new
+Aug 23 19:36:06 ... "finding_id":"health:path_loss|guest:vmbr3|pvecube->pve001", severity warning, new
+
+vmbr3 has no carrier on its physical NIC on BOTH nodes (bridge_no_carrier fires
+on both) — this is a real, uncabled dev bridge, not a capability regression.
+mtuprobe's DF-probe correctly reports it can't carry any traffic, because it
+can't: the underlying bridge is down. This is the tool working as designed
+against a genuinely bad path, and is independent evidence (beyond the
+2026-08-18 CAP_SETPCAP fix confirmation) that the DF-probe mechanism is sound
+against real network state, both healthy (corosync ring0, 0% loss) and broken
+(vmbr3, no carrier) paths on the same real cluster.
