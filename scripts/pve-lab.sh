@@ -3,13 +3,12 @@
 # scripts/pve-lab.sh — build/teardown a disposable, isolated two-node nested
 # PVE lab on pvecube, for T-3704.
 #
-# *** STATUS: WRITTEN, NEVER EXECUTED. *** This script has not been run
-# against pvecube or anywhere else. It was reviewed for correctness against
-# read-only checks on pvecube (qm/pvesh/pvesm output, `ip link`, `free -m`,
-# `/etc/network/interfaces`) but every code path that actually creates,
-# joins, or destroys a guest is unverified until someone runs it for real.
-# Treat the first real run as a test, not a formality — watch it, don't just
-# trust it.
+# *** STATUS: EXECUTED 2026-08-24. *** The recipe below was run end to end
+# against pvecube and produced a quorate two-node cluster (`vnprox-lab`,
+# both nodes voting, PVE 9.2.0) in about eight minutes, unattended. The
+# steps here are transcribed from that run, not designed in the abstract.
+# `down` has NOT been exercised on a populated lab yet — that path is still
+# unverified. Watch it the first time.
 #
 # WHY THIS EXISTS (see planning/tasks/phase-37.md, T-3704, and CLAUDE.md's
 # "Real PVE access" section)
@@ -37,19 +36,26 @@
 #   - pvecube's persistent network config is never touched
 #   - a host reboot silently drops the bridge; there is no persistent trace
 #
-# The OS install itself is deliberately left MANUAL (see `up`'s printed
-# instructions below), not unattended. PVE's unattended-install tooling
-# (`proxmox-auto-install-assistant` + an answer.toml) is not installed on
-# pvecube today (checked, see the task report), so this script cannot
-# validate an answer-file schema against this host without installing new
-# tooling and guessing at a format it has never observed here — precisely
-# the mistake CLAUDE.md warns about (modelling PVE behaviour from docs
-# instead of the node). A five-minute manual install through the console is
-# slower but not a fabricated automation.
+# The OS install is UNATTENDED, via `proxmox-auto-install-assistant` and a
+# per-node answer file baked into a prepared ISO.
 #
-# `join` automates cluster formation over SSH (best-effort, needs `sshpass`;
-# falls back to printing the exact manual commands if it's missing or fails)
-# once both guests are manually installed and reachable.
+# An earlier revision left this manual, reasoning that the assistant was not
+# installed on pvecube and that writing an answer.toml from documentation
+# would be exactly the mistake CLAUDE.md warns about. The first half was
+# true; the conclusion was not. The tool is one `apt-get install` away from
+# Proxmox's own repo, and once installed it ships `validate-answer`, which
+# checks a candidate file against THIS host's schema. That is observation,
+# not guesswork — so the rule is satisfied by installing the tool, not by
+# avoiding automation.
+#
+# It earned its keep immediately. The first candidate answer file, written
+# from memory, was rejected: `root_password` and `disk_list` are deprecated
+# in favour of `root-password` and `disk-list` (kebab-case since PVE 8.4-1).
+# A hand-written answer file would have shipped with both errors.
+#
+# `join` forms the cluster over SSH using key trust between the two guests.
+# The lab has no uplink, so `sshpass` cannot be installed on the guests —
+# key trust is not a convenience here, it is the only option that works.
 #
 # QUORUM CHOICE — read this before using the lab for anything
 # ---------------------------------------------------------------------------
@@ -79,15 +85,15 @@
 # Or copy it over and run locally:
 #   scp scripts/pve-lab.sh root@192.168.1.9:/root/ && ssh root@192.168.1.9 /root/pve-lab.sh up
 #
-#   pve-lab.sh up       preflight, create the bridge, create+start both VMs,
-#                        print manual-install instructions. Refuses (and
-#                        rolls back anything it already created this run) if
-#                        capacity/VMID checks fail partway.
-#   pve-lab.sh join      after both guests are manually installed and
-#                        reachable at their static IPs: form the corosync
-#                        cluster over SSH (prompts once for the root
-#                        password; needs `sshpass`). Best-effort — prints the
-#                        manual fallback on any failure.
+#   pve-lab.sh up       preflight, create the bridge, prepare a per-node
+#                        unattended-install ISO, create+start both VMs, then
+#                        block until both answer on :8006 (~5 min). Refuses
+#                        (and rolls back anything it already created this run)
+#                        if capacity/VMID checks fail partway. Requires
+#                        LAB_ROOT_PASSWORD.
+#   pve-lab.sh join      once both guests are up: form the corosync cluster
+#                        over SSH using key trust between the guests. Prints
+#                        the manual fallback on any failure.
 #   pve-lab.sh status    qm status for both VMIDs + bridge presence + best-
 #                        effort `pvecm status` if reachable.
 #   pve-lab.sh down      stop + destroy both VMIDs and remove the bridge.
@@ -101,6 +107,8 @@
 #   LAB_STORAGE=local-lvm LAB_ISO=local:iso/proxmox-ve_9.2-1.iso
 #   LAB_ISO_PATH=/var/lib/vz/template/iso/proxmox-ve_9.2-1.iso
 #   LAB_ISO_BYTES=1706178560   (the byte count the task card verified)
+#   LAB_STORAGE_ISO=local      (storage holding the prepared per-node ISOs)
+#   LAB_ROOT_PASSWORD=...      REQUIRED by `up`; no default, never in git
 #   LAB_CORES=2 LAB_MEM=4096 LAB_DISK_GB=32 LAB_CLUSTER_NAME=vnprox-lab
 #   LAB_ALLOW_HOST=1   skip the "must be running on pvecube" guard
 #
@@ -119,6 +127,13 @@ LAB_IP_2="${LAB_IP_2:-10.99.99.12}"
 LAB_PREFIX="${LAB_PREFIX:-24}"
 LAB_STORAGE="${LAB_STORAGE:-local-lvm}"
 LAB_ISO="${LAB_ISO:-local:iso/proxmox-ve_9.2-1.iso}"
+LAB_STORAGE_ISO="${LAB_STORAGE_ISO:-local}"
+# Required by `up`. Deliberately has no default: a lab root password baked
+# into a repo file is a credential in version control, and this one reaches a
+# PVE node. Pass it per-run. The lab has no uplink, so its exposure is the
+# host itself, not the network — but that is an argument for keeping it out of
+# git, not for inventing one here.
+LAB_ROOT_PASSWORD="${LAB_ROOT_PASSWORD:-}"
 LAB_ISO_PATH="${LAB_ISO_PATH:-/var/lib/vz/template/iso/proxmox-ve_9.2-1.iso}"
 LAB_ISO_BYTES="${LAB_ISO_BYTES:-1706178560}"
 LAB_CORES="${LAB_CORES:-2}"
@@ -146,6 +161,7 @@ require_cmd() {
 # touch anything that already existed before this run (e.g. a bridge left
 # over from a prior successful `up` that this run is reusing).
 _created_vmids=()
+_created_isos=()
 _created_bridge=0
 _rollback_armed=0
 
@@ -261,6 +277,75 @@ create_bridge() {
 }
 
 # --- VM creation ----------------------------------------------------------
+# --- unattended install -----------------------------------------------------
+# Bakes a per-node answer file into a copy of the stock ISO. Every field here
+# was validated by the host's own `validate-answer` before first use -- see the
+# header. Do not hand-edit the key names from memory; run validate-answer.
+prepare_isos() {
+	[ -n "$LAB_ROOT_PASSWORD" ] || die "LAB_ROOT_PASSWORD must be set for 'up' (no default, on purpose -- see config block)."
+
+	if ! command -v proxmox-auto-install-assistant >/dev/null 2>&1; then
+		log "installing proxmox-auto-install-assistant (from Proxmox's own repo)"
+		DEBIAN_FRONTEND=noninteractive apt-get install -y proxmox-auto-install-assistant >/dev/null \
+			|| die "could not install proxmox-auto-install-assistant; the unattended install needs it."
+	fi
+
+	mkdir -p /root/lab
+	local n name ip
+	for n in 1 2; do
+		eval "name=\$LAB_NAME_$n"; eval "ip=\$LAB_IP_$n"
+		cat > "/root/lab/answer-${n}.toml" <<EOF
+[global]
+keyboard = "en-us"
+country = "us"
+fqdn = "${name}.lab.local"
+mailto = "root@localhost"
+timezone = "UTC"
+root-password = "${LAB_ROOT_PASSWORD}"
+
+[network]
+source = "from-answer"
+cidr = "${ip}/${LAB_PREFIX}"
+gateway = "${LAB_HOST_IP}"
+dns = "${LAB_HOST_IP}"
+filter.ID_NET_NAME = "*"
+
+[disk-setup]
+filesystem = "ext4"
+disk-list = ["sda"]
+EOF
+		# The schema check is the whole reason this is automated rather than
+		# manual. If it fails, the answer file is wrong -- fix it here, do not
+		# work around it.
+		proxmox-auto-install-assistant validate-answer "/root/lab/answer-${n}.toml" \
+			|| die "answer file for ${name} failed validate-answer"
+
+		log "preparing unattended ISO for ${name}"
+		proxmox-auto-install-assistant prepare-iso "$LAB_ISO_PATH" \
+			--fetch-from iso \
+			--answer-file "/root/lab/answer-${n}.toml" \
+			--output "/var/lib/vz/template/iso/${name}-auto.iso" >/dev/null \
+			|| die "prepare-iso failed for ${name}"
+		_created_isos+=("/var/lib/vz/template/iso/${name}-auto.iso")
+	done
+}
+
+# Blocks until both nodes answer on the PVE API port, or gives up. The install
+# took ~5 minutes on the run this script was transcribed from.
+wait_for_install() {
+	local deadline=$(( SECONDS + 1800 )) up ip
+	log "waiting for both nodes to finish installing and answer on :8006 (up to 30m)"
+	while [ "$SECONDS" -lt "$deadline" ]; do
+		up=0
+		for ip in "$LAB_IP_1" "$LAB_IP_2"; do
+			timeout 3 bash -c "</dev/tcp/${ip}/8006" 2>/dev/null && up=$((up+1))
+		done
+		[ "$up" -eq 2 ] && { log "both nodes up"; return 0; }
+		sleep 30
+	done
+	die "timed out waiting for the lab nodes to install"
+}
+
 create_vm() {
 	local vmid="$1" name="$2"
 	log "creating $name (VMID $vmid): ${LAB_CORES} vCPU / ${LAB_MEM} MiB / ${LAB_DISK_GB} GiB on $LAB_STORAGE, net on $LAB_BRIDGE"
@@ -274,7 +359,7 @@ create_vm() {
 		--ostype l26 \
 		--scsihw virtio-scsi-pci \
 		--scsi0 "${LAB_STORAGE}:${LAB_DISK_GB}" \
-		--ide2 "${LAB_ISO},media=cdrom" \
+		--ide2 "${LAB_STORAGE_ISO}:iso/${name}-auto.iso,media=cdrom" \
 		--boot 'order=scsi0;ide2' \
 		--net0 "virtio,bridge=${LAB_BRIDGE}" \
 		--serial0 socket \
@@ -322,10 +407,12 @@ cmd_up() {
 	preflight_up
 	_rollback_armed=1
 	create_bridge
+	prepare_isos
 	create_vm "$LAB_VMID_1" "$LAB_NAME_1"
 	create_vm "$LAB_VMID_2" "$LAB_NAME_2"
 	_rollback_armed=0
-	print_install_instructions
+	wait_for_install
+	log "lab is installed. Next: '$(basename "$0") join' to form the cluster."
 }
 
 # --- join: best-effort cluster formation over SSH --------------------------
