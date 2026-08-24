@@ -3424,7 +3424,7 @@ export interface FlowRecord {
   dstRef?: string;
   ingressIfIndex?: number;
   egressIfIndex?: number;
-  source: "sflow" | "netflow5" | "netflow9" | "ipfix" | "conntrack";
+  source: "sflow" | "netflow5" | "netflow9" | "ipfix" | "conntrack" | "fixture";
   serviceClass?: ServiceClass;
 }
 

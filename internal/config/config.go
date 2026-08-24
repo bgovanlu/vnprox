@@ -779,11 +779,22 @@ type WebhooksConfig struct {
 }
 
 type FlowsConfig struct {
+	// DevFixtureDir, when non-empty, seeds flow_samples at startup from a
+	// static corpus of JSON fixture files in this directory (T-3706) —
+	// dev-only, mirroring [firewalllog]'s DevFixtureDir: production
+	// configs never set it, and a dev daemon has no real UDP exporters or
+	// host conntrack table to seed a historical corpus for the
+	// microsegmentation planner (internal/microseg) to synthesize a
+	// proposal from. Unlike DevFixtureDir's fwlog sibling, this does NOT
+	// replace the real ingestion path — [flows]' listeners/samplers stay
+	// exactly as configured; the fixture corpus is additive seed data
+	// only. See cmd/vnproxd/flows_fixture.go.
+	DevFixtureDir            string
+	MaxRows                  int64
 	SFlowPort                int
 	NetFlowPort              int
 	IPFIXPort                int
 	RetentionMinutes         int
-	MaxRows                  int64
 	HostSampleIntervalSec    int
 	SFlowEnabled             bool
 	NetFlowEnabled           bool
@@ -1105,17 +1116,20 @@ type rawWebhooks struct {
 }
 
 type rawFlows struct {
-	SFlowPort                int   `toml:"sflow_port"`
-	NetFlowPort              int   `toml:"netflow_port"`
-	IPFIXPort                int   `toml:"ipfix_port"`
-	RetentionMinutes         int   `toml:"retention_minutes"`
-	MaxRows                  int64 `toml:"max_rows"`
-	HostSampleIntervalSec    int   `toml:"host_sample_interval_sec"`
-	SFlowEnabled             bool  `toml:"sflow_enabled"`
-	NetFlowEnabled           bool  `toml:"netflow_enabled"`
-	IPFIXEnabled             bool  `toml:"ipfix_enabled"`
-	ConntrackSamplingEnabled bool  `toml:"conntrack_sampling_enabled"`
-	EBPFSamplingEnabled      bool  `toml:"ebpf_sampling_enabled"`
+	// DevFixtureDir leads: govet's fieldalignment wants the pointer-bearing
+	// field ahead of the scalars (T-3706 added it and tripped the check).
+	DevFixtureDir            string `toml:"dev_fixture_dir"`
+	MaxRows                  int64  `toml:"max_rows"`
+	SFlowPort                int    `toml:"sflow_port"`
+	NetFlowPort              int    `toml:"netflow_port"`
+	IPFIXPort                int    `toml:"ipfix_port"`
+	RetentionMinutes         int    `toml:"retention_minutes"`
+	HostSampleIntervalSec    int    `toml:"host_sample_interval_sec"`
+	SFlowEnabled             bool   `toml:"sflow_enabled"`
+	NetFlowEnabled           bool   `toml:"netflow_enabled"`
+	IPFIXEnabled             bool   `toml:"ipfix_enabled"`
+	ConntrackSamplingEnabled bool   `toml:"conntrack_sampling_enabled"`
+	EBPFSamplingEnabled      bool   `toml:"ebpf_sampling_enabled"`
 }
 
 type rawLatmesh struct {
@@ -1309,6 +1323,7 @@ func loadBytes(data []byte, path string, logger *slog.Logger) (*Config, error) {
 			ConntrackSamplingEnabled: raw.Flows.ConntrackSamplingEnabled,
 			EBPFSamplingEnabled:      raw.Flows.EBPFSamplingEnabled,
 			HostSampleIntervalSec:    firstNonZeroInt(raw.Flows.HostSampleIntervalSec, int(hostsample.DefaultHostSampleInterval/time.Second)),
+			DevFixtureDir:            raw.Flows.DevFixtureDir,
 		},
 		Latmesh: LatmeshConfig{
 			ProbeIntervalSec: firstNonZeroInt(raw.Latmesh.ProbeIntervalSec, latmesh.DefaultProbeIntervalSec),

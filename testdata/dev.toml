@@ -84,6 +84,28 @@ lldp_interval = "30s"
 [firewalllog]
 dev_fixture_dir = "testdata/firewall-logs"
 
+# T-3706: seeds flow_samples at startup with app01's (guest:pve1:200) NAS-
+# shaped flow history (testdata/flow-fixtures/app01.json), so the
+# microsegmentation planner (internal/microseg) has something to learn from
+# and dry-run against on a dev daemon with no real UDP flow exporter or host
+# conntrack table. Additive only — does not disable/replace the real
+# listeners below, all of which stay off (opt-in) by default here.
+# Production configs never set dev_fixture_dir.
+#
+# retention_minutes is raised for the same reason: flow_samples' default
+# retention (internal/flow.DefaultRetentionMinutes, 60) prunes ANYTHING
+# older than an hour on the very next once-a-minute prune tick
+# (internal/flow.DefaultPruneInterval) — including this fixture's oldest
+# seeded record, ~16 days back, deliberately, since
+# cmd/vnproxd/microsegwire.go's windows() reaches that far for the training
+# window. Without this override the fixture is pruned before the first e2e
+# assertion ever runs it. 30000 minutes (~20.8 days) covers the fixture's
+# oldest record with margin; production defaults are unaffected (this whole
+# section is dev-only).
+[flows]
+dev_fixture_dir = "testdata/flow-fixtures"
+retention_minutes = 30000
+
 # T-1001: the Prometheus scrape token. Production default is
 # /etc/vnprox/keys/metrics.key (root-only, alongside the session key); this
 # dev-only override keeps `make dev`/the runDaemon integration tests working

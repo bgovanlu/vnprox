@@ -53,6 +53,17 @@ func setupFlows(cfg *config.Config, db *store.DB, graph *inventory.Graph, ws flo
 	flowRepo := store.NewFlowSampleRepo(db)
 	resolver := flow.NewGraphResolver()
 
+	// T-3706: seed flow_samples from a static dev fixture corpus before
+	// anything else touches it, so it is present for the very first
+	// microseg/baseline/flows read this daemon serves. See
+	// flows_fixture.go's doc comment for why this is additive, not a
+	// replacement for the real listeners/samplers below.
+	if cfg.Flows.DevFixtureDir != "" {
+		if _, err := loadFlowFixtures(context.Background(), flowRepo, cfg.Flows.DevFixtureDir, time.Now(), logger); err != nil {
+			logger.Error("flows: failed to seed dev fixture corpus; flow_samples starts empty", "dir", cfg.Flows.DevFixtureDir, "error", err)
+		}
+	}
+
 	svc := flow.New(flow.Config{
 		Store:            flowRepo,
 		Resolver:         resolver,

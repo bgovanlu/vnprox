@@ -152,6 +152,11 @@ func TestDecodeSFlow_Golden(t *testing.T) {
 			At: 1700000040, Node: "pve1", SrcIP: "10.1.1.5", DstIP: "10.1.1.50",
 			SrcPort: 34567, DstPort: 443, Proto: 6, VLAN: 200,
 			IngressIfIndex: 1, EgressIfIndex: 2, Source: SourceSFlow,
+			// T-3706: sflow5_basic.bin's sampled_header carries
+			// frame_length=48 (0x30) — see decodeSFlowRawPacketHeader's doc
+			// comment for why this decodes to Bytes=48, Packets=1 rather
+			// than the 0/0 this fixture used to (silently) assert.
+			Bytes: 48, Packets: 1,
 		},
 	}
 	assertRecordsEqual(t, records, want)

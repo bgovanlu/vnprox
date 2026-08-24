@@ -688,18 +688,68 @@ from; and pvemock does not model an `ifreload` outage at all):
       immediately follow the fixed header (wrong if an extension header is present). Confirm real
       sFlow-sampled IPv6 traffic's extension-header prevalence before treating this as
       production-accurate for IPv6-heavy networks.
-- [ ] **Real sFlow/NetFlow/IPFIX exporter interop.** Every `testdata/flows/*.bin` fixture is
-      hand-built directly to the published wire-format specs (sflow.org's sFlow v5 spec, Cisco's
-      NetFlow v9 spec, RFC 7011), never captured from a live exporter (no lab hardware/switch/
-      router available in this environment — the same "Real PVE access" gap CLAUDE.md documents,
-      extended here to flow exporters generally). Validate against at least one real exporter per
-      protocol (a physical switch's sFlow agent, a Cisco/Juniper NetFlow export, and pmacct/
-      nProbe/softflowd for IPFIX) before considering any of the three decoders field-proven.
+- [x] **Real sFlow/NetFlow v5 wire delivery over a real network — PARTIALLY CLOSED, `T-3706`,
+      2026-08-24.** Still no physical switch/router/OVS available (the disposable nested lab has
+      no real NICs either — an unchanged limit), so this couldn't be a genuine exporter's own
+      agent. What it CAN close, and does: whether vnproxd's listeners correctly bind, receive, and
+      decode real UDP datagrams delivered over a real (if nested) L2/L3 path end-to-end into
+      `flow_samples`, under the exact hardened `vnprox.service` systemd unit — none of which a
+      loopback/in-process unit test exercises. Hand-built (independently of this package's own
+      code — from the published wire specs directly, sflow.org's sFlow v5 spec and the long-stable
+      NetFlow v5 fixed format, not by reusing `testdata/flows/*.bin` or any decoder-adjacent
+      helper) one sFlow v5 datagram and one NetFlow v5 datagram, sent from `pve-lab-2` to
+      `pve-lab-1`'s real listeners over the lab's `vmbr0`. Both decoded correctly and landed in
+      `flow_samples` with every field intact (`planning/reports/evidence` doesn't yet have a
+      transcript filed — see the T-3706 completion report for the full field-by-field capture).
+      **Found and fixed in the process:** the sFlow decoder (`internal/flow/sflow.go`) was
+      discarding `frame_length` — every sFlow-sourced record was silently stored as
+      `bytes=0, packets=0` regardless of what the exporter reported, undetected because the
+      package's own `decode_test.go` golden fixture asserted a `want` Record that also never set
+      Bytes/Packets, the same self-authored-fixture-agrees-with-itself failure shape as the
+      SDN-zone-status defect. Fixed to `Bytes = frame_length, Packets = 1` (the literal per-sample
+      reading — deliberately not extrapolated by `sampling_rate`, see the fix's own doc comment).
+      NetFlow v5 needed no fix — `dOctets`/`dPkts` were already read into Bytes/Packets correctly.
+      **IPFIX: listener confirmed to bind and log correctly on the lab; no live wire packet was
+      sent** (template-based, more setup than the remaining time in this pass allowed) — its own
+      `Bytes`/`Packets` wiring was code-reviewed instead (shares `template.go`'s field-mapping path
+      with NetFlow v9, which does correctly populate both from `octetDeltaCount`/`packetDeltaCount`
+      — the sFlow bug above was specific to sFlow's own non-template raw-packet-header path, not
+      present in the shared template code IPFIX/NetFlow v9 use), but this is a code-review finding,
+      not an observed one, and is flagged as such rather than claimed proven. **Still open:**
+      genuine third-party exporter interop for all three protocols (a real switch's sFlow agent, a
+      Cisco/Juniper NetFlow export, pmacct/nProbe/softflowd for IPFIX) — none of that changed here,
+      and NetFlow v9's own template-refresh/expiry behavior under a real exporter's cadence is
+      still untested.
 
 ## Host-local flow sampling (T-1004)
 
+- [x] **`/proc/net/nf_conntrack` does not exist on PVE 9.2 — CLOSED (dead-negative), `T-3706`,
+      2026-08-24.** Enabled `conntrack_sampling_enabled` on the disposable nested lab
+      (`pve-lab-1`, PVE 9.2.0), generated real inter-node traffic (ping + curl to pve-lab-2),
+      and watched `journalctl -u vnprox`: `hostsample: conntrack poll failed … open
+      /proc/net/nf_conntrack: no such file or directory`, repeating every `host_sample_interval_sec`
+      (10s) with zero successful polls. Checked the SAME path against `pvecube` (read-only, PVE
+      9.2.14) for comparison: also absent, despite `nf_conntrack`/`nf_defrag_ipv4`/`nf_defrag_ipv6`
+      all loaded (`lsmod`) and every `/proc/sys/net/netfilter/nf_conntrack_*` sysctl present — i.e.
+      the conntrack subsystem is fully active, but this kernel build has
+      `CONFIG_NF_CONNTRACK_PROCFS` compiled out (a modern-kernel-wide trend: netlink/the
+      `conntrack` CLI, both present and working on this node, are the supported interface now).
+      This is not a format/layout question the checklist item below anticipated — it is total:
+      **every poll fails, on every PVE 9.2 node checked, always.** `internal/host/conntrack.go`
+      (T-1305's live conntrack/NAT explorer) reads the exact same path with the exact same "present
+      whenever nf_conntrack is loaded" assumption in its own doc comment and is equally affected,
+      though that package is out of T-3706's scope to fix. Filing this as the closure of the item
+      below rather than leaving both open: the format question is moot when the file never exists.
+      A real fix needs either shelling out to `conntrack -L` (parsing its own distinct text format)
+      or a netlink-based reader (`nfnetlink_conntrack`) — both bigger than a config toggle, and
+      neither attempted here (scope: T-3706 is the flow stack's dev-fixture/lab-enablement card,
+      not a rewrite of two packages' conntrack source). `ebpf_sampling_enabled`'s probe-and-log
+      fallback path is unaffected (it never reads this file) but per its own doc comment does not
+      attach a real per-packet BPF program yet either, so `conntrack_sampling_enabled` remains the
+      only host-local sampler with anywhere near a working implementation, and it does not work.
 - [ ] **Exact `/proc/net/nf_conntrack` table format across the target kernel range (PVE 8.2+/
-      9.x, docs/architecture.md D9).** `internal/flow/hostsample/conntrack.go`'s parser is built
+      9.x, docs/architecture.md D9) — MOOT per the CLOSED item directly above; kept for the
+      record.** `internal/flow/hostsample/conntrack.go`'s parser is built
       against the documented/observed field layout (family, family name/number, proto name/
       number, timeout, an optional tcp-only state word, then unordered `key=value` tokens twice —
       original then reply direction — plus bare flag tokens like `[ASSURED]`/`[UNREPLIED]`), and

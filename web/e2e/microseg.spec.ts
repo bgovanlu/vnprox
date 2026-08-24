@@ -2,18 +2,21 @@
 // review/dry-run UX, against the real stack (pvemock three-node-vlan
 // fixture -> vnproxd -> the production SPA build).
 //
-// FIXTURE DEPENDENCY (needs dev-host wiring — see T-1603 report): the full
-// propose -> dry-run -> stage -> apply happy path (AC4) and the held-out
-// negative case (AC5) both require the daemon's `flow_samples` to be seeded
-// with T-1602's NAS-guest flow-baseline corpus (internal/baseline/testdata)
-// for a guest that also exists in the three-node-vlan inventory. There is no
-// `[flows]` dev-fixture loader today (unlike `[firewalllog].dev_fixture_dir`,
-// which fwlog-analytics.spec.ts relies on), so those two tests are written
-// against the intended contract but are SKIPPED until that seeding lands.
-// The first test below needs no seeded flows and runs today: it proves the
-// planner is reachable from the guest firewall inspector, is accessible
-// (axe: zero serious/critical), and that a guest with no observed flows
-// degrades honestly rather than erroring.
+// FIXTURE DEPENDENCY (T-3706, resolved): the full propose -> dry-run ->
+// stage -> apply happy path (AC4) and the held-out negative case (AC5) both
+// require the daemon's `flow_samples` to be seeded with a flow-baseline
+// corpus for a guest that also exists in the three-node-vlan inventory.
+// `[flows] dev_fixture_dir` (cmd/vnproxd/flows_fixture.go, mirroring
+// `[firewalllog].dev_fixture_dir`) now does exactly that — testdata/dev.toml
+// points it at testdata/flow-fixtures/app01.json, which seeds
+// guest:pve1:200 (app01, the one guest three-node-vlan.yaml defines) with a
+// 12-day-training + held-out-day corpus in the same shape as
+// internal/microseg's own nasCorpus()/nasHeldout() test helpers, verified
+// equivalent in cmd/vnproxd's TestFlowFixture_AppFixtureProducesGoldenNASPolicy.
+// Both tests below now run. The first test needs no seeded flows and always
+// ran: it proves the planner is reachable from the guest firewall inspector,
+// is accessible (axe: zero serious/critical), and that a guest with no
+// observed flows degrades honestly rather than erroring.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -21,7 +24,24 @@ import { expect, test, type Page } from "@playwright/test";
  * Overridable so the dev-host fixture can point at whichever guest carries
  * the NAS corpus once `[flows]` seeding exists. */
 const NAS_GUEST_REF = process.env.MICROSEG_NAS_GUEST ?? "guest:pve1:200";
-const EXPECTED_RULE_COUNT = Number(process.env.MICROSEG_NAS_RULES ?? "6");
+// T-3706: 3 (2 inbound ACCEPT + 1 trailing inbound DROP) — the fixture
+// corpus (testdata/flow-fixtures/app01.json) is deliberately INBOUND ONLY.
+// three-node-vlan.yaml's cluster firewall sets `policy_out = ACCEPT`, so an
+// outbound service in the training corpus would have its ACCEPT rule
+// suppressed by Propose's existing-policy dedup (internal/microseg/
+// microseg.go's buildRules — the documented "don't duplicate a rule PVE
+// already effectively has" behaviour) as already covered, while the "out"
+// direction would still be governed and so would still get a trailing DROP.
+// internal/microseg's DryRun evaluates a proposal as a STANDALONE end-state
+// policy (T-1602's disclosed "Standalone-policy evaluation" boundary, not
+// stacked with cluster/existing rules), so that trailing DROP-with-no-ACCEPT
+// would reclassify the very outbound training traffic that earned the
+// suppression as would-block — contradicting AC4's "dry-run the training
+// corpus against its own proposal, expect zero would-block" happy path.
+// `policy_in = DROP`, so the inbound direction never hits this: an inbound
+// ACCEPT is never "already covered", so it is never suppressed. See the
+// fixture file's own `_comment` for the full trace.
+const EXPECTED_RULE_COUNT = Number(process.env.MICROSEG_NAS_RULES ?? "3");
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");
@@ -72,7 +92,7 @@ test("microseg planner is reachable from the guest firewall inspector and access
 // AC4: propose returns the golden N-rule policy, dry-run shows zero
 // would-have-blocked, staging opens the drawer with exactly those fw.* ops,
 // apply succeeds. Requires the seeded NAS corpus (see file header).
-test.skip("AC4: propose -> dry-run (zero would-block) -> stage -> drawer -> apply", async ({ page }) => {
+test("AC4: propose -> dry-run (zero would-block) -> stage -> drawer -> apply", async ({ page }) => {
   await logIn(page);
   await openGuestFirewall(page);
   await page.getByLabel("Select guest").selectOption(NAS_GUEST_REF);
@@ -80,7 +100,8 @@ test.skip("AC4: propose -> dry-run (zero would-block) -> stage -> drawer -> appl
   await page.getByRole("button", { name: "Propose policy" }).click();
   const summary = page.getByTestId("coverage-summary");
   await expect(summary).toBeVisible();
-  // Golden rule count from T-1602's NAS-guest fixture.
+  // Rule count against the real cluster's existing policy — see
+  // EXPECTED_RULE_COUNT's doc comment above.
   await expect(page.getByRole("table", { name: "Proposed rules" }).getByRole("row")).toHaveCount(
     EXPECTED_RULE_COUNT + 1, // + header row
   );
@@ -106,7 +127,7 @@ test.skip("AC4: propose -> dry-run (zero would-block) -> stage -> drawer -> appl
 // AC5: a dry-run against a held-out corpus with a nonzero would-block count
 // renders those flows distinctly (visually flagged) before staging.
 // Requires the seeded NAS corpus with a held-out day (see file header).
-test.skip("AC5: held-out dry-run with nonzero would-block flags those flows distinctly", async ({ page }) => {
+test("AC5: held-out dry-run with nonzero would-block flags those flows distinctly", async ({ page }) => {
   await logIn(page);
   await openGuestFirewall(page);
   await page.getByLabel("Select guest").selectOption(NAS_GUEST_REF);

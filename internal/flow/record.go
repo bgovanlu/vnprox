@@ -13,6 +13,15 @@ const (
 	SourceNetFlow9  Source = "netflow9"
 	SourceIPFIX     Source = "ipfix"
 	SourceConntrack Source = "conntrack"
+	// SourceFixture (T-3706) tags a record seeded by [flows] dev_fixture_dir
+	// (cmd/vnproxd/flows_fixture.go) — static test data for a dev daemon
+	// with no real UDP exporter or host conntrack table, never emitted by
+	// any of this package's decoders or internal/flow/hostsample's
+	// samplers. Kept distinct from SourceConntrack deliberately: the
+	// SDN-zone-status lesson (CLAUDE.md's "Real PVE access" section) is
+	// that a fixture must never be indistinguishable from a real
+	// observation, in the flow explorer or anywhere else.
+	SourceFixture Source = "fixture"
 )
 
 // Record is the normalized shape every decoder in this package produces

@@ -231,12 +231,32 @@ func decodeSFlowFlowRecord(sub *breader, node string, now int64, input, output u
 // standard raw-packet flow_record payload): protocol/frame_length/stripped/
 // header_length followed by exactly header_length raw bytes — the captured
 // Ethernet frame prefix this function parses with parseEthernetHeader.
+//
+// frame_length (T-3706, fixed — found by decoding a real, wire-crafted sFlow
+// v5 datagram against a live listener on the disposable nested lab and
+// noticing every resulting flow_samples row showed bytes=0/packets=0: this
+// field used to be skip()ped entirely, so it was silently discarded no
+// matter what the exporter reported, and the package's own hand-built
+// decode_test.go golden fixture never questioned it because its `want`
+// Record simply never set Bytes/Packets either — a self-authored fixture
+// checking a decoder against its own omission, the exact failure mode
+// CLAUDE.md's SDN-zone-status lesson warns about). frame_length is the
+// exporter's own reported length of the ONE sampled packet this record
+// represents, so Bytes = frame_length, Packets = 1 is the literal, honest
+// reading — deliberately NOT sampling_rate*frame_length: sFlow's own spec
+// leaves "populate the sampling rate" to the exporter's discretion, and
+// this package does not carry a per-record sampling-rate field for a caller
+// to later extrapolate from, so inventing an extrapolation policy here
+// would silently misrepresent an exact field as an estimate. See
+// docs/api.md's Flows section for how this differs from NetFlow/IPFIX's
+// exporter-cumulative Bytes/Packets.
 func decodeSFlowRawPacketHeader(data *breader, node string, now int64, input, output uint32) (Record, bool) {
 	protocol, ok := data.u32()
 	if !ok {
 		return Record{}, false
 	}
-	if !data.skip(4) { // frame_length
+	frameLength, ok := data.u32()
+	if !ok {
 		return Record{}, false
 	}
 	if !data.skip(4) { // stripped
@@ -255,7 +275,11 @@ func decodeSFlowRawPacketHeader(data *breader, node string, now int64, input, ou
 		return Record{}, false // non-Ethernet captured header: not supported
 	}
 
-	rec := Record{At: now, Node: node, Source: SourceSFlow, IngressIfIndex: int(input), EgressIfIndex: int(output)}
+	rec := Record{
+		At: now, Node: node, Source: SourceSFlow,
+		IngressIfIndex: int(input), EgressIfIndex: int(output),
+		Bytes: int64(frameLength), Packets: 1,
+	}
 	if !parseEthernetHeader(headerBytes, &rec) {
 		return Record{}, false
 	}
