@@ -269,6 +269,87 @@ Three properties are not negotiable, and each has a test that makes it fire:
 every field present in one and absent in the other; `TestFixtureCassetteDrift` runs it and logs
 the outcome either way.
 
+## Validating against real PVE (T-3704)
+
+`internal/pvemock` fixtures are a guess until checked against a real node (see record/replay,
+above). There are two real things to check against, and they answer different questions —
+picking the wrong one either risks the user's live cluster or wastes an afternoon building a lab
+for something the real cluster already answers.
+
+### `vnprox-dev` — the real cluster, for almost everything
+
+pvecube (192.168.1.9, root SSH) and pve001 (192.168.1.7, **no SSH credentials, no authorisation to
+modify it**) have been a quorate two-node corosync cluster named `vnprox-dev` since 2026-08-18.
+This was not known for five days after it happened — `CLAUDE.md` said "one real node, no cluster"
+the whole time, and an audit filed 156 validation items and classified 17 features "unprovable" on
+that stale premise. See `planning/reports/evidence/pve-9.2.4-cluster-vnprox-dev.txt` for the
+`pvecm status` transcript that corrected it, and `CLAUDE.md`'s "Real PVE access" section for the
+rule that follows from it: **if a limit here blocks you, verify it on the node before you accept
+it.**
+
+Use `vnprox-dev` directly, read-only, for: cross-node validation, peer round-trips and fan-out,
+drift between nodes, mixed-version peering (pve001 runs an older vnproxd than pvecube — this is
+live, not simulated), and per-node API divergence (the two nodes disagreed on `/nodes/{node}/sdn/zones`
+the first time anyone checked — see the transcript above). `pvesh get /nodes/pve001/...` and
+`pvesh get /cluster/resources` reach pve001 through pvecube's own API; that is enough for most
+validation without ever touching pve001 directly.
+
+**It is the user's live cluster, and pve001 is not ours to change.** Two rules, not one each:
+- **Read-only unless a task explicitly says otherwise.** A mutating `pvesh` call against pvecube is
+  a change to real network config, outside the change engine.
+- **Never anything on pve001 requiring root.** We have no SSH credentials for it and no
+  authorisation to modify it — it is observable through pvecube's `pvesh`, and reachable as a
+  vnprox peer, and that is the extent of it.
+
+### The disposable lab — only for what `vnprox-dev` must never be used for
+
+`scripts/pve-lab.sh` builds and tears down two nested PVE 9.2 guests on pvecube (`pve-lab-1`,
+`pve-lab-2` — 2 vCPU / 4 GiB / 32 GiB each, clustered **with each other**, on an isolated bridge
+with no physical uplink), for the destructive subset that cannot be run against `vnprox-dev`:
+partition behaviour, quorum loss, killing a node mid-rollback, deliberately corrupting drift. It
+is a fixture, not an environment — teardown is as scripted as build and safe to run twice.
+
+```
+scripts/pve-lab.sh up       # preflight (capacity, VMIDs, ISO checksum), create bridge + both VMs
+scripts/pve-lab.sh join     # form the corosync cluster over SSH once both are installed (best-effort)
+scripts/pve-lab.sh status   # qm status for both VMIDs + bridge presence
+scripts/pve-lab.sh down     # stop + destroy both VMIDs, remove the bridge — idempotent
+```
+
+Run it **on pvecube** (it shells out to `qm`/`pvesh`/`pvesm`), using the
+`proxmox-ve_9.2-1.iso` already staged at `/var/lib/vz/template/iso/` — the script checks its byte
+count before booting it and refuses to re-download. See the script's own header for the full
+option list (VMIDs, bridge name, addressing, sizing) and for why the OS install step is left
+manual rather than scripted with `proxmox-auto-install-assistant`: that tool isn't installed on
+pvecube, and guessing its answer-file schema from documentation instead of the node is exactly the
+mistake `CLAUDE.md` already warns about (Phase 31's SDN Fabrics defect).
+
+**⚠️ `scripts/pve-lab.sh` has been written and reviewed but never executed.** Its preflight checks
+were validated against real read-only output from pvecube (`pvesm status`, `free -m`,
+`/etc/network/interfaces`, `pvesh get /cluster/resources`), but no code path that creates, joins,
+or destroys a guest has run for real. Treat the first real run as a test of the script, not a
+formality.
+
+**The quorum choice, and why it matters.** A two-node corosync cluster has no quorum tie-break
+without either `quorum { two_node: 1 }` or a qdevice. The script sets **neither** — it deliberately
+mirrors `vnprox-dev`'s own `corosync.conf`, which also has no `two_node` line. Consequence: losing
+either lab node drops the *survivor* out of quorum too, the same as it would on `vnprox-dev` today.
+That means the lab can demonstrate "both sides lose quorum on partition" — but **cannot**
+demonstrate a lone survivor continuing with `two_node: 1`, which is a different, common two-node
+recipe this lab does not use. If a future task needs that scenario, it's a one-line
+`corosync.conf` edit after `join`; the script's header spells out exactly which line.
+
+**What the lab still cannot answer, even once built:**
+- **Three-or-more-node quorum** (a survivor holding quorum against two failed peers, or any
+  behaviour that needs a majority of more than two votes) — two nodes cannot demonstrate it.
+- **Physical behaviour** — nested guests have no real NICs: no bond failover, no LACP against a
+  real switch, no media type beyond `PORT_TP`.
+
+File anything blocked by one of those two — or by needing root on pve001 — in
+`planning/reports/needs-hardware-validation.md` with the specific reason, not a bare "needs
+hardware": that bare phrasing is what let 156 items sit for months against a limit (no second
+node) that stopped being true on 2026-08-18 and wasn't checked for five days.
+
 ## Go standards
 
 - `golangci-lint` config in repo; no lint suppressions without a comment explaining why.
