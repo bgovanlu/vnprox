@@ -106,8 +106,15 @@ Wave 1 and are unchanged here.
   debt-sweep-item-8 PVE-token-copy check that had never been exercised before. Evidence:
   `planning/reports/evidence/T-2410-cluster-ssh-pass-2026-08-23.log` (1,026 lines, full
   `install.sh` transcript) and `planning/reports/evidence/T-2410-cluster-ssh-attempt-2026-08-23.txt`
-  (the failed attempts and root cause). **One green run, not the three AC3 asks for — that stays a
-  named follow-up, not silently claimed.**
+  (the failed attempts and root cause).
+
+  **AC3 closed later the same day.** Two further runs were executed back to back with no
+  intervening change, giving **three consecutive green runs**, which is what AC3 asks for:
+  `T-2410-cluster-ssh-run2-2026-08-23.log` and `T-2410-cluster-ssh-run3-2026-08-23.log`, both
+  ending `ALL CHECKS PASSED` at 863 lines each, ~10 minutes apart. The earlier five failures are
+  worth keeping on record precisely because they were environmental (concurrent `make build`s
+  sharing one `web/node_modules`, plus a `PATH` gap) — the job itself is not flaky, and the three
+  clean runs, executed serially, are the evidence for that rather than an assertion of it.
 
 **Stay `Shipped, unproven`, restated precisely (no longer just "needs hardware"):**
 - **T-1906** (peer TLS trust) — most of its open items closed this session (real cert-chain shape
