@@ -1,0 +1,111 @@
+name: Publish registry (sigstore)
+
+# T-3709: the keyless-signing half of the hosted blueprint/plugin registry.
+# GitHub Pages already builds `main`'s root on every push (legacy Pages
+# build, no workflow of its own — see planning/reports/evidence/
+# github-native-hosting-2026-08-24.txt), so a signed static tree committed
+# to this repository IS the published registry: there is no server to
+# operate, matching docs/hub-registry.md's "nothing to operate" posture.
+# This workflow's only job is the keyless signature — it does NOT build
+# catalog content. Indexing a submission (`vnproxctl hub index`, run by a
+# human reviewer — docs/hub-registry.md's "Publishing: the process") is what
+# produces registry/index.json and the registry/artifacts/ tree, as an
+# ordinary reviewed commit. This workflow then signs whatever
+# registry/index.json that commit produced and publishes the resulting
+# bundle alongside it.
+#
+# STATUS (2026-08-24): correct as written, NOT yet exercised. GitHub
+# Actions has run no non-Pages workflow since 2026-08-13 (billing —
+# docs/development.md's CI section). A push to registry/index.json will not
+# trigger this workflow, and workflow_dispatch will not run, until Actions
+# is restored. A green check on this file is not evidence it has produced a
+# real signature; see the T-3709 task report for exactly what remains
+# unverified until it runs.
+#
+# The certificate identity this workflow's signing certificate carries
+# (once it does run) is:
+#   issuer:  https://token.actions.githubusercontent.com
+#   subject: https://github.com/<owner>/<repo>/.github/workflows/publish-registry.yml@refs/heads/main
+# — the exact two values an operator's `[hub] sigstore_issuer` /
+# `sigstore_identity` must pin (internal/hubreg's sigstore.go,
+# docs/hub-registry.md's "Sigstore-signed registries" section). Signing from
+# any other workflow file, branch, or repository fork produces a DIFFERENT
+# certificate subject and is refused by a correctly configured installation
+# — that refusal is the point of pinning an exact identity rather than "any
+# GitHub Actions run."
+#
+# cosign (Sigstore's own CLI) does the signing; nothing here re-implements
+# the Fulcio/Rekor protocol. `cosign sign-blob --bundle` writes exactly the
+# sigstore-go bundle JSON shape internal/hubreg/sigstore.go parses
+# (SigstoreBundleName, "index.json.sigstore.json").
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "registry/index.json"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # commit the signed bundle back
+  id-token: write # Sigstore keyless OIDC — the reason this workflow exists
+
+concurrency:
+  group: publish-registry
+  cancel-in-progress: false
+
+env:
+  COSIGN_VERSION: "v2.4.1"
+
+jobs:
+  sign-and-publish:
+    # Guard against a fork's workflow_dispatch minting a certificate whose
+    # subject looks legitimate to a careless copy-paste of this file, but is
+    # never the identity an operator actually pins (that identity names
+    # THIS repository's own workflow ref explicitly).
+    if: github.repository == 'bgovanlu/vnprox'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+
+      - name: Require registry/index.json to exist
+        run: |
+          if [ ! -f registry/index.json ]; then
+            echo "::error::registry/index.json is missing — nothing to sign. This workflow signs an index vnproxctl hub index already produced; it does not build one." >&2
+            exit 1
+          fi
+
+      - name: Sign the registry index (keyless)
+        working-directory: registry
+        run: |
+          cosign sign-blob \
+            --yes \
+            --bundle index.json.sigstore.json \
+            index.json
+
+      - name: Verify the bundle this run just produced
+        working-directory: registry
+        run: |
+          cosign verify-blob \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/publish-registry.yml@refs/heads/main" \
+            --bundle index.json.sigstore.json \
+            index.json
+
+      - name: Commit the signed bundle
+        run: |
+          git config user.name "vnprox-registry-bot"
+          git config user.email "noreply@users.noreply.github.com"
+          git add registry/index.json.sigstore.json
+          if git diff --cached --quiet; then
+            echo "index.json.sigstore.json unchanged (re-run over identical content) — nothing to commit"
+            exit 0
+          fi
+          git commit -m "registry: sign index.json (keyless, run ${{ github.run_id }})"
+          git push

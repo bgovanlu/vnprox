@@ -367,12 +367,55 @@ type HAConfig struct {
 // own. On, the daemon warns at startup (the [peer] tls_trust precedent) and
 // the existing explicit-trust flow applies. It has no effect whatsoever on
 // signed artifacts: signature verification is never optional.
+//
+// SigMode (T-3709) is `sig_mode`: which index-trust scheme is in force —
+// "ed25519" (the default, IndexSigners above) or "sigstore" (full
+// sigstore-go verification: Fulcio certificate chain, Rekor transparency-log
+// inclusion, and certificate identity matching, over a sibling
+// `index.json.sigstore.json` bundle — internal/hubreg's sigstore.go /
+// gate.SigstoreGate). This is deliberately explicit config, never inferred
+// from what a served index looks like: cmd/vnproxd/hubinstall.go wires
+// EXACTLY ONE of hubreg.Gate or hubreg.SigstoreGate onto the client
+// depending on this field, so a compromised or misconfigured registry
+// cannot downgrade a Sigstore-pinned installation to Ed25519 (or the
+// reverse) by serving a different index shape — there is no code path that
+// would even consider the other scheme's document trustworthy. An empty
+// SigMode is "ed25519" for backward compatibility with every config written
+// before T-3709.
+//
+// The Sigstore* fields are the certificate identity a Sigstore-signed index
+// must carry (SigstoreIssuer/SigstoreIssuerRegexp: the OIDC issuer;
+// SigstoreSAN/SigstoreSANRegexp: the certificate's subject alternative
+// name, typically a GitHub Actions workflow ref) — validate() requires at
+// least one issuer form and one SAN form when SigMode is "sigstore", the
+// same "an unwritten trust anchor is not a trust decision" reasoning
+// hubreg.NewSigstoreVerifier itself enforces a second time. SigstoreTrustedRootFile
+// optionally pins a local copy of the Fulcio/Rekor/CT trust roots (the
+// sigstore-go `root.NewTrustedRootFromPath` shape) instead of fetching the
+// public-good instance's current roots live via TUF on every startup
+// (root.FetchTrustedRoot) — operators are entitled to know Sigstore verification
+// depends on that third-party infrastructure either way (docs/security.md).
+//
+//nolint:govet // fieldalignment: config value read once at startup, field order is documentation order.
 type HubConfig struct {
-	RegistryURL   string
-	VettedSigners []string
-	IndexSigners  []string
-	TrustUnsigned bool
+	RegistryURL             string
+	SigMode                 string
+	SigstoreIssuer          string
+	SigstoreIssuerRegexp    string
+	SigstoreSAN             string
+	SigstoreSANRegexp       string
+	SigstoreTrustedRootFile string
+	VettedSigners           []string
+	IndexSigners            []string
+	TrustUnsigned           bool
 }
+
+// HubSigModeEd25519 and HubSigModeSigstore are the only two values
+// [hub] sig_mode may take (an empty value is treated as HubSigModeEd25519).
+const (
+	HubSigModeEd25519  = "ed25519"
+	HubSigModeSigstore = "sigstore"
+)
 
 // GitSyncConfig is the [gitsync] section (T-2701): a git repository as the
 // source of *intent* for the declarative cluster network spec.
@@ -1104,10 +1147,16 @@ type rawBlueprint struct {
 }
 
 type rawHub struct {
-	RegistryURL   string   `toml:"registry_url"`
-	VettedSigners []string `toml:"vetted_signers"`
-	IndexSigners  []string `toml:"index_signers"`
-	TrustUnsigned bool     `toml:"trust_unsigned"`
+	RegistryURL             string   `toml:"registry_url"`
+	SigMode                 string   `toml:"sig_mode"`
+	SigstoreIssuer          string   `toml:"sigstore_issuer"`
+	SigstoreIssuerRegexp    string   `toml:"sigstore_issuer_regexp"`
+	SigstoreSAN             string   `toml:"sigstore_identity"`
+	SigstoreSANRegexp       string   `toml:"sigstore_identity_regexp"`
+	SigstoreTrustedRootFile string   `toml:"sigstore_trusted_root_file"`
+	VettedSigners           []string `toml:"vetted_signers"`
+	IndexSigners            []string `toml:"index_signers"`
+	TrustUnsigned           bool     `toml:"trust_unsigned"`
 }
 
 type rawWebhooks struct {
@@ -1301,10 +1350,16 @@ func loadBytes(data []byte, path string, logger *slog.Logger) (*Config, error) {
 			TrustedSignersDir: firstNonEmpty(raw.Blueprint.TrustedSignersDir, DefaultBlueprintTrustedSignersDir),
 		},
 		Hub: HubConfig{
-			RegistryURL:   raw.Hub.RegistryURL,
-			VettedSigners: raw.Hub.VettedSigners,
-			IndexSigners:  raw.Hub.IndexSigners,
-			TrustUnsigned: raw.Hub.TrustUnsigned,
+			RegistryURL:             raw.Hub.RegistryURL,
+			SigMode:                 raw.Hub.SigMode,
+			SigstoreIssuer:          raw.Hub.SigstoreIssuer,
+			SigstoreIssuerRegexp:    raw.Hub.SigstoreIssuerRegexp,
+			SigstoreSAN:             raw.Hub.SigstoreSAN,
+			SigstoreSANRegexp:       raw.Hub.SigstoreSANRegexp,
+			SigstoreTrustedRootFile: raw.Hub.SigstoreTrustedRootFile,
+			VettedSigners:           raw.Hub.VettedSigners,
+			IndexSigners:            raw.Hub.IndexSigners,
+			TrustUnsigned:           raw.Hub.TrustUnsigned,
 		},
 		Webhooks: WebhooksConfig{
 			AllowPrivateTargets:  raw.Webhooks.AllowPrivateTargets,
@@ -1515,6 +1570,42 @@ func (c *Config) validate() error {
 		return err
 	}
 
+	if err := c.validateHub(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateHub is [hub]'s semantic check (T-3709). sig_mode must be one of
+// the two recognized values (an empty string means HubSigModeEd25519,
+// preserving every config written before this field existed), and
+// sig_mode = "sigstore" requires a real certificate identity to pin — the
+// same "an unwritten trust anchor is not a trust decision" reasoning
+// hubreg.NewSigstoreVerifier enforces a second time at construction, caught
+// here first so a daemon never starts believing Sigstore verification is on
+// when it would immediately fail to construct. Only checked when the hub is
+// actually configured (registry_url set) — an unconfigured hub ignores
+// every other [hub] key, matching every other section's "off means off"
+// convention in this file.
+func (c *Config) validateHub() error {
+	if c.Hub.RegistryURL == "" {
+		return nil
+	}
+	switch c.Hub.SigMode {
+	case "", HubSigModeEd25519, HubSigModeSigstore:
+	default:
+		return fmt.Errorf("%w: hub.sig_mode %q must be %q or %q", ErrInvalidConfig, c.Hub.SigMode, HubSigModeEd25519, HubSigModeSigstore)
+	}
+	if c.Hub.SigMode != HubSigModeSigstore {
+		return nil
+	}
+	if c.Hub.SigstoreIssuer == "" && c.Hub.SigstoreIssuerRegexp == "" {
+		return fmt.Errorf("%w: hub.sig_mode = \"sigstore\" requires hub.sigstore_issuer or hub.sigstore_issuer_regexp — an unpinned issuer would accept a certificate from any OIDC identity Fulcio will issue for", ErrInvalidConfig)
+	}
+	if c.Hub.SigstoreSAN == "" && c.Hub.SigstoreSANRegexp == "" {
+		return fmt.Errorf("%w: hub.sig_mode = \"sigstore\" requires hub.sigstore_identity or hub.sigstore_identity_regexp — an unpinned subject would accept a certificate issued to any workflow", ErrInvalidConfig)
+	}
 	return nil
 }
 

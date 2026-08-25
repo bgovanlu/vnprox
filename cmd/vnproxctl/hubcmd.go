@@ -38,6 +38,8 @@ import (
 	"strings"
 	"time"
 
+	sigstoreroot "github.com/sigstore/sigstore-go/pkg/root"
+
 	"github.com/bgovanlu/vnprox/internal/blueprint"
 	"github.com/bgovanlu/vnprox/internal/hub"
 	"github.com/bgovanlu/vnprox/internal/hubreg"
@@ -91,13 +93,30 @@ func printHubUsage(w io.Writer) {
 
   vnproxctl hub revoke --root <registry dir> --key <index key> --reason <why>
                        [--type T --id ID [--version V]] [--signer <fingerprint>]
-        Withdraw an artifact, every version of an id, or everything a
-        compromised signing key produced. Revocations live inside the signed
+                       [--log-entry <id>]
+        Withdraw an artifact, every version of an id, everything a
+        compromised signing key produced, or (T-3709, --log-entry, no --key
+        needed) deny-list one sigstore transparency-log entry for a
+        sig_mode=sigstore registry. Revocations live inside the signed
         index, so clients honour them with no extra network call.
 
   vnproxctl hub verify --index <index.json> --signers <fp[,fp...]>
-        Verify a published index exactly as a client does: signature, signer,
-        schema and structure. Prints the catalog and any revocations.
+        Verify a published Ed25519-signed index exactly as a client does:
+        signature, signer, schema and structure. Prints the catalog and any
+        revocations.
+
+  vnproxctl hub verify --index <index.json> --sigstore-bundle <bundle.json>
+                       --sigstore-issuer <issuer> --sigstore-identity <SAN>
+                       [--sigstore-issuer-regexp R] [--sigstore-identity-regexp R]
+                       [--sigstore-trusted-root <file>]
+        Verify a published sigstore-signed index (T-3709) exactly as a
+        sig_mode=sigstore daemon does: Fulcio certificate chain, Rekor
+        transparency-log inclusion, and certificate identity, against the
+        sibling bundle. Prints the catalog, any revocations, and the
+        signing certificate's own transparency-log entry id (the value
+        --log-entry above takes). Omitting --sigstore-trusted-root fetches
+        the Sigstore public-good trusted root live via TUF, the same
+        network dependency the daemon has.
 
   vnproxctl hub keygen --key <path>
         Create an Ed25519 signing key file (0600, never overwritten).
@@ -292,11 +311,12 @@ func runHubRevoke(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("vnproxctl hub revoke", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	root := fs.String("root", "", "registry root directory")
-	keyFile := fs.String("key", "", "Ed25519 index signing key file")
+	keyFile := fs.String("key", "", "Ed25519 index signing key file (omit for a sigstore-signed registry — see --log-entry)")
 	kind := fs.String("type", "", `artifact type: "blueprint" or "plugin"`)
 	id := fs.String("id", "", "artifact id to revoke (all versions unless --version is given)")
 	version := fs.String("version", "", "single version to revoke")
 	signer := fs.String("signer", "", "revoke every artifact signed by this fingerprint (key compromise)")
+	logEntry := fs.String("log-entry", "", "deny-list one sigstore transparency-log entry (T-3709; the id vnproxctl hub verify --sigstore-bundle prints) — the keyless equivalent of --signer, for a sig_mode=sigstore registry")
 	reason := fs.String("reason", "", "why this is revoked (required; published in the index)")
 	output := fs.String("o", defaultOutputFormat, outputFlagUsage)
 	if err := fs.Parse(args); err != nil {
@@ -307,19 +327,35 @@ func runHubRevoke(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "vnproxctl hub revoke: %v\n", ofErr)
 		return ExitUsage
 	}
-	if *root == "" || *keyFile == "" || *reason == "" {
-		_, _ = fmt.Fprintf(stderr, "vnproxctl hub revoke: --root, --key and --reason are required\n")
+	if *root == "" || *reason == "" {
+		_, _ = fmt.Fprintf(stderr, "vnproxctl hub revoke: --root and --reason are required\n")
 		return ExitUsage
 	}
-	if *id == "" && *signer == "" {
-		_, _ = fmt.Fprintf(stderr, "vnproxctl hub revoke: name what to revoke: --id (with --type) or --signer\n")
+	if *id == "" && *signer == "" && *logEntry == "" {
+		_, _ = fmt.Fprintf(stderr, "vnproxctl hub revoke: name what to revoke: --id (with --type), --signer, or --log-entry\n")
+		return ExitUsage
+	}
+	// --key is required for an Ed25519-signed registry (this command
+	// re-signs index.json on the spot) but is meaningless for a
+	// sig_mode=sigstore one: there is no local key, ever — the registry's
+	// GitHub Actions publish workflow signs whatever index.json currently
+	// says, keyless, on its own next run. A --log-entry revocation with no
+	// --key writes the updated, unsigned document for that workflow to pick
+	// up; every other addressing mode still needs a key to produce a
+	// validly re-signed Ed25519 index right now.
+	if *keyFile == "" && *logEntry == "" {
+		_, _ = fmt.Fprintf(stderr, "vnproxctl hub revoke: --key is required unless --log-entry is used (a sigstore-signed registry has no local key to sign with — see the publish workflow)\n")
 		return ExitUsage
 	}
 
-	key, err := blueprint.LoadSigningKeyFile(*keyFile)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "vnproxctl hub revoke: %v\n", err)
-		return ExitError
+	var key ed25519.PrivateKey
+	if *keyFile != "" {
+		loaded, err := blueprint.LoadSigningKeyFile(*keyFile)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl hub revoke: %v\n", err)
+			return ExitError
+		}
+		key = loaded
 	}
 	doc, err := readIndexDoc(*root)
 	if err != nil {
@@ -327,19 +363,25 @@ func runHubRevoke(args []string, stdout, stderr io.Writer) int {
 		return ExitError
 	}
 	rev := hubreg.Revocation{
-		Type:              hub.EntryType(*kind),
-		ID:                *id,
-		Version:           *version,
-		SignerFingerprint: *signer,
-		Reason:            *reason,
-		At:                time.Now().Unix(),
+		Type:                 hub.EntryType(*kind),
+		ID:                   *id,
+		Version:              *version,
+		SignerFingerprint:    *signer,
+		TransparencyLogIndex: *logEntry,
+		Reason:               *reason,
+		At:                   time.Now().Unix(),
 	}
 	doc, changed, err := hubreg.AddRevocation(doc, rev)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "vnproxctl hub revoke: %v\n", err)
 		return hubExitFor(err)
 	}
-	if err := writeIndexDoc(*root, doc, key, changed); err != nil {
+	if key != nil {
+		if err := writeIndexDoc(*root, doc, key, changed); err != nil {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl hub revoke: %v\n", err)
+			return ExitError
+		}
+	} else if err := writeIndexDocUnsigned(*root, doc, changed); err != nil {
 		_, _ = fmt.Fprintf(stderr, "vnproxctl hub revoke: %v\n", err)
 		return ExitError
 	}
@@ -364,7 +406,13 @@ func runHubVerify(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("vnproxctl hub verify", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	indexPath := fs.String("index", "", "path to a published index.json")
-	signers := fs.String("signers", "", "comma-separated trusted index-signer fingerprints (the [hub] index_signers value)")
+	signers := fs.String("signers", "", "comma-separated trusted index-signer fingerprints (the [hub] index_signers value; the ed25519 path)")
+	sigstoreBundlePath := fs.String("sigstore-bundle", "", "path to the sibling sigstore bundle (the sigstore path — T-3709; mutually exclusive with --signers)")
+	sigstoreIssuer := fs.String("sigstore-issuer", "", "expected OIDC issuer (exact)")
+	sigstoreIssuerRegexp := fs.String("sigstore-issuer-regexp", "", "expected OIDC issuer (regexp)")
+	sigstoreIdentity := fs.String("sigstore-identity", "", "expected certificate subject (exact)")
+	sigstoreIdentityRegexp := fs.String("sigstore-identity-regexp", "", "expected certificate subject (regexp)")
+	sigstoreTrustedRoot := fs.String("sigstore-trusted-root", "", "pinned sigstore trusted-root file (omit to fetch the public-good root live via TUF)")
 	output := fs.String("o", defaultOutputFormat, outputFlagUsage)
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
@@ -374,8 +422,12 @@ func runHubVerify(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: %v\n", ofErr)
 		return ExitUsage
 	}
-	if *indexPath == "" || *signers == "" {
-		_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: --index and --signers are required\n")
+	if *indexPath == "" {
+		_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: --index is required\n")
+		return ExitUsage
+	}
+	if (*signers == "") == (*sigstoreBundlePath == "") {
+		_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: give exactly one of --signers (ed25519) or --sigstore-bundle (sigstore)\n")
 		return ExitUsage
 	}
 	raw, err := os.ReadFile(*indexPath)
@@ -383,39 +435,107 @@ func runHubVerify(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: reading %s: %v\n", *indexPath, err)
 		return ExitError
 	}
-	doc, err := hubreg.Verify(raw, strings.Split(*signers, ","))
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: %v\n", err)
-		return ExitError
+
+	var doc hubreg.Document
+	extra := map[string]any{}
+	var signerLine string
+	if *signers != "" {
+		doc, err = hubreg.Verify(raw, strings.Split(*signers, ","))
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: %v\n", err)
+			return ExitError
+		}
+		extra["signerFingerprint"] = doc.Signature.PublicKeyFingerprint
+		signerLine = "signed by " + doc.Signature.PublicKeyFingerprint
+	} else {
+		bundleRaw, berr := os.ReadFile(*sigstoreBundlePath)
+		if berr != nil {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: reading %s: %v\n", *sigstoreBundlePath, berr)
+			return ExitError
+		}
+		if *sigstoreIssuer == "" && *sigstoreIssuerRegexp == "" || *sigstoreIdentity == "" && *sigstoreIdentityRegexp == "" {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: --sigstore-bundle needs --sigstore-issuer(-regexp) and --sigstore-identity(-regexp)\n")
+			return ExitUsage
+		}
+		trustedMaterial, terr := loadSigstoreTrustedMaterial(*sigstoreTrustedRoot)
+		if terr != nil {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: %v\n", terr)
+			return ExitError
+		}
+		verifier, verr := hubreg.NewSigstoreVerifier(trustedMaterial, hubreg.SigstoreIdentity{
+			Issuer: *sigstoreIssuer, IssuerRegexp: *sigstoreIssuerRegexp,
+			SAN: *sigstoreIdentity, SANRegexp: *sigstoreIdentityRegexp,
+		})
+		if verr != nil {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: %v\n", verr)
+			return ExitError
+		}
+		doc, err = hubreg.VerifySigstore(raw, bundleRaw, verifier)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: %v\n", err)
+			return ExitError
+		}
+		logEntryID, lerr := hubreg.SigstoreLogEntryID(bundleRaw)
+		if lerr != nil {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: %v\n", lerr)
+			return ExitError
+		}
+		extra["transparencyLogEntry"] = logEntryID
+		signerLine = "signed keyless; transparency-log entry " + logEntryID
 	}
+
 	live := doc.HubIndex().Entries
 	if jsonOut {
-		if err := writeJSONOut(stdout, map[string]any{
-			"signerFingerprint": doc.Signature.PublicKeyFingerprint,
-			"generatedAt":       doc.GeneratedAt,
-			"entries":           len(doc.Entries),
-			"live":              len(live),
-			"revocations":       len(doc.Revocations),
-		}); err != nil {
+		out := map[string]any{
+			"generatedAt": doc.GeneratedAt,
+			"entries":     len(doc.Entries),
+			"live":        len(live),
+			"revocations": len(doc.Revocations),
+		}
+		for k, v := range extra {
+			out[k] = v
+		}
+		if err := writeJSONOut(stdout, out); err != nil {
 			return ExitError
 		}
 		return ExitSuccess
 	}
-	_, _ = fmt.Fprintf(stdout, "OK: index signed by %s\n", doc.Signature.PublicKeyFingerprint)
+	_, _ = fmt.Fprintf(stdout, "OK: index %s\n", signerLine)
 	_, _ = fmt.Fprintf(stdout, "  %d entr(ies), %d offered, %d revocation(s)\n", len(doc.Entries), len(live), len(doc.Revocations))
 	for _, e := range live {
 		_, _ = fmt.Fprintf(stdout, "  %-9s %s@%s  %s\n", e.Type, e.ID, e.Version, e.ArtifactURL)
 	}
 	for _, r := range doc.Revocations {
 		target := r.ID
-		if target == "" {
-			target = "signer " + r.SignerFingerprint
-		} else if r.Version != "" {
+		switch {
+		case target != "" && r.Version != "":
 			target += "@" + r.Version
+		case target == "" && r.SignerFingerprint != "":
+			target = "signer " + r.SignerFingerprint
+		case target == "" && r.TransparencyLogIndex != "":
+			target = "log entry " + r.TransparencyLogIndex
 		}
 		_, _ = fmt.Fprintf(stdout, "  REVOKED   %s: %s\n", target, r.Reason)
 	}
 	return ExitSuccess
+}
+
+// loadSigstoreTrustedMaterial mirrors cmd/vnproxd's newHubSigstoreGate: an
+// empty path fetches the Sigstore public-good trusted root live via TUF (the
+// same network dependency the daemon has); a path pins a local copy instead.
+func loadSigstoreTrustedMaterial(path string) (sigstoreroot.TrustedMaterial, error) {
+	if path == "" {
+		tr, err := sigstoreroot.FetchTrustedRoot()
+		if err != nil {
+			return nil, fmt.Errorf("fetching the sigstore public-good trusted root: %w", err)
+		}
+		return tr, nil
+	}
+	tr, err := sigstoreroot.NewTrustedRootFromPath(path)
+	if err != nil {
+		return nil, fmt.Errorf("loading pinned sigstore trusted root %s: %w", path, err)
+	}
+	return tr, nil
 }
 
 func runHubKeygen(args []string, stdout, stderr io.Writer) int {
@@ -504,6 +624,42 @@ func writeIndexDoc(root string, doc hubreg.Document, key ed25519.PrivateKey, cha
 		return err
 	}
 	body, err := json.Marshal(signed)
+	if err != nil {
+		return fmt.Errorf("encoding index: %w", err)
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return fmt.Errorf("creating registry root %s: %w", root, err)
+	}
+	if err := os.WriteFile(path, append(body, '\n'), 0o644); err != nil { //nolint:gosec // a published index is world-readable static hosting content
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	return nil
+}
+
+// writeIndexDocUnsigned writes root/index.json WITHOUT signing it — the
+// sig_mode=sigstore counterpart to writeIndexDoc, for a registry whose
+// index.json is signed keyless by a GitHub Actions publish workflow rather
+// than by a local key (docs/hub-registry.md's "Sigstore-signed registries"
+// section). doc.Signature is left nil (never populated by this path); the
+// document is otherwise identical, ready for that workflow's `cosign
+// sign-blob` step to sign as committed.
+func writeIndexDocUnsigned(root string, doc hubreg.Document, changed bool) error {
+	path := filepath.Join(root, hubIndexFileName)
+	if !changed {
+		if _, err := os.Stat(path); err == nil {
+			return nil
+		}
+	}
+	doc = hubreg.Document{
+		SchemaVersion: doc.SchemaVersion,
+		GeneratedAt:   time.Now().Unix(),
+		Entries:       doc.Entries,
+		Revocations:   doc.Revocations,
+	}
+	if err := hubreg.Validate(doc); err != nil {
+		return err
+	}
+	body, err := json.Marshal(doc)
 	if err != nil {
 		return fmt.Errorf("encoding index: %w", err)
 	}

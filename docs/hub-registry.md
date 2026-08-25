@@ -85,6 +85,12 @@ registry_url  = "https://hub.example.com/vnprox"
 index_signers = ["<the registry index key fingerprint>"]
 ```
 
+This is the Ed25519 scheme. A registry signed keylessly via Sigstore instead
+(`[hub] sig_mode = "sigstore"`) is configured differently — see "Sigstore-signed
+registries" below; the two are mutually exclusive per installation and which
+one is in force is always explicit configuration, never inferred from what
+the registry serves.
+
 With `index_signers` set, the daemon installs the T-2803 gate on the hub
 client's existing HTTP seam: an index that is unsigned, corrupted, or signed by
 another key yields nothing at all, and revocations are enforced on every
@@ -98,6 +104,197 @@ Verify a published index yourself, exactly as the daemon does:
 ```
 vnproxctl hub verify --index index.json --signers <fingerprint>
 ```
+
+## Sigstore-signed registries (T-3709)
+
+Everything above this section is the Ed25519 scheme — a long-lived signing
+key an operator or registry maintainer generates, holds, and rotates by
+hand. T-3709 adds a second, alternative index-trust scheme: **full
+[sigstore-go](https://github.com/sigstore/sigstore-go) verification**, using
+Fulcio-issued, OIDC-bound certificates and Rekor transparency-log inclusion
+instead of a key at rest anywhere. The owner chose this deliberately over
+two lighter options, accepting `sigstore-go`'s dependency weight (see
+"What this costs" below) and Fulcio/Rekor/TUF entering the trust path in
+exchange for **genuinely keyless signing**: nobody, anywhere, holds a
+private key whose loss or theft would let an attacker forge a new signed
+index. T-3709's own investigation is the strongest argument for this: the
+public registry's *Ed25519* signing key was found to live only on a host
+(`pve001`) this project has no credentials for — a key nobody can reach to
+sign **or revoke** with is exactly the failure mode keyless signing exists
+to remove.
+
+**This is a second scheme, not a replacement.** Ed25519 self-hosting
+(everything above this section) is unmodified, fully supported, and is the
+only option for an operator who cannot obtain a Fulcio certificate for their
+own registry — which is most self-hosted registries, since Fulcio's
+short-lived certificates are issued in exchange for an OIDC token from a
+handful of recognized identity providers (GitHub Actions, GitLab CI, Google,
+etc.), not to an arbitrary server. Which scheme verifies is **operator
+configuration, `[hub] sig_mode`, never inferred from what a served index
+looks like**:
+
+```toml
+[hub]
+registry_url = "https://hub.example.com/vnprox"
+sig_mode     = "sigstore"                              # or "ed25519" (default)
+sigstore_issuer   = "https://token.actions.githubusercontent.com"
+sigstore_identity = "https://github.com/<owner>/<repo>/.github/workflows/publish-registry.yml@refs/heads/main"
+# sigstore_issuer_regexp / sigstore_identity_regexp are the regexp forms of
+# the two lines above, for a workflow ref that varies (e.g. per release
+# branch) — at least one form of each is required.
+# sigstore_trusted_root_file = "/etc/vnprox/keys/sigstore-trusted-root.json"
+#   optional: pins a local copy of the Fulcio/Rekor/CT trust roots instead
+#   of fetching the Sigstore public-good instance's current roots live via
+#   TUF on every daemon startup. Unset (the default) fetches live.
+```
+
+**Why this cannot be silently downgraded to Ed25519, or the reverse.**
+`cmd/vnproxd/hubinstall.go`'s `newHubClient` reads `sig_mode` once, at
+startup, and installs **exactly one** of two entirely separate verifiers
+onto the hub client's HTTP seam: `internal/hubreg.Gate` (Ed25519) or
+`internal/hubreg.SigstoreGate` (sigstore). A `sig_mode = "sigstore"` daemon
+never calls the Ed25519 `Verify` function, ever — there is no code path in
+either gate that would consider the other scheme's document shape
+trustworthy. As a second, independent guard at the document level:
+`hubreg.VerifySigstore` explicitly refuses an index that carries an
+embedded Ed25519 `signature` field (the Ed25519 scheme's own shape) rather
+than silently reading past it, and the Ed25519 `Verify` requires a
+`signature` field to be present at all (`ErrUnsignedIndex`) — so even
+handing either verifier the *other* scheme's index produces a refusal, not
+a downgrade.
+
+### The wire shape: a sibling bundle, not an embedded field
+
+Ed25519 mode embeds its signature inside `index.json` itself (the
+`signature` key). Sigstore mode instead publishes a **sibling file**,
+`index.json.sigstore.json`, next to `index.json` on the same static host and
+under the same path — the standard `cosign sign-blob --bundle` output shape.
+`index.json` itself carries no `signature` field at all under this scheme;
+the bundle is what attests the exact bytes of `index.json` as published.
+`internal/hubreg.SigstoreGate` fetches both together on every index request
+(never a different host — the sibling path is derived from the index
+request's own URL) and verifies:
+
+1. the bundle's Fulcio certificate chain, against the trusted material;
+2. the bundle's Rekor transparency-log inclusion (inclusion proof or, for a
+   message-signature bundle at the older v0.1 media type, the equivalent
+   Rekor-signed inclusion *promise* — sigstore-go's `VerifyTlogEntry`
+   accepts either, and checks whichever the bundle carries);
+3. **the signing certificate's identity** — issuer and subject — against the
+   operator's configured `sigstore_issuer`/`sigstore_identity`. A bundle that
+   passes (1) and (2) but was issued to a different identity is refused
+   here. This is the check a bare "the signature verifies" story would
+   miss, and it is the reason T-3709 calls it out by name rather than
+   treating cryptographic validity as the whole trust decision;
+4. the bundle's own signed artifact is exactly `index.json`'s bytes;
+5. the bundle's transparency-log entry is not named in `index.json`'s own
+   revocation deny-list (next section);
+6. schema version and document structure, same as Ed25519.
+
+Any failure yields the same "whole index, zero entries" refusal Ed25519
+gives on a bad signature — no partial catalog.
+
+### Revocation without a key to rotate
+
+Ed25519 revocation names an artifact or a signer fingerprint — both durable
+identities tied to a key. Keyless signing has neither: a Fulcio certificate
+is short-lived and re-issued fresh on every publish, so there is nothing
+persistent to name a compromised *signer* by. What persists instead is the
+**transparency-log entry** — the specific, uniquely-logged signing event —
+so that is what Sigstore-mode revocation denies:
+
+```
+vnproxctl hub revoke --root ./registry --log-entry <id> \
+                     --reason "compromised workflow run"
+```
+
+Unlike every other `hub revoke` invocation, **this one needs no `--key`** —
+a sigstore-signed registry has no local key to re-sign with. It writes the
+updated, unsigned `index.json` (the `Revocations` list gains one entry keyed
+by `TransparencyLogIndex`); the next real publish
+(`.github/workflows/publish-registry.yml`, below) signs whatever
+`index.json` currently says, keylessly, folding the revocation into that
+publish automatically. The id to revoke by is whatever `vnproxctl hub verify
+--sigstore-bundle` prints for a bundle you no longer trust (see next
+section) — the same value `internal/hubreg.SigstoreLogEntryID` computes
+internally.
+
+This reuses `internal/hubreg`'s existing `Revocation`/`AddRevocation`
+model rather than a parallel one: `Revocation.TransparencyLogIndex` is a
+third addressing mode alongside "by artifact id/version" and "by signer
+fingerprint" (index.go), and — because it names neither an artifact type
+nor id — it never accidentally matches (and so never accidentally
+withdraws) an ordinary catalog entry; `Document.IsLogEntryRevoked` is the
+dedicated lookup `VerifySigstore` consults, entirely from the document
+already fetched, no second network call — the identical "no live
+revocation call to be blocked, spoofed, or unreachable" property Ed25519
+revocation has.
+
+**What this defends, and what it does not, stated plainly.** It defends the
+ordinary case: a client that fetches the *current* `index.json` learns
+about a revoked past signing event from that same current fetch. It does
+**not** defend a client that is served (or that replays from its own stale
+cache) an **old** `index.json` together with **its own** old,
+still-cryptographically-valid bundle — that pair's *own* embedded
+deny-list necessarily predates whatever made it worth revoking, so nothing
+in the pair itself can carry the revocation. This is not a gap unique to
+the Sigstore scheme: the Ed25519 scheme has the *identical* residual, for
+the identical reason — revocation in both schemes is "ride inside the next
+signed document," which is only as fresh as the last fetch. Neither scheme
+does a live per-request revocation check (an OCSP-style call), by design —
+that is the "no second network access" property both revocation models are
+built around, and it has this trade-off in both directions.
+
+### Verifying by hand
+
+```
+vnproxctl hub verify --index index.json --sigstore-bundle index.json.sigstore.json \
+                     --sigstore-issuer https://token.actions.githubusercontent.com \
+                     --sigstore-identity "https://github.com/<owner>/<repo>/.github/workflows/publish-registry.yml@refs/heads/main"
+```
+
+Prints the catalog, any revocations, and the signing certificate's own
+transparency-log entry id — the value `hub revoke --log-entry` takes.
+Omitting `--sigstore-trusted-root` fetches the Sigstore public-good trusted
+root live via TUF, the identical network dependency the daemon has when
+`[hub] sigstore_trusted_root_file` is unset.
+
+### What this costs, said out loud
+
+Adding `sigstore-go` as a direct dependency pulled the module count from 64
+to several hundred (`go list -m all`) — Fulcio/Rekor client code, the
+Certificate Transparency verifier, the TUF client used to fetch the
+public-good trusted root, gRPC, and OpenTelemetry all arrive transitively.
+This is a deliberate, owner-approved exception to this repository's
+stdlib-first-by-policy convention (`docs/development.md`), made knowingly
+in exchange for not holding a private key. It is **not free**: `govulncheck`
+must stay clean on this dependency tree going forward (it does today —
+`make check`), and every one of those transitive packages is now something
+a security review of this codebase has to consider, even though this
+package imports only `pkg/bundle`, `pkg/root`, and `pkg/verify` directly.
+Fulcio, Rekor, and (unless pinned) TUF are also now live third-party
+services a `sig_mode = "sigstore"` installation's hub feature depends on
+being reachable and honest — an operator choosing this mode is choosing
+that dependency, and is entitled to know it (`docs/security.md`'s hub
+section says the same thing from the trust-model side).
+
+### What has not run yet
+
+`.github/workflows/publish-registry.yml` performs the keyless signing step
+(`cosign sign-blob --bundle`, `id-token: write`) and is written correctly,
+but **GitHub Actions has not executed any non-Pages workflow in this
+repository since 2026-08-13** (Actions billing exhausted — see
+`docs/development.md`'s CI section and
+`planning/reports/evidence/github-native-hosting-2026-08-24.txt`). No real
+Fulcio-issued certificate has been produced or verified end to end as of
+this writing. Everything this section documents about the *client-side*
+verification code is proven against `sigstore-go`'s own `VirtualSigstore`
+test harness (`internal/hubreg/sigstore_test.go`,
+`cmd/vnproxd/hubwiring_sigstore_test.go`), which produces real
+Fulcio-shaped certificates, real Rekor transparency-log entries, and real
+signatures — but never against a genuine production Fulcio/Rekor round
+trip, because that requires a working Actions OIDC token this repository
+cannot currently obtain.
 
 ## Self-hosting your own registry
 

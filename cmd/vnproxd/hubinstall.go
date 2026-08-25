@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	sigstoreroot "github.com/sigstore/sigstore-go/pkg/root"
+
 	"github.com/bgovanlu/vnprox/internal/api"
 	"github.com/bgovanlu/vnprox/internal/config"
 	"github.com/bgovanlu/vnprox/internal/hub"
@@ -53,17 +55,73 @@ func newHubClient(cfg config.HubConfig, logger *slog.Logger) *hub.Client {
 		logger.Warn("blueprint & plugin hub: TRUSTING UNSIGNED ARTIFACTS IS ENABLED ([hub] trust_unsigned = true) — a POST /hub/install request carrying trustUnsigned: true may install an artifact that carries no signature at all. Verification of signed artifacts is unaffected and never optional. This is a configured escape hatch, not a default", "url", regURL)
 	}
 	var opts []hub.Option
-	if len(cfg.IndexSigners) > 0 {
-		opts = append(opts, hub.WithHTTPClient(hubreg.NewGate(nil, cfg.IndexSigners)))
-	} else {
-		logger.Warn("blueprint & plugin hub: registry index signature verification is OFF ([hub] index_signers is empty) — the catalog is unauthenticated and published revocations are not enforced (artifact signatures and the trust store still gate every install)", "url", regURL)
+	switch cfg.SigMode {
+	case config.HubSigModeSigstore:
+		// T-3709: sig_mode is explicit, operator-set configuration — never
+		// inferred from what a served index looks like (config.HubConfig's
+		// doc comment has the full rationale). This branch NEVER installs
+		// hubreg.Gate (the Ed25519 verifier): there is no code path here
+		// that would consider an Ed25519-shaped index trustworthy while
+		// sig_mode = "sigstore" is configured.
+		gate, gerr := newHubSigstoreGate(cfg, logger)
+		if gerr != nil {
+			logger.Error("blueprint & plugin hub disabled: could not set up sigstore verification", "url", regURL, "err", gerr)
+			return nil
+		}
+		opts = append(opts, hub.WithHTTPClient(gate))
+	default:
+		// HubSigModeEd25519 or empty (every config written before T-3709) —
+		// unchanged pre-T-3709 behaviour.
+		if len(cfg.IndexSigners) > 0 {
+			opts = append(opts, hub.WithHTTPClient(hubreg.NewGate(nil, cfg.IndexSigners)))
+		} else {
+			logger.Warn("blueprint & plugin hub: registry index signature verification is OFF ([hub] index_signers is empty) — the catalog is unauthenticated and published revocations are not enforced (artifact signatures and the trust store still gate every install)", "url", regURL)
+		}
 	}
+
 	c, err := hub.NewClient(regURL, opts...)
 	if err != nil {
 		logger.Warn("blueprint & plugin hub disabled: invalid registry URL", "url", regURL, "err", err)
 		return nil
 	}
 	return c
+}
+
+// newHubSigstoreGate builds the T-3709 Sigstore verifier and gate from cfg.
+// It is the one place a live TUF fetch (root.FetchTrustedRoot, reaching
+// Sigstore's public-good TUF repository over the network) happens when
+// [hub] sigstore_trusted_root_file is unset — operators are told about this
+// third-party dependency in docs/security.md and docs/hub-registry.md, and
+// can opt out of the live fetch by pinning a local trusted-root file
+// instead (root.NewTrustedRootFromPath).
+func newHubSigstoreGate(cfg config.HubConfig, logger *slog.Logger) (*hubreg.SigstoreGate, error) {
+	var trustedMaterial sigstoreroot.TrustedMaterial
+	if cfg.SigstoreTrustedRootFile != "" {
+		tr, err := sigstoreroot.NewTrustedRootFromPath(cfg.SigstoreTrustedRootFile)
+		if err != nil {
+			return nil, fmt.Errorf("loading pinned sigstore trusted root %s: %w", cfg.SigstoreTrustedRootFile, err)
+		}
+		trustedMaterial = tr
+	} else {
+		logger.Warn("blueprint & plugin hub: fetching the Sigstore public-good trusted root over the network via TUF ([hub] sigstore_trusted_root_file is unset) — Fulcio/Rekor/TUF are now in this installation's trust path; see docs/security.md's Sigstore-signed registries note. Set sigstore_trusted_root_file to pin a local copy instead", "url", cfg.RegistryURL)
+		tr, err := sigstoreroot.FetchTrustedRoot()
+		if err != nil {
+			return nil, fmt.Errorf("fetching the sigstore public-good trusted root: %w", err)
+		}
+		trustedMaterial = tr
+	}
+
+	identity := hubreg.SigstoreIdentity{
+		Issuer:       cfg.SigstoreIssuer,
+		IssuerRegexp: cfg.SigstoreIssuerRegexp,
+		SAN:          cfg.SigstoreSAN,
+		SANRegexp:    cfg.SigstoreSANRegexp,
+	}
+	verifier, err := hubreg.NewSigstoreVerifier(trustedMaterial, identity)
+	if err != nil {
+		return nil, err
+	}
+	return hubreg.NewSigstoreGate(nil, verifier), nil
 }
 
 // hubClientOrNil returns c as an api.HubClient, or an untyped nil interface when

@@ -141,7 +141,15 @@ func (g *Gate) doArtifact(req *http.Request) (*http.Response, error) {
 	g.mu.Lock()
 	doc, ok := g.doc, g.verified
 	g.mu.Unlock()
-	if !ok {
+	return gateArtifact(g.inner, doc, ok, req)
+}
+
+// gateArtifact is the artifact-fetch allowlist/revocation decision shared by
+// Gate (Ed25519) and SigstoreGate: identical logic, parameterized over the
+// already-verified document so the two index-verification schemes need not
+// duplicate it.
+func gateArtifact(inner Doer, doc Document, verified bool, req *http.Request) (*http.Response, error) {
+	if !verified {
 		return nil, fmt.Errorf("%w (fetching %s)", ErrNoVerifiedIndex, req.URL.Path)
 	}
 	for _, e := range doc.Entries {
@@ -151,7 +159,7 @@ func (g *Gate) doArtifact(req *http.Request) (*http.Response, error) {
 		if rev, revoked := doc.IsRevoked(e); revoked {
 			return nil, fmt.Errorf("%w: %s %s@%s: %s", ErrRevoked, e.Type, e.ID, e.Version, rev.Reason)
 		}
-		return g.inner.Do(req)
+		return inner.Do(req)
 	}
 	return nil, fmt.Errorf("%w: %s", ErrUnlistedArtifact, req.URL.Path)
 }

@@ -72,23 +72,33 @@ type Document struct {
 	Signature *blueprint.BundleSignature `json:"signature,omitempty"`
 }
 
-// Revocation withdraws artifacts from the catalog. Exactly one of the two
-// addressing modes must be used:
+// Revocation withdraws artifacts from the catalog, or (T-3709) denies trust
+// in one Sigstore signing event. Exactly one of three addressing modes must
+// be used:
 //
 //   - by artifact: Type+ID (+Version to scope it to one version; empty Version
 //     revokes every version of that id).
 //   - by signer: SignerFingerprint alone, which revokes every entry signed by
 //     that key — the key-compromise case, where enumerating the affected
 //     artifacts by hand is exactly what goes wrong under pressure.
+//   - by transparency-log entry: TransparencyLogIndex alone (T-3709), which
+//     denies trust in one Sigstore-signed index publish — the keyless
+//     equivalent of "by signer", for the scheme that has no persistent
+//     signer key to name. It never matches an artifact entry (Matches below
+//     only ever compares Type/ID/SignerFingerprint), so it rides in this
+//     same list without disturbing what Ed25519-mode revocation does; see
+//     Document.IsLogEntryRevoked and sigstore.go's package doc comment for
+//     what it defends against.
 //
 //nolint:govet // fieldalignment: wire envelope; field order is the JSON shape and the signing order, not packing.
 type Revocation struct {
-	Type              hub.EntryType `json:"type,omitempty"`
-	ID                string        `json:"id,omitempty"`
-	Version           string        `json:"version,omitempty"`
-	SignerFingerprint string        `json:"signerFingerprint,omitempty"`
-	Reason            string        `json:"reason"`
-	At                int64         `json:"at,omitempty"`
+	Type                 hub.EntryType `json:"type,omitempty"`
+	ID                   string        `json:"id,omitempty"`
+	Version              string        `json:"version,omitempty"`
+	SignerFingerprint    string        `json:"signerFingerprint,omitempty"`
+	TransparencyLogIndex string        `json:"transparencyLogIndex,omitempty"`
+	Reason               string        `json:"reason"`
+	At                   int64         `json:"at,omitempty"`
 }
 
 // Matches reports whether r revokes e.
@@ -116,13 +126,30 @@ func (r Revocation) Matches(e hub.Entry) bool {
 
 // key is a revocation's identity for idempotent insertion.
 func (r Revocation) key() string {
-	return strings.Join([]string{string(r.Type), r.ID, r.Version, strings.ToLower(r.SignerFingerprint)}, "\x00")
+	return strings.Join([]string{string(r.Type), r.ID, r.Version, strings.ToLower(r.SignerFingerprint), r.TransparencyLogIndex}, "\x00")
 }
 
 // IsRevoked reports whether any revocation in d withdraws e, and which one.
 func (d Document) IsRevoked(e hub.Entry) (Revocation, bool) {
 	for _, r := range d.Revocations {
 		if r.Matches(e) {
+			return r, true
+		}
+	}
+	return Revocation{}, false
+}
+
+// IsLogEntryRevoked reports whether d's revocation deny-list names
+// logEntryID (sigstore.go's sigstoreLogEntryID) — T-3709's keyless
+// revocation check: a Sigstore-signed index bundle that still verifies
+// cryptographically is refused if its own signing event is named here. An
+// empty logEntryID never matches (there is nothing to look up).
+func (d Document) IsLogEntryRevoked(logEntryID string) (Revocation, bool) {
+	if logEntryID == "" {
+		return Revocation{}, false
+	}
+	for _, r := range d.Revocations {
+		if r.TransparencyLogIndex != "" && r.TransparencyLogIndex == logEntryID {
 			return r, true
 		}
 	}
@@ -294,8 +321,8 @@ func validateEntry(e hub.Entry) error {
 }
 
 func validateRevocation(r Revocation) error {
-	if r.ID == "" && r.SignerFingerprint == "" {
-		return fmt.Errorf("%w: a revocation must name an artifact id or a signer fingerprint", ErrInvalidIndex)
+	if r.ID == "" && r.SignerFingerprint == "" && r.TransparencyLogIndex == "" {
+		return fmt.Errorf("%w: a revocation must name an artifact id, a signer fingerprint, or a transparency-log entry", ErrInvalidIndex)
 	}
 	if r.ID != "" {
 		if err := validSlug("id", r.ID); err != nil {

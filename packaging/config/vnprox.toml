@@ -91,6 +91,34 @@ snapshot_pin_days = 7
 #                       # behaviour: an unauthenticated catalog, no revocation.
 #                       # It says who may publish the CATALOG — it never makes an
 #                       # artifact trusted.
+#
+# sig_mode = "ed25519" # T-3709: which index-trust scheme is in force —
+#                       # "ed25519" (the default; index_signers above) or
+#                       # "sigstore" (full sigstore-go verification: Fulcio
+#                       # cert chain, Rekor transparency-log inclusion, and
+#                       # certificate identity, over a sibling
+#                       # index.json.sigstore.json bundle — no local key,
+#                       # keyless OIDC-bound signing instead). Explicit
+#                       # config, never inferred from what a served index
+#                       # looks like — see docs/hub-registry.md's
+#                       # "Sigstore-signed registries" section, including
+#                       # what this adds to the trust path (Fulcio/Rekor/TUF)
+#                       # and how revocation works with no key to rotate.
+# sigstore_issuer            = ""   # exact expected OIDC issuer, e.g.
+#                                   # "https://token.actions.githubusercontent.com"
+# sigstore_issuer_regexp     = ""   # regexp form; at least one of the two issuer
+#                                   # keys is required when sig_mode = "sigstore"
+# sigstore_identity          = ""   # exact expected certificate subject, e.g. a
+#                                   # GitHub Actions workflow ref
+#                                   # ("https://github.com/<owner>/<repo>/.github/
+#                                   # workflows/publish-registry.yml@refs/heads/main")
+# sigstore_identity_regexp   = ""   # regexp form; at least one of the two identity
+#                                   # keys is required when sig_mode = "sigstore"
+# sigstore_trusted_root_file = ""   # optional: pin a local copy of the
+#                                   # Fulcio/Rekor/CT trust roots instead of
+#                                   # fetching the Sigstore public-good
+#                                   # instance's current roots live via TUF
+#                                   # on every daemon startup
 
 # Opt-in compatibility telemetry (T-2503) — OFF, and this whole section is
 # commented out on purpose.

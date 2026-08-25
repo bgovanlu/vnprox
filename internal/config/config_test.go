@@ -1030,3 +1030,103 @@ store_warn_bytes = -1
 		t.Errorf("expected ErrInvalidConfig, got: %v", err)
 	}
 }
+
+// T-3709: [hub] sig_mode = "sigstore" requires a real certificate identity
+// to pin (issuer + subject), the same "an unwritten trust anchor is not a
+// trust decision" check the telemetry/OIDC sections already enforce for
+// their own opt-in switches.
+func TestLoad_HubSigstoreModeRequiresIdentity(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	base := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[pve]
+api_url = "https://127.0.0.1:8006"
+
+[hub]
+registry_url = "https://registry.example.com/vnprox"
+sig_mode = "sigstore"
+`
+	_, err := Load(writeTemp(t, "hub-sigstore-noident.toml", base), discardLogger())
+	if err == nil {
+		t.Fatal("expected an error when sig_mode=sigstore has no identity pinned, got nil")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("expected ErrInvalidConfig, got: %v", err)
+	}
+
+	withIssuerOnly := base + `
+sigstore_issuer = "https://token.actions.githubusercontent.com"
+`
+	if _, issuerErr := Load(writeTemp(t, "hub-sigstore-issueronly.toml", withIssuerOnly), discardLogger()); issuerErr == nil {
+		t.Fatal("expected an error when sig_mode=sigstore has an issuer but no subject identity, got nil")
+	} else if !errors.Is(issuerErr, ErrInvalidConfig) {
+		t.Errorf("expected ErrInvalidConfig, got: %v", issuerErr)
+	}
+
+	complete := base + `
+sigstore_issuer = "https://token.actions.githubusercontent.com"
+sigstore_identity = "https://github.com/bgovanlu/vnprox/.github/workflows/publish-registry.yml@refs/heads/main"
+`
+	cfg, err := Load(writeTemp(t, "hub-sigstore-complete.toml", complete), discardLogger())
+	if err != nil {
+		t.Fatalf("Load with a complete sigstore identity: %v", err)
+	}
+	if cfg.Hub.SigMode != HubSigModeSigstore {
+		t.Errorf("SigMode = %q, want %q", cfg.Hub.SigMode, HubSigModeSigstore)
+	}
+	if cfg.Hub.SigstoreIssuer == "" || cfg.Hub.SigstoreSAN == "" {
+		t.Errorf("Hub = %+v, want the issuer/identity fields populated", cfg.Hub)
+	}
+}
+
+func TestLoad_HubSigModeUnknownValueFailsFast(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[pve]
+api_url = "https://127.0.0.1:8006"
+
+[hub]
+registry_url = "https://registry.example.com/vnprox"
+sig_mode = "rot13"
+`
+	_, err := Load(writeTemp(t, "hub-badmode.toml", toml), discardLogger())
+	if err == nil {
+		t.Fatal("expected an error for an unrecognized hub.sig_mode, got nil")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("expected ErrInvalidConfig, got: %v", err)
+	}
+}
+
+// An empty sig_mode (every config written before T-3709) stays exactly the
+// pre-T-3709 Ed25519 behaviour, and the hub-off case (no registry_url at
+// all) never reaches the sig_mode check regardless of what else is set.
+func TestLoad_HubSigModeDefaultsToEd25519(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[pve]
+api_url = "https://127.0.0.1:8006"
+
+[hub]
+registry_url = "https://registry.example.com/vnprox"
+index_signers = ["deadbeef"]
+`
+	cfg, err := Load(writeTemp(t, "hub-defaultmode.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Hub.SigMode != "" {
+		t.Errorf("SigMode = %q, want empty (defaults to ed25519)", cfg.Hub.SigMode)
+	}
+}
