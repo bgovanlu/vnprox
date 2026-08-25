@@ -3,17 +3,34 @@
 // T-1107's trust-status vocabulary (unsigned / untrustedSignature /
 // invalidSignature) for the shared signature gate and surfacing a plugin's
 // declared capability scope for review *before* an install is confirmed
-// (T-1705 AC4). The "vetted" badge is purely informational — installing a
+// (T-1705 AC4).
+//
+// The "vetted" badge (T-3709) is automated hygiene, never a human's
+// endorsement — it requires the signer to be on the operator's own allowlist
+// AND the artifact to have passed internal/hubreg's automated checks at
+// publish time (capability manifest well-formed, catalog/manifest capability
+// agreement, strict decoding — explicitly NOT a reproducible-build claim).
+// VETTED_BADGE_EXPLANATION below is that wording, shown on hover so the badge
+// is never just a bare, trust-sounding word; installing a
 // vetted-but-not-yet-trusted entry still requires the explicit trust step
-// (T-1705 AC5); this page never bypasses that decision.
+// (T-1705 AC5) — this page never bypasses that decision.
 import { useState } from "react";
 import { Button } from "../components/Button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/Dialog";
 import { PageHeader } from "../components/PageHeader";
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "../components/Tabs";
+import { Tooltip } from "../components/Tooltip";
 import { useToast } from "../components/Toast";
 import { useHubInstallMutation, useHubIndexQuery } from "./queries";
 import type { HubEntry, HubEntryType, HubInstallResponse } from "../api/types";
+
+/** The vetted badge's hover text (T-3709). Says exactly what was checked
+ * (automated hygiene) and exactly what was not (a human review, an
+ * endorsement, or a reproducible-build attestation) — see
+ * docs/hub-registry.md's "Automated vetting" section for the full account. */
+const VETTED_BADGE_EXPLANATION =
+  "Passed automated checks only: well-formed capability manifest, no undeclared privileges, strict decoding. " +
+  "Not a human review, not an endorsement, and not proof of a reproducible build.";
 
 interface PendingTrust {
   entry: HubEntry;
@@ -125,9 +142,11 @@ export function HubPage() {
                 <span className="hub-card__name">{entry.name}</span>
                 <span className="hub-card__version">v{entry.version}</span>
                 {entry.vetted && (
-                  <span className="hub-badge hub-badge--vetted" data-testid={`hub-vetted-${entry.id}`}>
-                    vetted
-                  </span>
+                  <Tooltip content={VETTED_BADGE_EXPLANATION}>
+                    <span className="hub-badge hub-badge--vetted" data-testid={`hub-vetted-${entry.id}`}>
+                      vetted
+                    </span>
+                  </Tooltip>
                 )}
                 {entry.signed ? (
                   <span className="hub-badge hub-badge--signed">signed</span>
@@ -179,7 +198,9 @@ export function HubPage() {
                 {pending.status === "unsigned"
                   ? `"${pending.entry.name}" has no signature. Installing it means trusting it with no cryptographic provenance.`
                   : `"${pending.entry.name}" is signed by a key this installation has not trusted yet${
-                      pending.entry.vetted ? " (it is on the hub's vetted list, but that is informational only)" : ""
+                      pending.entry.vetted
+                        ? " (it passed the hub's automated checks, but that is not a substitute for your own trust decision)"
+                        : ""
                     }. Trusting the signer pins its key for future installs.`}
               </DialogDescription>
               <div className="hub-dialog__actions">

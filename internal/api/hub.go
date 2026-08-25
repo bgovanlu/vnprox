@@ -215,11 +215,21 @@ func handleHubIndex(client HubClient, vetting HubVetting) http.HandlerFunc {
 	}
 }
 
+// toHubEntryResponse computes the "vetted" badge from TWO signals, and both
+// are required (T-3709): the operator's own [hub] vetted_signers allowlist
+// opts a signer INTO consideration, and Entry.AutomatedChecksPassed is the
+// mechanical hygiene verdict internal/hubreg's AutomatedVetChecks recorded
+// at publish time, inside the signed index. Neither alone is sufficient —
+// an allowlisted signer whose artifact failed hygiene is not vetted, and a
+// hygienic artifact from a signer the operator never opted in is not vetted
+// either. This is deliberately never a claim that a human reviewed or
+// endorsed the artifact; see docs/hub-registry.md's "Automated vetting"
+// section for the exact wording and what is and is not checked.
 func toHubEntryResponse(e hub.Entry, vetting HubVetting) hubEntryResponse {
 	fp := e.SignerFingerprint()
 	vetted := false
 	if vetting != nil {
-		vetted = vetting.IsVetted(fp)
+		vetted = vetting.IsVetted(fp) && e.AutomatedChecksPassed
 	}
 	return hubEntryResponse{
 		Type:              string(e.Type),

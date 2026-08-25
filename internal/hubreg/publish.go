@@ -392,7 +392,8 @@ func sameEntry(a, b hub.Entry) bool {
 		a.Publisher == b.Publisher &&
 		a.Description == b.Description &&
 		a.ArtifactURL == b.ArtifactURL &&
-		a.Transport == b.Transport
+		a.Transport == b.Transport &&
+		a.AutomatedChecksPassed == b.AutomatedChecksPassed
 }
 
 func equalStrings(a, b []string) bool {

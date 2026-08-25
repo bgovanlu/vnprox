@@ -85,7 +85,9 @@ func printHubUsage(w io.Writer) {
   vnproxctl hub index --root <registry dir> --submission <file> --key <index key>
         Registry side, after review: verify the submission, write its artifact
         into <root>, add one entry, and re-sign <root>/index.json. Idempotent —
-        re-running with the same submission changes nothing.
+        re-running with the same submission changes nothing. Also runs T-3709's
+        automated "vetted" hygiene checks and folds the pass/fail verdict into
+        the entry before signing (docs/hub-registry.md's "Automated vetting").
 
   vnproxctl hub revoke --root <registry dir> --key <index key> --reason <why>
                        [--type T --id ID [--version V]] [--signer <fingerprint>]
@@ -230,6 +232,13 @@ func runHubIndex(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "vnproxctl hub index: %v\n", err)
 		return hubExitFor(err)
 	}
+	// T-3709: run the automated "vetted" hygiene checks now, at the one
+	// point in the pipeline that holds the full, reviewed artifact bytes,
+	// and fold the verdict into the entry BEFORE it is (re-)signed — so it
+	// rides inside the same signature as everything else, and a mismatched
+	// or forged verdict cannot survive index verification.
+	vet := hubreg.AutomatedVetChecks(sub)
+	sub.Entry.AutomatedChecksPassed = vet.Passed()
 	key, err := blueprint.LoadSigningKeyFile(*keyFile)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "vnproxctl hub index: %v\n", err)
@@ -259,6 +268,7 @@ func runHubIndex(args []string, stdout, stderr io.Writer) int {
 		if err := writeJSONOut(stdout, map[string]any{
 			"changed": changed, "entries": len(doc.Entries), "artifact": artifactPath,
 			"id": sub.Entry.ID, "version": sub.Entry.Version,
+			"automatedChecksPassed": sub.Entry.AutomatedChecksPassed, "vettingNotes": vet.Notes,
 		}); err != nil {
 			return ExitError
 		}
@@ -271,6 +281,10 @@ func runHubIndex(args []string, stdout, stderr io.Writer) int {
 	_, _ = fmt.Fprintf(stdout, "Indexed %s %s@%s\n", sub.Entry.Type, sub.Entry.ID, sub.Entry.Version)
 	_, _ = fmt.Fprintf(stdout, "  artifact: %s\n", artifactPath)
 	_, _ = fmt.Fprintf(stdout, "  index:    %s (%d entries)\n", filepath.Join(*root, hubIndexFileName), len(doc.Entries))
+	_, _ = fmt.Fprintf(stdout, "  automated vetting: passed=%v\n", sub.Entry.AutomatedChecksPassed)
+	for _, note := range vet.Notes {
+		_, _ = fmt.Fprintf(stdout, "    - %s\n", note)
+	}
 	return ExitSuccess
 }
 

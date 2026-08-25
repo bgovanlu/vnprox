@@ -1,14 +1,22 @@
 # Install
 
 **Honesty note first, because it changes which section applies to you:** as of 2026-08-18
-(T-3301), `apt.vnprox.com` is a real, live, signed apt repository, hosted and serving —
-but it does not resolve from the public internet yet, pending a DNS/edge-proxy step outside this
-repository. The installer, the packaging, and the signature-verification code are all real and
-tested (see "Verified" at the end of each section), and there is now something real on the other
-end of the URLs they point at — it just isn't publicly reachable by that name yet. This page is
-written in two parts for that reason: **what works today**, if you already have this source tree,
-and **what will work once distribution is publicly reachable**, so the eventual reader doesn't
-have to relearn the shape of the thing.
+(T-3301), `apt.vnprox.com` is a real, signed apt repository — nginx serving a real, signed
+`Release` file and package tree from `pve001` — but two things are true at once and both matter.
+First, **the name itself resolves nowhere**: `apt.vnprox.com` is NXDOMAIN from the public internet
+*and* from every host inside this project's own dev environment, pending a DNS/edge-proxy step
+outside this repository (see `planning/reports/evidence/registry-vnprox-com-2026-08-24.txt` for the
+transcript — the same gap affects `registry.vnprox.com` and `demo.vnprox.com`). It is reachable
+today only by sending an explicit `Host:` header to the serving IP, which is not something an
+installer or a package manager does. Second — and this is the part a reader with only the DNS
+caveat in mind would miss — **the signing key for this hosting lives only on the host serving it**,
+which this project has no credentials for; nobody working from this repository can currently publish
+a new package, rotate the key, or (for the sibling blueprint/plugin registry) publish a revocation.
+Neither of those is a lie on its own, and saying only one invites the wrong mental model: "hosted
+and serving" reads as "reachable," and "not resolvable yet" reads as "otherwise fully operable" —
+this page is written in two parts so the eventual reader doesn't have to relearn the shape of the
+thing: **what works today**, if you already have this source tree, and **what will work once
+distribution is publicly reachable AND its keys are reachable by whoever needs to publish**.
 
 ## Supported platforms
 

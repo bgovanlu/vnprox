@@ -364,9 +364,14 @@ func TestHubInstall_PluginCapabilityMismatchRefused(t *testing.T) {
 	}
 }
 
-// TestHubInstall_VettedButUntrusted is T-1705 AC5: a "vetted" signer (in the
-// hub's allowlist) that this installation hasn't trusted still requires an
-// explicit trust step — the vetted badge never bypasses the trust decision.
+// TestHubInstall_VettedButUntrusted is T-1705 AC5 (extended by T-3709): a
+// "vetted" signer (in the hub's allowlist AND whose artifact passed the
+// automated hygiene checks — see internal/hubreg's AutomatedVetChecks) that
+// this installation hasn't trusted still requires an explicit trust step —
+// the vetted badge never bypasses the trust decision. T-3709 also requires
+// EITHER signal alone to be insufficient: an allowlisted signer whose
+// artifact did not pass the automated checks must not be shown vetted
+// either, checked below alongside the pre-existing non-allowlisted case.
 func TestHubInstall_VettedButUntrusted(t *testing.T) {
 	svc := newBlueprintTestService(t, "pve1")
 	trust := blueprint.NewTrustStore(t.TempDir()) // empty: signer NOT trusted here
@@ -377,19 +382,22 @@ func TestHubInstall_VettedButUntrusted(t *testing.T) {
 	signed, _ := blueprint.SignBundle(bp, priv)
 	fp := signed.Signature.PublicKeyFingerprint
 
-	// The signer IS in the hub's vetted allowlist...
+	// The signer IS in the hub's vetted allowlist, AND the entry carries the
+	// automated-checks-passed verdict internal/hubreg's `hub index` would
+	// have folded into the signed document at publish time...
 	vetting := hub.NewVettedSet([]string{fp})
 	client := &fakeHubClient{
 		index: hub.Index{SchemaVersion: hub.CurrentIndexSchema, Entries: []hub.Entry{{
 			Type: hub.TypeBlueprint, ID: "vetted-bp", Version: "1.0",
-			Signature: &blueprint.BundleSignature{Alg: signed.Signature.Alg, PublicKeyFingerprint: fp, PublicKey: signed.Signature.PublicKey, Sig: signed.Signature.Sig},
+			Signature:             &blueprint.BundleSignature{Alg: signed.Signature.Alg, PublicKeyFingerprint: fp, PublicKey: signed.Signature.PublicKey, Sig: signed.Signature.Sig},
+			AutomatedChecksPassed: true,
 		}}},
 		bundles: map[string]blueprint.Bundle{"vetted-bp": signed},
 	}
 	auth := blueprintTestAuth(map[string]bool{"netRead": true, "netWrite": true})
 	r := newHubTestRouter(t, client, vetting, svc, trust, nil, audit, auth)
 
-	// The index shows it vetted...
+	// ...so the index shows it vetted...
 	idxRec := do(t, r, http.MethodGet, "/api/v1/hub/index?type=blueprint", nil)
 	var idxResp hubIndexResponse
 	_ = json.Unmarshal(idxRec.Body.Bytes(), &idxResp)
@@ -408,7 +416,20 @@ func TestHubInstall_VettedButUntrusted(t *testing.T) {
 		t.Fatalf("status = %s, want %s (vetted must NOT bypass trust)", resp.Status, bundleStatusUntrustedSignature)
 	}
 
-	// A non-vetted entry gets no badge.
+	// An allowlisted signer whose artifact did NOT pass the automated
+	// checks must not be shown vetted either — allowlist membership alone
+	// is exactly the "an operator listed this key" meaning T-3709 exists to
+	// stop the badge from claiming.
+	client.index.Entries[0].AutomatedChecksPassed = false
+	idxRecFailedChecks := do(t, r, http.MethodGet, "/api/v1/hub/index?type=blueprint", nil)
+	var idxRespFailedChecks hubIndexResponse
+	_ = json.Unmarshal(idxRecFailedChecks.Body.Bytes(), &idxRespFailedChecks)
+	if idxRespFailedChecks.Items[0].Vetted {
+		t.Fatal("an allowlisted signer whose artifact failed the automated checks must not be vetted")
+	}
+	client.index.Entries[0].AutomatedChecksPassed = true
+
+	// A non-allowlisted signer gets no badge, even with checks passed.
 	client.index.Entries[0].Signature.PublicKeyFingerprint = "deadbeef"
 	idxRec2 := do(t, r, http.MethodGet, "/api/v1/hub/index?type=blueprint", nil)
 	var idxResp2 hubIndexResponse

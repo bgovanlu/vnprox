@@ -8,11 +8,62 @@ T-3303
 
 It is **not** an implementation card for the registry client. That is already built, documented,
 tested and hardened — `internal/hub/`, `internal/plugin/registry`, `internal/blueprint/`,
-`cmd/vnproxd/hubinstall.go`, and the `trustUnsigned` gate in `internal/api/hub.go`. Seven features
-sit inert not because code is missing but because the service they point at does not exist.
+`cmd/vnproxd/hubinstall.go`, and the `trustUnsigned` gate in `internal/api/hub.go`.
 
 So this card is **infrastructure and operations**. Read that as a warning about where the effort
 actually is: the parts that are hard here are the parts that are not Go.
+
+## CORRECTION 2026-08-24 — the premise above was wrong, and wrong in a useful way
+
+This card was written saying seven features sit inert "because the service they point at does not
+exist." **The service exists.** Observed, read-only, from pvecube — transcript in
+`planning/reports/evidence/registry-vnprox-com-2026-08-24.txt`:
+
+```
+Host: registry.vnprox.com  /index.json                      200 2584b   4 entries, 0 revocations
+Host: registry.vnprox.com  /artifacts/blueprint/…/1.0.0.json 200 2330b
+Host: apt.vnprox.com       /dists/stable/Release            200  573b
+index signature   ed25519  fp 1e75a5f0565a870596c4b6121c8c59ca05deea672d2264b93357378b9446e3ed
+entry signatures  ed25519  fp 791f441167f31ae8b0b5dfb37fffd0d2fec24e5c7cff03ff22e42d3a4ddf092a
+```
+
+It is a real, correctly signed, static registry with four seed blueprints and their artifacts. It
+was stood up by T-3303 on 2026-08-18 and this card, written five days later, did not know. That is
+the *same failure mode* as the "no cluster" premise: a claim about our own infrastructure, restated
+from a secondary source, going stale without anyone re-checking it. Third instance now.
+
+**So the gap is not the service. The gap is these three things, and they are what this card is:**
+
+1. **The name resolves nowhere.** `registry.vnprox.com`, `apt.vnprox.com` and `demo.vnprox.com` are
+   NXDOMAIN from the dev box *and* from pvecube. The registry is reachable only by sending an
+   explicit `Host:` header to `192.168.1.7`. No vnprox installation anywhere can reach it by name,
+   which is why the seven features are inert — not because nothing is serving. Already tracked as
+   `debt-sweep-2026-08-19.md` item 7 (the VPS reverse-proxy leg); it is a prerequisite of this card,
+   not a footnote to it.
+
+2. **Both signing keys live only on `pve001` — a host we have no credentials for and no
+   authorisation to modify.** T-3303's own commit message says so: *"The registry's Ed25519
+   index-signing key lives only on that host."* Consequences, which nobody has written down until
+   now:
+   - We cannot publish a new entry.
+   - **We cannot publish a revocation.** The index shows `revocations: 0` and there is no way for us
+     to make it show one. The shipped revocation mechanism is not merely unproven in production —
+     it is *inoperable*, and this card's AC3 cannot be met against the current registry by anyone
+     without pve001 access.
+   - We cannot rotate the key.
+
+   This is the strongest available argument for the owner's Sigstore decision, and it was made
+   without it: keyless signing moves publication off a host we cannot reach. The decision is
+   well-aimed. It is also now **load-bearing**, not a preference.
+
+3. **The deployed daemon does not point at it.** `registry_url` is commented out in
+   `/etc/vnprox/vnprox.toml` on pvecube. Even with DNS, nothing would happen until that is set.
+
+Two documentation claims should be re-read against the above before this card closes:
+`docs/install.md:4` calls `apt.vnprox.com` "a real, live, signed apt repository, hosted and serving",
+and `docs/security.md:508` says "there is no registry *service*". The first is true only for someone
+who can already resolve the name; the second is a description of the architecture (static files) that
+reads as a description of the deployment (nothing there). Neither is a lie; both mislead.
 
 ## The obligations — ANSWERED 2026-08-24
 

@@ -1,0 +1,209 @@
+Evidence: T-2803's registry signature verifier fails on tampered input, and
+revocation is honoured, end to end, against a REAL daemon and a REAL
+self-hosted registry (T-3709, AC2 and AC3)
+Captured 2026-08-24 on the dev box, entirely local (no pvecube/pve001 access
+of any kind — see WHY THIS FILE EXISTS below).
+
+WHY THIS FILE EXISTS
+---------------------
+T-3709's card is explicit that this is the deliverable most likely to be
+skipped: "A verifier only ever exercised against valid input is untested"
+(AC2), and "[revocation] is the half of this card most likely to be
+skipped" (AC3). internal/api/hub_registry_test.go already covers both
+claims at the Go-test boundary, with a real internal/hubreg + internal/hub
+stack behind an in-process httptest server — that is good coverage, but it
+is still `go test`'s process, not a daemon. This transcript is the same
+claims proven one boundary further out: a real `vnproxd` binary running as
+its own OS process, a real `vnproxctl hub publish`/`hub index` pipeline
+writing real files to disk, and a real plain-HTTP static file server
+(exactly the "static hosting, no service to operate" posture
+docs/hub-registry.md documents) in between.
+
+Per CLAUDE.md's mock rule — "a registry mock and the client that talks to
+it, both derived from one reading of the design, will agree with each other
+forever" — this harness deliberately reuses NOTHING hand-written: the
+published content is the repo's real `internal/hub/seed` blueprints (the
+same four seeds `docs/hub-registry.md` and T-2104's own CLI test publish),
+signed and indexed through the unmodified `vnproxctl hub publish`/`hub
+index` commands an operator would actually run.
+
+HOW TO REPRODUCE
+-----------------
+    scripts/hub-registry-harness.sh run
+
+Everything the script touches — two throwaway Ed25519 keys, the published
+registry directory, the daemon's SQLite store, its TLS listener — lives
+under a `mktemp -d` work directory and is torn down on exit. No key is ever
+written under this repository (a small Go helper program the script writes
+under `var/hub-harness-helpers.<pid>/` — gitignored, and also removed on
+exit — exists only so it can import `internal/...` packages; it carries no
+secret). Nothing in this run touched pvecube or pve001 in any way: the
+mock PVE server is `internal/pvemock` (`cmd/pvemock`), and the "registry"
+is a `python3 -m http.server` process bound to `127.0.0.1` on an ephemeral
+port.
+
+WHAT EACH SECTION BELOW PROVES
+-------------------------------
+  1-3   Build the real binaries; publish the four real seed blueprints
+        through the real publish/index CLI pipeline (not a fixture).
+  4-5   Serve the published tree over local HTTP; start a real vnproxd
+        with `[hub] registry_url` pointed at it — the exact operator-facing
+        shape docs/hub-registry.md's "Operator setup" documents.
+  (d)   A real install, through the real client, the real T-2803 gate and
+        the real per-installation trust store (`trustNewKey`).
+  (e)   AC2, first half: a published ARTIFACT is tampered after publish
+        (the index is left alone). Install is refused with
+        `status: invalidSignature` — a per-artifact verdict inside a 200.
+  (f)   AC2, second half, and a DIFFERENT failure than (e): the INDEX
+        itself is edited after signing. The daemon (restarted to force an
+        uncached re-fetch) refuses the WHOLE catalog — HTTP 502, zero
+        entries, never a partial list — and is shown recovering cleanly
+        once the pristine index is restored.
+  (g)   AC3, by entry: one artifact is revoked by (type, id), re-signed,
+        and is shown gone from `GET /hub/index` and refused by
+        `POST /hub/install` (404) — while a DIRECT check of that same
+        artifact's own bytes (bypassing the registry client and the T-2803
+        gate entirely) shows its Ed25519 signature still verifies. That
+        gap is the point: revocation is a catalog decision, not a claim
+        that the bytes were forged.
+  (h)   AC3, by signer fingerprint: a second revocation names only the
+        publisher's fingerprint, never an id. Every remaining entry from
+        that signer disappears, including one never named in any revoke
+        command — "the one that matters in a real compromise"
+        (docs/hub-registry.md).
+
+RESULT: all five checks (d)-(h) PASS. See the Summary section at the foot
+of the transcript.
+
+================================================================================
+TRANSCRIPT (scripts/hub-registry-harness.sh run, verbatim stdout+stderr)
+================================================================================
+
+vnprox hub registry harness — T-3709
+run at: 2026-08-24T23:18:33Z
+repo:   62e63841 (main)
+work:   /tmp/vnprox-hub-harness.pRa0jL
+
+=== 1. Build the real vnproxd / vnproxctl / pvemock binaries ===
+built: /tmp/vnprox-hub-harness.pRa0jL/bin/vnproxd /tmp/vnprox-hub-harness.pRa0jL/bin/vnproxctl /tmp/vnprox-hub-harness.pRa0jL/bin/pvemock
+
+=== 2. Generate a throwaway index key and publisher key (temp dir only, never committed) ===
+Wrote /tmp/vnprox-hub-harness.pRa0jL/keys/publisher.key
+  fingerprint: 99cad06bd70901d74b8a244c160f03c73942d5078bddb7a877341d8d689b6889
+Wrote /tmp/vnprox-hub-harness.pRa0jL/keys/index.key
+  fingerprint: 8267ea96d77891fa2272215f1ebb0d4248abb7248f002af5424252216a72e93b
+publisher key fingerprint: 99cad06bd70901d74b8a244c160f03c73942d5078bddb7a877341d8d689b6889
+index key fingerprint:     8267ea96d77891fa2272215f1ebb0d4248abb7248f002af5424252216a72e93b
+
+=== 3. Dump the repo's seed blueprints (internal/hub/seed) to bundle files ===
+seed-homelab-single-node
+seed-ceph-3node-storage
+seed-smb-vlan-segmented
+seed-dmz-wireguard-site-to-site
+seed blueprints: seed-ceph-3node-storage seed-dmz-wireguard-site-to-site seed-homelab-single-node seed-smb-vlan-segmented
+
+=== 3b. Publish + index every seed through the real 'vnproxctl hub publish'/'hub index' ===
+Indexed blueprint seed-ceph-3node-storage@1.0.0
+  artifact: /tmp/vnprox-hub-harness.pRa0jL/registry/artifacts/blueprint/seed-ceph-3node-storage/1.0.0.json
+  index:    /tmp/vnprox-hub-harness.pRa0jL/registry/index.json (1 entries)
+Indexed blueprint seed-dmz-wireguard-site-to-site@1.0.0
+  artifact: /tmp/vnprox-hub-harness.pRa0jL/registry/artifacts/blueprint/seed-dmz-wireguard-site-to-site/1.0.0.json
+  index:    /tmp/vnprox-hub-harness.pRa0jL/registry/index.json (2 entries)
+Indexed blueprint seed-homelab-single-node@1.0.0
+  artifact: /tmp/vnprox-hub-harness.pRa0jL/registry/artifacts/blueprint/seed-homelab-single-node/1.0.0.json
+  index:    /tmp/vnprox-hub-harness.pRa0jL/registry/index.json (3 entries)
+Indexed blueprint seed-smb-vlan-segmented@1.0.0
+  artifact: /tmp/vnprox-hub-harness.pRa0jL/registry/artifacts/blueprint/seed-smb-vlan-segmented/1.0.0.json
+  index:    /tmp/vnprox-hub-harness.pRa0jL/registry/index.json (4 entries)
+OK: index signed by 8267ea96d77891fa2272215f1ebb0d4248abb7248f002af5424252216a72e93b
+  4 entr(ies), 4 offered, 0 revocation(s)
+  blueprint seed-ceph-3node-storage@1.0.0  /artifacts/blueprint/seed-ceph-3node-storage/1.0.0.json
+  blueprint seed-dmz-wireguard-site-to-site@1.0.0  /artifacts/blueprint/seed-dmz-wireguard-site-to-site/1.0.0.json
+  blueprint seed-homelab-single-node@1.0.0  /artifacts/blueprint/seed-homelab-single-node/1.0.0.json
+  blueprint seed-smb-vlan-segmented@1.0.0  /artifacts/blueprint/seed-smb-vlan-segmented/1.0.0.json
+roles: install=seed-ceph-3node-storage tamper-artifact=seed-dmz-wireguard-site-to-site tamper-index/revoke-by-id=seed-homelab-single-node revoke-by-signer-victim=seed-smb-vlan-segmented
+
+=== 4. Serve the published registry tree over plain local HTTP ===
+registry served at http://127.0.0.1:36061
+GET http://127.0.0.1:36061/index.json -> 200
+
+=== 5. Start pvemock and a real vnproxd, [hub] registry_url pointed at the server above ===
+pvemock listening on 127.0.0.1:47859 (testdata/clusters/single-node.yaml)
+vnproxd healthy at https://127.0.0.1:44847/api/v1 (config: /tmp/vnprox-hub-harness.pRa0jL/vnprox.toml)
+logged in as root@pam, CSRF token acquired
+
+=== (d) GET /hub/index and install seed-ceph-3node-storage for real ===
+GET /hub/index -> 200
+  4 entr(ies) offered:
+    blueprint  seed-ceph-3node-storage          1.0.0    signer=99cad06bd70901d7...
+    blueprint  seed-dmz-wireguard-site-to-site  1.0.0    signer=99cad06bd70901d7...
+    blueprint  seed-homelab-single-node         1.0.0    signer=99cad06bd70901d7...
+    blueprint  seed-smb-vlan-segmented          1.0.0    signer=99cad06bd70901d7...
+POST /hub/install {id: seed-ceph-3node-storage, trustNewKey: true} -> 201
+  status: imported
+  RESULT: real install succeeded — the publisher key is now trusted by this daemon.
+
+=== (e) Tamper the published ARTIFACT for seed-dmz-wireguard-site-to-site (index.json untouched) ===
+flipped blueprint.name[0]: "D" -> "d"
+POST /hub/install {id: seed-dmz-wireguard-site-to-site} (tampered artifact bytes) -> 200
+  status: invalidSignature
+  RESULT: REFUSED — status=invalidSignature (the artifact's own Ed25519 signature no longer verifies over its tampered bytes).
+
+=== (f) Tamper the INDEX for seed-homelab-single-node (edit an entry after signing) ===
+edited entry seed-homelab-single-node description in-place; signature block left untouched
+vnproxd restarted (forces a fresh, uncached index fetch)
+GET /hub/index (index tampered) -> 502
+  body: {"error":{"code":"registry_unavailable","message":"could not fetch registry index"}}
+  RESULT: REFUSED whole — HTTP 502, zero entries returned (never a partial catalog).
+  This is a DIFFERENT failure than (e): (e) was a per-artifact invalidSignature status inside
+  a 200 install response; this is the whole index failing to verify at all, before any entry is shown.
+POST /hub/install {id: seed-homelab-single-node} (index still tampered) -> 404 (want 404: no verified catalog to find it in)
+index restored + vnproxd restarted -> GET /hub/index -> 200, 4 entr(ies) (back to normal)
+
+=== (g) Revoke seed-homelab-single-node by (type, id); confirm its OWN artifact signature still verifies ===
+Revoked. 1 revocation(s) published; 1 catalog entr(ies) now withdrawn.
+GET /hub/index after revocation -> 200, seed-homelab-single-node offered = False
+POST /hub/install {id: seed-homelab-single-node} (revoked) -> 404 (want 404)
+direct bundle-signature check on the revoked artifact's OWN bytes (no registry, no gate): verified=true signerFingerprint=99cad06bd70901d74b8a244c160f03c73942d5078bddb7a877341d8d689b6889
+  RESULT: the revoked artifact's signature verifies (verified=true) but the catalog refuses it (404) —
+  proof that revocation and signature validity are genuinely separate checks, as docs/hub-registry.md claims.
+
+=== (h) Revoke by --signer 99cad06bd70901d74b8a244c160f03c73942d5078bddb7a877341d8d689b6889 (key-compromise path) — every remaining entry from that signer is withdrawn ===
+entries offered before the by-signer revocation: 3
+Revoked. 2 revocation(s) published; 4 catalog entr(ies) now withdrawn.
+GET /hub/index after by-signer revocation -> 200, 0 entr(ies) offered (want 0: every seed shares the one publisher key)
+POST /hub/install {id: seed-smb-vlan-segmented} — never individually revoked, only via --signer -> 404 (want 404)
+  RESULT: seed-smb-vlan-segmented was never revoked by name — it is withdrawn ONLY because its signer was —
+  the case docs/hub-registry.md calls out as 'the one that matters in a real compromise'.
+
+=== Summary ===
+d. real install:                 PASS (201 imported, seed-ceph-3node-storage)
+e. tampered artifact refused:     PASS (200 invalidSignature, seed-dmz-wireguard-site-to-site)
+f. tampered index refused:        PASS (502 registry_unavailable, whole catalog, zero entries) + recovered
+g. revoke by entry:               PASS (offered=False, install=404) + own signature still verifies
+h. revoke by signer fingerprint:  PASS (0 entries offered, an un-named entry also refused)
+
+vnproxd log:   /tmp/vnprox-hub-harness.pRa0jL/vnproxd.log
+pvemock log:   /tmp/vnprox-hub-harness.pRa0jL/pvemock.log
+registry log:  /tmp/vnprox-hub-harness.pRa0jL/registry-http.log
+registry dir:  /tmp/vnprox-hub-harness.pRa0jL/registry
+
+================================================================================
+NOT COVERED BY THIS HARNESS (out of scope for this run, tracked elsewhere)
+================================================================================
+This harness proves the CLIENT-SIDE verifier and revocation mechanism work
+end to end against a real daemon and a real self-hosted registry — the
+generic self-hosting path any operator can use today. It does NOT touch
+the PUBLIC registry.vnprox.com, and cannot: per T-3709's CORRECTION
+2026-08-24, both of registry.vnprox.com's signing keys live only on
+pve001, a host this project has no credentials for and no authorisation to
+modify. Concretely, this means:
+  - the public registry cannot be re-published, re-keyed or made to serve
+    a revocation by anyone working from this repository today;
+  - the "revoke and verify the revocation is honoured" half of this
+    transcript is real and reproducible against a SELF-HOSTED registry,
+    but is NOT currently reproducible against registry.vnprox.com itself.
+See docs/hub-registry.md's "Known limitation" note and
+docs/security.md's hub section for the operator-facing statement of this
+gap, and planning/tasks/T-3709-hosted-registry.md's CORRECTION section for
+the full account of how it was found.

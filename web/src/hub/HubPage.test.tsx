@@ -66,6 +66,23 @@ describe("HubPage", () => {
     expect(screen.getByTestId("hub-vetted-vetted-bp")).toHaveTextContent("vetted");
   });
 
+  // T-3709: the badge is never just the bare word "vetted" — hovering it
+  // explains, in plain terms, that this is an automated-hygiene result and
+  // NOT a human review, an endorsement, or a reproducible-build claim. This
+  // is the badge-copy deliverable itself, so it gets its own assertion
+  // rather than riding along inside an unrelated test.
+  it("explains the vetted badge on hover as automated checks, not endorsement", async () => {
+    fetchHubIndex.mockResolvedValue({ items: [blueprintEntry] });
+    renderPage();
+    const badge = await screen.findByTestId("hub-vetted-vetted-bp");
+    await userEvent.hover(badge);
+    const explanation = await screen.findByRole("tooltip", {}, { timeout: 2000 });
+    expect(explanation).toHaveTextContent(/passed automated checks only/i);
+    expect(explanation).toHaveTextContent(/not a human review/i);
+    expect(explanation).toHaveTextContent(/not.*endorsement/i);
+    expect(explanation).toHaveTextContent(/not proof of a reproducible build/i);
+  });
+
   it("surfaces a plugin's declared capabilities before install (AC4)", async () => {
     fetchHubIndex.mockResolvedValue({ items: [pluginEntry] });
     renderPage();

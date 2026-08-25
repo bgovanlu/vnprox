@@ -99,6 +99,35 @@ Verify a published index yourself, exactly as the daemon does:
 vnproxctl hub verify --index index.json --signers <fingerprint>
 ```
 
+## Self-hosting your own registry
+
+Everything below this heading through "Keys" — publishing, indexing, and
+revoking — is the complete self-hosting path, unmodified by who runs the
+host. It does not depend on the vnprox project's own registry existing,
+being reachable, or being trustworthy; a self-hosted registry an operator
+fully controls does not share the public registry's current key-custody
+limitation (see "Status" below). At a glance, going from nothing to a
+served registry:
+
+```
+vnproxctl hub keygen --key publisher.key      # once, on a publisher's machine
+vnproxctl hub keygen --key index.key          # once, on the registry maintainer's machine
+vnproxctl hub publish --artifact <bundle.json> --type blueprint --version 1.0.0 \
+                      --key publisher.key --out submission.json
+vnproxctl hub index --root ./registry --submission submission.json --key index.key
+# serve ./registry over any static host — object storage, GitHub Pages, nginx
+```
+
+Then point an installation at it with `[hub] registry_url` and
+`index_signers` (above) set to that registry's own index key fingerprint.
+`scripts/hub-registry-harness.sh run` runs exactly this sequence against a
+real daemon, end to end, including a tampered artifact, a tampered index and
+both revocation paths — see its transcript at
+`planning/reports/evidence/hub-registry-verification-2026-08-24.txt` for
+what each step actually printed. The harness and this section are meant to
+agree step for step; if they ever don't, the harness is describing what the
+tooling actually does and this section is the one that's stale.
+
 ## Publishing: the process
 
 The publisher and the registry are separated on purpose — a publisher signs
@@ -282,3 +311,94 @@ new key.
   `registry.vnprox.com` don't resolve publicly yet, pending the VPS
   reverse-proxy leg of T-3301/T-3303 — see `docs/development.md`'s CI
   section for the network design.
+- **Known limitation, T-3709 (2026-08-24): the public registry's revocation
+  channel is not currently operable.** Both Ed25519 identities this document
+  describes under "Keys" — the registry's own index key AND the seed
+  publisher's key — live only on `pve001`, a host this project has no SSH
+  credentials for and no authorisation to modify (`CLAUDE.md`'s "Real PVE
+  access" section). Consequence, stated plainly rather than discovered by an
+  operator who needs it: **nobody working from this repository can currently
+  publish a new entry to `registry.vnprox.com`, rotate its key, or publish a
+  revocation to it.** The revocation *mechanism* is not merely unproven in
+  production against this registry — it is inoperable there, because
+  publishing a revocation means re-signing `index.json` with a key nobody
+  reachable holds. This is the strongest available argument for routing
+  signing custody through Sigstore/keyless OIDC (pending an owner decision,
+  tracked outside this document) — a key nobody can reach to sign *or*
+  revoke with is the failure mode keyless signing exists to remove. **This
+  limitation is specific to the one public registry `registry.vnprox.com`
+  happens to be hosted on today.** It is not a property of the registry
+  *format*, and it does not apply to a registry you host yourself — see
+  "Publishing: the process" and "Revocation" above, which are the complete,
+  self-hosting instructions regardless of who runs the host.
+- **Verified end-to-end against a real daemon, T-3709 (2026-08-24).**
+  `scripts/hub-registry-harness.sh run` builds the real `vnproxd`/
+  `vnproxctl`/`pvemock` binaries, publishes the real seed blueprints above
+  through the real `hub publish`/`hub index` pipeline, serves the result
+  over local HTTP, and points a real running `vnproxd` at it via `[hub]
+  registry_url` — i.e., it *is* the self-hosting path above, exercised by a
+  script rather than by hand. It demonstrates, against that real daemon: a
+  successful install; a tampered ARTIFACT refused with `invalidSignature`
+  (the index left alone); a tampered INDEX refused as a whole — HTTP 502,
+  zero entries, a *different* failure than the artifact case — with a clean
+  recovery once the pristine index is restored; a by-entry revocation
+  honoured (offered=false, install refused) while the artifact's own bundle
+  signature is shown still verifying (revocation is a catalog decision, not
+  a forgery claim); and a by-signer revocation withdrawing an entry that was
+  never named in any revoke command. Transcript:
+  `planning/reports/evidence/hub-registry-verification-2026-08-24.txt`.
+
+## Automated vetting (T-3709)
+
+The owner's decision on the "vetted" tier: **automated checks only —
+hygiene, not human vouching.** Before this, "vetted" meant only "this
+signer's fingerprint is in the operator's `[hub] vetted_signers` allowlist"
+— i.e. "an operator listed this key," which is not what a badge reading
+"vetted" implies to a reader, and inventing an unwritten bar behind a
+trust-sounding word is the trust-laundering failure this section exists to
+close off.
+
+An entry is shown "vetted" only when **both** of these are true:
+
+1. The signer is in the operator's own `[hub] vetted_signers` allowlist —
+   this opts a signer *into* consideration; it is not sufficient by itself.
+2. `internal/hubreg.AutomatedVetChecks` recorded, at `vnproxctl hub index`
+   time, that the artifact passed every check it runs:
+   - **A capability manifest is present and well-formed.** For a plugin: a
+     real identity (id/name/version), the frozen v1 plugin SDK surface
+     (`plugin.APIVersion`), a recognized transport, and internally
+     consistent extension points/capabilities — checked with
+     `plugin.NewScope` + `plugin.ValidateScope`, the exact vocabulary
+     `plugin.Registry.Install` enforces at install time, reused rather than
+     reimplemented. A blueprint has no capability manifest of its own, so
+     this is vacuously true for one.
+   - **The artifact declares no privilege the catalog entry didn't also
+     declare** — `hub.CapabilityMismatch`, T-2104's own gate, reused rather
+     than reimplemented. Vacuously true for a blueprint.
+   - **The artifact decodes strictly**, with no unrecognized fields riding
+     along (`encoding/json`'s `DisallowUnknownFields`). A signature is
+     verified against the *canonicalized* form of whatever a client's
+     `json.Unmarshal` accepts, so an extra field smuggled into an otherwise
+     validly-signed artifact would decode today with nothing to say so —
+     this check refuses to call that artifact vetted.
+
+The verdict is folded into the catalog entry (`AutomatedChecksPassed`)
+**before** the index is (re-)signed, so it rides inside the same signature
+an operator's daemon already verifies: forging a vetted verdict requires
+forging the index signature, not a second, separately-trusted claim.
+
+**What "vetted" explicitly does not mean: a reproducible build.** The
+decision named a reproducible-build check; it is not implemented, and the
+gap is stated here rather than hidden behind a check that always passes.
+vnprox has no source-to-artifact build pipeline. For a plugin specifically,
+the registry never receives the executable the manifest's `endpoint` names
+at all — only a `{manifest, signature}` artifact
+(`cmd/vnproxd/hubinstall.go`'s doc comment: delivering the actual binary to
+that endpoint is the registry's own responsibility, out of band) — so there
+is nothing here to rebuild and compare. Every `VetResult` (`internal/hubreg/
+vetting.go`) carries this residual as a note, pass or fail, so it is never
+silently absent from anything that inspects one.
+
+The badge in the web UI reads "vetted" with a hover explanation naming
+exactly these checks and this residual — never wording that could be read
+as a person's review or endorsement of the artifact.

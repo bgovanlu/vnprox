@@ -1,0 +1,29 @@
+# registry.vnprox.com — observed state, 2026-08-24
+# Method: read-only HTTP GET from pvecube against pve001's nginx.
+# pve001 is NOT logged into: every probe below is a GET issued from pvecube.
+
+## 1. DNS — the name resolves nowhere
+registry.vnprox.com      dev box: NXDOMAIN
+apt.vnprox.com           dev box: NXDOMAIN
+demo.vnprox.com          dev box: NXDOMAIN
+registry.vnprox.com      pvecube: NXDOMAIN
+apt.vnprox.com           pvecube: NXDOMAIN
+demo.vnprox.com          pvecube: NXDOMAIN
+
+## 2. The service itself IS up (name-based vhost on 192.168.1.7)
+Host: registry.vnprox.com    /index.json                                          200 2584b
+Host: apt.vnprox.com         /dists/stable/Release                                200 573b
+Host: registry.vnprox.com    /artifacts/blueprint/seed-homelab-single-node/1.0.0.json 200 2330b
+
+## 3. The served index (signature block + revocations)
+schemaVersion: 1
+generatedAt:  1787076579
+entries:      4
+revocations:  0
+index sig:    {
+  "alg": "ed25519",
+  "publicKeyFingerprint": "1e75a5f0565a870596c4b6121c8c59ca05deea672d2264b93357378b9446e3ed",
+  "publicKey": "Ltk4E1CFT/KoIHMTkMMfzjqMmuO9SBGwVsfymd1X7sg=",
+  "sig": "gkw1Q+JCy9JBbDUsrKWBi+/28wNWIWU1xUuG+24RHxR44y1UFdVhqJGrrBT/UjloF1ey1V0pUOKvFBV9JE7/Dg=="
+}
+entry signer fingerprints: ['791f441167f31ae8b0b5dfb37fffd0d2fec24e5c7cff03ff22e42d3a4ddf092a']

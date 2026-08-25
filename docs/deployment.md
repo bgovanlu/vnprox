@@ -235,7 +235,9 @@ enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); 
 # sflow_enabled = false            # UDP :6343
 # netflow_enabled = false          # UDP :2055 (v5 and v9 share one port)
 # ipfix_enabled = false            # UDP :4739
-# conntrack_sampling_enabled = false   # periodic /proc/net/nf_conntrack poll; no extra capability needed
+# conntrack_sampling_enabled = false   # periodic netlink conntrack table poll (T-3711 — the procfs path this
+#                                      # comment used to name does not exist on PVE 9); needs CAP_NET_ADMIN,
+#                                      # already granted by the shipped unit's CapabilityBoundingSet
 # ebpf_sampling_enabled = false        # needs CAP_BPF/CAP_PERFMON (docs/security.md Host footprint); setting
 #                                      # this true and reinstalling/upgrading grants the unit that capability
 # host_sample_interval_sec = 10        # shared poll interval for the two host-local samplers above

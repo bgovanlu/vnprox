@@ -181,6 +181,73 @@ func TestHubCLI_PublishReviewIndexFlow(t *testing.T) {
 	}
 }
 
+// TestHubCLI_IndexRecordsAutomatedVetting is T-3709: `hub index` runs the
+// automated "vetted" hygiene checks and folds the verdict into the entry
+// BEFORE signing, so it survives a normal Verify — and the CLI's own
+// output (both text and JSON) reports it, so a reviewer sees the verdict
+// without reading the raw index file.
+func TestHubCLI_IndexRecordsAutomatedVetting(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "registry")
+	pubKey, _ := keygen(t, dir, "publisher.key")
+	idxKey, idxFP := keygen(t, dir, "index.key")
+
+	bundlePath := writeBundle(t, dir, "vetted-bp")
+	submission := filepath.Join(dir, "vetted-bp.submission.json")
+	if pubCode, _, pubErrOut := hubRun(t, "hub", "publish",
+		"--artifact", bundlePath, "--type", "blueprint", "--version", "1.0.0",
+		"--key", pubKey, "--out", submission); pubCode != ExitSuccess {
+		t.Fatalf("publish: code=%d stderr=%s", pubCode, pubErrOut)
+	}
+
+	code, out, errOut := hubRun(t, "hub", "index", "--root", root, "--submission", submission, "--key", idxKey)
+	if code != ExitSuccess {
+		t.Fatalf("index: code=%d stderr=%s", code, errOut)
+	}
+	if !strings.Contains(out, "automated vetting: passed=true") {
+		t.Fatalf("index output = %q, want it to report the automated vetting verdict", out)
+	}
+
+	indexPath := filepath.Join(root, "index.json")
+	raw, err := os.ReadFile(indexPath) //nolint:gosec // test-local path
+	if err != nil {
+		t.Fatalf("read index: %v", err)
+	}
+	doc, err := hubreg.Verify(raw, []string{idxFP})
+	if err != nil {
+		t.Fatalf("published index must verify: %v", err)
+	}
+	if len(doc.Entries) != 1 || !doc.Entries[0].AutomatedChecksPassed {
+		t.Fatalf("entries = %+v, want one entry with AutomatedChecksPassed=true", doc.Entries)
+	}
+
+	// The JSON form reports it too, for tooling that shells out to `hub index`.
+	bundlePath2 := writeBundle(t, dir, "vetted-bp-2")
+	submission2 := filepath.Join(dir, "vetted-bp-2.submission.json")
+	if pubCode, _, pubErrOut := hubRun(t, "hub", "publish",
+		"--artifact", bundlePath2, "--type", "blueprint", "--version", "1.0.0",
+		"--key", pubKey, "--out", submission2); pubCode != ExitSuccess {
+		t.Fatalf("publish: code=%d stderr=%s", pubCode, pubErrOut)
+	}
+	code, out, errOut = hubRun(t, "hub", "index", "--root", root, "--submission", submission2, "--key", idxKey, "-o", "json")
+	if code != ExitSuccess {
+		t.Fatalf("index -o json: code=%d stderr=%s", code, errOut)
+	}
+	var jsonResp struct {
+		VettingNotes          []string `json:"vettingNotes"`
+		AutomatedChecksPassed bool     `json:"automatedChecksPassed"`
+	}
+	if err := json.Unmarshal([]byte(out), &jsonResp); err != nil {
+		t.Fatalf("decode index -o json output %q: %v", out, err)
+	}
+	if !jsonResp.AutomatedChecksPassed {
+		t.Fatalf("json output = %+v, want automatedChecksPassed=true", jsonResp)
+	}
+	if len(jsonResp.VettingNotes) == 0 {
+		t.Fatal("json output carried no vettingNotes at all, want at least the reproducible-build residual note")
+	}
+}
+
 // TestHubCLI_IndexRefusesConflict: a second, different artifact under an
 // already-published version is refused, and the published index is untouched.
 func TestHubCLI_IndexRefusesConflict(t *testing.T) {

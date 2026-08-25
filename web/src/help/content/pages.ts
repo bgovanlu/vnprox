@@ -388,7 +388,7 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
       },
       {
         heading: "What the 'vetted' badge means",
-        body: "That the registry recognizes the signer. It is informational only and never replaces your own trust decision — a vetted artifact from an unknown signer still stops at the same gate.",
+        body: "Automated checks passed, nothing more: a well-formed capability manifest, no undeclared privileges, and strict decoding — plus you've chosen to recognize the signer. It is not a person's review or endorsement, and it is not proof of a reproducible build (vnprox has no build pipeline to check that against). It never replaces your own trust decision — a vetted artifact from a signer you haven't trusted yet still stops at the same gate.",
       },
       {
         heading: "Installing a plugin",

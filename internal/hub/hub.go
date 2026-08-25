@@ -14,9 +14,15 @@
 //     manifest by blueprint.VerifySignature (the same Ed25519 primitive) + the
 //     same TrustStore, before internal/plugin's capability-scoped registry ever
 //     installs it. The hub adds no implicit-trust path.
-//   - The "vetted" tier (VettedSet) is purely informational: a badge meaning
-//     "this signer fingerprint is in the hub's own recognized list". It never
-//     substitutes for, or short-circuits, the per-installation trust decision.
+//   - The "vetted" tier is never a person's endorsement (T-3709). A signer
+//     fingerprint being in the operator's own [hub] vetted_signers allowlist
+//     (VettedSet) opts a signer INTO the badge's consideration; whether an
+//     entry actually earns it also requires Entry.AutomatedChecksPassed —
+//     the mechanical hygiene checks internal/hubreg's AutomatedVetChecks ran
+//     over the artifact at publish time. Either alone is not enough, and
+//     neither substitutes for, or short-circuits, the per-installation trust
+//     decision: a vetted-but-untrusted signer still requires an explicit
+//     trust step (docs/hub-registry.md's "Automated vetting" section).
 package hub
 
 import (
@@ -98,6 +104,20 @@ type Entry struct {
 	Transport       string                     `json:"transport,omitempty"`
 	Capabilities    []string                   `json:"capabilities,omitempty"`
 	ExtensionPoints []string                   `json:"extensionPoints,omitempty"`
+	// AutomatedChecksPassed records whether `vnproxctl hub index` (T-3709)
+	// ran its automated hygiene checks over this entry's artifact at
+	// publish time and every one of them passed: a capability manifest
+	// present and well-formed, the catalog's advertised capability scope
+	// agreeing with the artifact's own manifest, and the artifact decoding
+	// strictly (no unrecognized fields riding along). It rides inside the
+	// same signed index document as everything else, so it cannot be
+	// forged without also breaking the index signature. This is deliberately
+	// NOT a claim about reproducible builds — nothing in this repository can
+	// honestly make that claim today (internal/hubreg's AutomatedVetChecks
+	// doc comment has the full account) — and it is never, by itself, the
+	// "vetted" badge: see hub.VettedSet and docs/hub-registry.md's
+	// "Automated vetting" section for how the two combine.
+	AutomatedChecksPassed bool `json:"automatedChecksPassed,omitempty"`
 }
 
 // SignerFingerprint returns the entry's publisher signer fingerprint, or "" if

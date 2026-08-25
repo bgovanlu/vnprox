@@ -10,11 +10,18 @@
 //     Everything here is shaped to fit that client, never the other way round.
 //     Document.HubIndex returns a hub.Index built from hub.Entry values, so the
 //     generator and the client cannot drift apart without a compile error.
-//   - There is no registry *service*. The index is a static, signed JSON file
-//     served from object storage or GitHub Pages next to a tree of static
-//     artifact files — the same "nothing to operate" posture T-2102 chose for
-//     the apt repository. `vnproxctl hub publish|index|revoke|verify` is the
-//     whole server side (see docs/hub-registry.md).
+//   - A registry's *shape* needs no service to operate: the index is a
+//     static, signed JSON file served from object storage or GitHub Pages
+//     next to a tree of static artifact files — the same "nothing to
+//     operate" posture T-2102 chose for the apt repository.
+//     `vnproxctl hub publish|index|revoke|verify` is the whole server side.
+//     That is a claim about the format, not about whether a real one is
+//     deployed — one is, at registry.vnprox.com (T-3303), not yet publicly
+//     resolvable and (T-3709) currently unable to publish a revocation
+//     because both its signing keys live on a host this project cannot
+//     reach; see docs/hub-registry.md's "Status" section for the current,
+//     correct account and CLAUDE.md's mock-rule note about restating a
+//     stale claim from a secondary source.
 //   - This package makes no trust decision about an *artifact*. An artifact's
 //     Ed25519 signature and the per-installation trust store remain the only
 //     install gate (internal/api's importBundleCore / installPluginCore, over
