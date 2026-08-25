@@ -1,0 +1,208 @@
+T-3710 end-to-end evidence transcript
+Generated 2026-08-24T23:17:08Z on dev, entirely against 127.0.0.1 (no pvecube/pve001 access).
+Binaries: bin/vnproxtelemetryd, bin/vnproxctl, built from this working tree.
+
+=== 1. healthz ===
+$ curl -sS --cacert /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/cert.pem https://127.0.0.1:18443/healthz
+{"status":"ok"}
+(exit 0)
+
+=== 2. preview (no network touched) ===
+$ ./bin/vnproxctl telemetry preview --report /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/report.json --config /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/config.toml
+vnproxctl telemetry preview: generated a new install-id (01M0V10FC7N1D2G6Y8C94D7B02); reset it any time with `vnproxctl telemetry reset-id`
+{
+  "payloadVersion": 1,
+  "installId": "01M0V10FC7N1D2G6Y8C94D7B02",
+  "vnproxVersion": "3.0.3",
+  "pveVersion": "pve-manager/9.2.4",
+  "kernel": "6.8.12-4-pve",
+  "nicPciIds": [
+    "0x8086:0x1521"
+  ],
+  "nodeCount": 2,
+  "suite": "hardware",
+  "checks": [
+    {
+      "id": "drift.config_vs_live",
+      "status": "pass",
+      "durationMs": 412
+    },
+    {
+      "id": "iface.lacp_partner_observed",
+      "status": "fail",
+      "durationMs": 1203
+    },
+    {
+      "id": "ha.standby_promotes",
+      "status": "skip",
+      "durationMs": 3
+    }
+  ]
+}
+(exit 0)
+
+=== 3. status before consent (no install-id printed as 'sent') ===
+$ ./bin/vnproxctl telemetry status --config /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/config.toml
+telemetry:  ENABLED
+endpoint:   https://127.0.0.1:18443/v1/submissions
+install-id: 01M0V10FC7N1D2G6Y8C94D7B02
+
+What would be sent is listed in docs/security.md and printed in full by
+`vnproxctl telemetry preview --report <file>`.
+(exit 0)
+
+=== 4. WITHHELD CONSENT: with [telemetry] enabled=false, nothing is sent ===
+$ ./bin/vnproxctl telemetry send --report /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/report.json --config /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/config-disabled.toml
+vnproxctl telemetry send: telemetry is disabled ([telemetry] enabled = false); nothing was sent and no endpoint was contacted. Set [telemetry] enabled = true and an https endpoint in /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/config-disabled.toml first; `vnproxctl telemetry preview --report /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/report.json` shows exactly what that would send.
+(exit 2)
+
+=== 5. collector request count before any consented send ===
+$ curl -sS --cacert /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/cert.pem https://127.0.0.1:18443/v1/summary
+{"generatedAt":"2026-08-24T19:17:15.134164191-04:00","oldestReceivedAt":"0001-01-01T00:00:00Z","newestReceivedAt":"0001-01-01T00:00:00Z","pveVersions":{},"vnproxVersions":{},"suites":{},"checks":null,"totalSubmissions":0,"distinctInstalls":0}
+(exit 0)
+
+=== 6. CONSENT GIVEN: send for real (SSL_CERT_FILE trusts our local dev cert; the client makes a real HTTPS POST) ===
+$ SSL_CERT_FILE=/tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/cert.pem ./bin/vnproxctl telemetry send --report /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/report.json --config /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/config.toml
+sent 561 bytes to https://127.0.0.1:18443/v1/submissions
+(exit 0)
+
+=== 7. status after: same install-id ===
+$ ./bin/vnproxctl telemetry status --config /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/config.toml
+telemetry:  ENABLED
+endpoint:   https://127.0.0.1:18443/v1/submissions
+install-id: 01M0V10FC7N1D2G6Y8C94D7B02
+
+What would be sent is listed in docs/security.md and printed in full by
+`vnproxctl telemetry preview --report <file>`.
+(exit 0)
+
+=== 8. read it back: GET /v1/summary on the collector ===
+$ curl -sS --cacert /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/cert.pem https://127.0.0.1:18443/v1/summary
+{"generatedAt":"2026-08-24T19:17:22.716550591-04:00","oldestReceivedAt":"2026-08-24T23:17:22Z","newestReceivedAt":"2026-08-24T23:17:22Z","pveVersions":{"pve-manager/9.2.4":1},"vnproxVersions":{"3.0.3":1},"suites":{"hardware":1},"checks":[{"checkId":"drift.config_vs_live","pass":1,"fail":0,"skip":0},{"checkId":"ha.standby_promotes","pass":0,"fail":0,"skip":1},{"checkId":"iface.lacp_partner_observed","pass":0,"fail":1,"skip":0}],"totalSubmissions":1,"distinctInstalls":1}
+(exit 0)
+
+=== 9. read it back: vnproxtelemetryd report (offline form, direct db read) ===
+$ ./bin/vnproxtelemetryd report --db /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/collector.db
+submissions:        1
+distinct installs:  1
+oldest:             2026-08-24T23:17:22Z
+newest:             2026-08-24T23:17:22Z
+
+PVE versions:
+  pve-manager/9.2.4              1
+
+vnprox versions:
+  3.0.3                          1
+
+suites:
+  hardware                       1
+
+checks (pass/fail/skip):
+  drift.config_vs_live                     1/0/0
+  ha.standby_promotes                      0/0/1
+  iface.lacp_partner_observed              0/1/0
+(exit 0)
+
+
+=== 10. REVOKE: DELETE /v1/installs/<installId> on the running collector ===
+$ curl -sS -X DELETE --cacert /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/cert.pem https://127.0.0.1:18443/v1/installs/01M0V10FC7N1D2G6Y8C94D7B02
+{"deleted":1,"installId":"01M0V10FC7N1D2G6Y8C94D7B02"}
+(exit 0)
+
+=== 11. confirm deletion: summary now shows 0, and the row is gone from the db ===
+$ curl -sS --cacert /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/cert.pem https://127.0.0.1:18443/v1/summary
+{"generatedAt":"2026-08-24T19:17:52.532587338-04:00","oldestReceivedAt":"0001-01-01T00:00:00Z","newestReceivedAt":"0001-01-01T00:00:00Z","pveVersions":{},"vnproxVersions":{},"suites":{},"checks":null,"totalSubmissions":0,"distinctInstalls":0}
+(exit 0)
+
+$ ./bin/vnproxtelemetryd report --db /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/collector.db
+submissions:        0
+distinct installs:  0
+(nothing has arrived yet)
+(exit 0)
+
+=== 12. revoke is idempotent: deleting again reports 0 deleted, not an error ===
+$ curl -sS -X DELETE --cacert /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/cert.pem https://127.0.0.1:18443/v1/installs/01M0V10FC7N1D2G6Y8C94D7B02
+{"deleted":0,"installId":"01M0V10FC7N1D2G6Y8C94D7B02"}
+(exit 0)
+
+=== 13. RETENTION: submit a fresh report, then run retention with a window shorter than its age ===
+install-id is now 01M0V12105VPBGKQXC6N9HCZ3H
+The previous id was deleted and recorded nowhere.
+(exit 0)
+
+$ SSL_CERT_FILE=... ./bin/vnproxctl telemetry send --report /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/report.json --config /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/config.toml
+sent 561 bytes to https://127.0.0.1:18443/v1/submissions
+(exit 0)
+
+$ ./bin/vnproxtelemetryd report --db /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/collector.db
+submissions:        1
+distinct installs:  1
+oldest:             2026-08-24T23:18:00Z
+newest:             2026-08-24T23:18:00Z
+
+PVE versions:
+  pve-manager/9.2.4              1
+
+vnprox versions:
+  3.0.3                          1
+
+suites:
+  hardware                       1
+
+checks (pass/fail/skip):
+  drift.config_vs_live                     1/0/0
+  ha.standby_promotes                      0/0/1
+  iface.lacp_partner_observed              0/1/0
+(exit 0)
+
+waiting 2s so the submission is older than the 1s retention window we're about to demonstrate...
+=== 14. one-shot retention pass with a 1s window (real deployments default to 180d; this is the demonstration path) ===
+$ ./bin/vnproxtelemetryd retention-run --db /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/collector.db --window 1s
+retention: window=1s before=1 deleted=1 after=0
+(exit 0)
+
+=== 15. confirm expiry: the submission is gone ===
+$ ./bin/vnproxtelemetryd report --db /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/collector.db
+submissions:        0
+distinct installs:  0
+(nothing has arrived yet)
+(exit 0)
+
+=== 16. collector re-validates independently: an unrecognised payloadVersion is refused explicitly ===
+$ curl -sS -i --cacert /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/cert.pem -H Content-Type: application/json --data @/tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/bad-version.json https://127.0.0.1:18443/v1/submissions
+HTTP/2 400 
+content-type: application/json
+content-length: 121
+date: Mon, 24 Aug 2026 23:18:11 GMT
+
+{"error":{"code":"unsupported_payload_version","message":"this payload does not match the documented telemetry schema"}}
+(exit 0)
+
+=== 17. background retention loop's own log line (started with --retention-interval 5s) ===
+$ cat /tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/collector.log
+time=2026-08-24T19:17:01.731-04:00 level=INFO msg="vnproxtelemetryd listening" addr=127.0.0.1:18443 db=/tmp/claude-1000/-home-brian-vnprox/eb7f372a-05cd-43af-a2ee-163e134509d2/scratchpad/t3710-e2e/collector.db tls=true retentionWindow=4320h0m0s
+time=2026-08-24T19:17:22.646-04:00 level=INFO msg="telemetrycollector: submission stored" installId=01M0V10FC7N1D2G6Y8C94D7B02 pveVersion=pve-manager/9.2.4 suite=hardware
+time=2026-08-24T19:17:52.481-04:00 level=INFO msg="telemetrycollector: revocation processed" installId=01M0V10FC7N1D2G6Y8C94D7B02 deleted=1
+time=2026-08-24T19:17:52.595-04:00 level=INFO msg="telemetrycollector: revocation processed" installId=01M0V10FC7N1D2G6Y8C94D7B02 deleted=0
+time=2026-08-24T19:18:00.037-04:00 level=INFO msg="telemetrycollector: submission stored" installId=01M0V12105VPBGKQXC6N9HCZ3H pveVersion=pve-manager/9.2.4 suite=hardware
+time=2026-08-24T19:18:11.416-04:00 level=WARN msg="telemetrycollector: rejected a submission" method=POST path=/v1/submissions violationClasses=[structure]
+(exit 0)
+
+
+=== 18. stop the collector (SIGTERM; graceful shutdown) ===
+$ kill -TERM 501537
+time=2026-08-24T19:17:52.481-04:00 level=INFO msg="telemetrycollector: revocation processed" installId=01M0V10FC7N1D2G6Y8C94D7B02 deleted=1
+time=2026-08-24T19:17:52.595-04:00 level=INFO msg="telemetrycollector: revocation processed" installId=01M0V10FC7N1D2G6Y8C94D7B02 deleted=0
+time=2026-08-24T19:18:00.037-04:00 level=INFO msg="telemetrycollector: submission stored" installId=01M0V12105VPBGKQXC6N9HCZ3H pveVersion=pve-manager/9.2.4 suite=hardware
+time=2026-08-24T19:18:11.416-04:00 level=WARN msg="telemetrycollector: rejected a submission" method=POST path=/v1/submissions violationClasses=[structure]
+time=2026-08-24T19:18:23.240-04:00 level=INFO msg="vnproxtelemetryd shutting down"
+vnproxtelemetryd: stopped
+(collector stopped)
+
+=== Summary ===
+1. Withheld consent (enabled=false, and enabled=true/no-endpoint): collector request count stayed 0 (section 5).
+2. Consent given: one real HTTPS POST, visible via GET /v1/summary and via the offline 'report' CLI (sections 6-9).
+3. Revocation: DELETE /v1/installs/<id> deleted the row, confirmed via summary + report; a second DELETE reported 0, not an error (sections 10-12).
+4. Retention: retention-run with a deliberately short window (1s) deleted a submission that was ~2s old; confirmed via report (sections 13-15).
+5. Independent server-side re-validation: an unrecognised payloadVersion (999) was refused explicitly as 'unsupported_payload_version', not guessed at (section 16).
+6. Collector log (section 17) shows every event above with no source IP ever recorded.

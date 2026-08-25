@@ -49,7 +49,8 @@ T-3707 asked the owner whether the hosted services eleven of those rows wait on 
 Answered 2026-08-23 — see `planning/hosted-services-decision.md`:
 
 - **Registry / hub — YES.** The 7 rows stay pending, now against scheduled work (`T-3709`).
-- **Telemetry (T-2503) — YES.** Pending `T-3710`.
+- **Telemetry (T-2503) — YES.** `T-3710` landed: `cmd/vnproxtelemetryd` /
+  `internal/telemetrycollector`, docs/security.md's "The collector (T-3710)". Reclassified `Live`.
 - **Hosted demo — NO.** `T-2801` and `T-2802` are reclassified **`Shipped, deliberately unhosted`**
   and are no longer a gap. Do not re-report them as one.
 
@@ -341,7 +342,7 @@ Wave 1 and are unchanged here.
 | 24 | T-2410 | Packaging matrix `cluster-ssh` root cause · **closes `T-1806-bug-02`** | Red on the runner, green locally under podman, on 2 of the last 3 pushes. | Shipped | Documented | N/A (non-code) | Live |
 | 25 | T-2501 | Self-executing hardware validation suite ★ | The hardware-validation figure is 12 of 130 because validating an item means a human reading a | Shipped | Documented | Covered | Live |
 | 25 | T-2502 | Record/replay real PVE traffic into fixtures ★ | Add a record mode to the PVE client and a replay backend to pvemock, so a fixture can be | Shipped | Documented | Covered | Live |
-| 25 | T-2503 | Opt-in compatibility telemetry | One cluster validated by us is an anecdote. | Shipped | Documented | Covered | Shipped, inert |
+| 25 | T-2503 | Opt-in compatibility telemetry | One cluster validated by us is an anecdote. | Shipped | Documented | Covered | Live |
 | 25 | T-2504 | Nightly soak and resource-leak gate | implementation · depends on: — context: internal/collect/collector.go, cmd/vnproxd/server.go, docs/performance.md | Shipped | Documented | Covered | Live |
 | 25 | T-2505 | E2E sharding, isolation, and flake quarantine | Do not re-derive those two. | Shipped | Documented | Covered | Live |
 | 25 | T-2506 | Performance regression budget gate | implementation · depends on: T-2505 context: docs/performance.md, internal/collect/sim_bench_test.go, web/e2e/scale.spec.ts | Shipped | Documented | Covered | Live |
