@@ -38,15 +38,19 @@ func (c *fixedClock) advance(d time.Duration) { c.t = c.t.Add(d) }
 // rejected request never reached the handler layer at all) and serves
 // canned per-node fixture data.
 type spyHostReader struct {
-	interfaces      map[string]string
-	lldp            map[string][]byte
-	stats           map[string]map[string]host.IfaceStats
-	links           map[string][]host.LinkState
-	bgpSummary      map[string][]byte
-	evpnVNI         map[string][]byte
-	dhcpLeases      map[string][]byte
-	neighbors       map[string][]host.Neighbor
-	conntrack       map[string][]host.ConntrackEntry
+	interfaces map[string]string
+	lldp       map[string][]byte
+	stats      map[string]map[string]host.IfaceStats
+	links      map[string][]host.LinkState
+	bgpSummary map[string][]byte
+	evpnVNI    map[string][]byte
+	dhcpLeases map[string][]byte
+	neighbors  map[string][]host.Neighbor
+	conntrack  map[string][]host.ConntrackEntry
+	// conntrackErr, when set for a node, is returned by Conntrack instead
+	// of consulting the conntrack map at all — used to simulate
+	// host.ErrConntrackUnavailable (T-3711) without a real kernel.
+	conntrackErr    map[string]error
 	interfacesCalls int
 	lldpCalls       int
 	statsCalls      int
@@ -161,6 +165,9 @@ func (r *spyHostReader) ContainerPing(_ context.Context, _ string, _ int, _ stri
 
 func (r *spyHostReader) Conntrack(_ context.Context, node string) ([]host.ConntrackEntry, error) {
 	r.conntrackCalls++
+	if err, ok := r.conntrackErr[node]; ok {
+		return nil, err
+	}
 	e, ok := r.conntrack[node]
 	if !ok {
 		return nil, errors.Join(host.ErrNotFound, errors.New("node "+node))

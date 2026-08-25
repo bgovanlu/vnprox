@@ -10,6 +10,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sort"
 	"strconv"
@@ -74,18 +75,30 @@ type conntrackEntryResponse struct {
 }
 
 // conntrackListResponse is GET /conntrack's response envelope:
-// {items, partial?, failedNodes?} — the same cluster-fan-out envelope
-// docs/api.md's GET /audit/GET /flows already document, minus pagination
-// fields (a live table snapshot has no cursor to resume: every request re-
-// reads the current state fresh, the same "this is a live view, not
-// cacheable app state" posture GET /firewall/log's tail already takes for
-// its own live-ish reads, adapted here to "no paging at all" since a
-// conntrack table is bounded by the kernel's own table size, not an
-// ever-growing log).
+// {items, partial?, failedNodes?, unavailableNodes?} — the same
+// cluster-fan-out envelope docs/api.md's GET /audit/GET /flows already
+// document, minus pagination fields (a live table snapshot has no cursor
+// to resume: every request re-reads the current state fresh, the same
+// "this is a live view, not cacheable app state" posture GET
+// /firewall/log's tail already takes for its own live-ish reads, adapted
+// here to "no paging at all" since a conntrack table is bounded by the
+// kernel's own table size, not an ever-growing log).
+//
+// unavailableNodes (T-3711) is additive: it names any node (local or
+// peer) whose conntrack read failed specifically because the conntrack
+// interface itself cannot be provided there (host.ErrConntrackUnavailable
+// — no CAP_NET_ADMIN, or no netlink conntrack support at all), as opposed
+// to an ordinary read failure (still counted in failedNodes, mirroring
+// GET /firewall/log's unavailableNodes/generic-failure split). A node
+// never appears in both lists — "this node cannot provide conntrack" and
+// "the read failed" are different statements, and an operator acts
+// differently on each (grant a capability vs. investigate a transient
+// fault).
 type conntrackListResponse struct {
-	Items       []conntrackEntryResponse `json:"items"`
-	FailedNodes []string                 `json:"failedNodes,omitempty"`
-	Partial     bool                     `json:"partial,omitempty"`
+	Items            []conntrackEntryResponse `json:"items"`
+	FailedNodes      []string                 `json:"failedNodes,omitempty"`
+	UnavailableNodes []string                 `json:"unavailableNodes,omitempty"`
+	Partial          bool                     `json:"partial,omitempty"`
 }
 
 func toNatAddrResponse(a *host.NatAddr) *natAddrResponse {
@@ -124,14 +137,18 @@ func mountConntrackRoutes(r chi.Router, local ConntrackLocalSource, peers PeerCo
 // per-source failure (local or peer) degrades only that source's
 // contribution — partial is set and the failing node's name is added to
 // failedNodes — never the whole request.
-func fetchClusterConntrack(ctx context.Context, local ConntrackLocalSource, peers PeerConntrackSource, localNode func() string) (items []conntrackEntryResponse, partial bool, failedNodes []string) {
+func fetchClusterConntrack(ctx context.Context, local ConntrackLocalSource, peers PeerConntrackSource, localNode func() string) (items []conntrackEntryResponse, partial bool, failedNodes, unavailableNodes []string) {
 	nodeName := ""
 	if localNode != nil {
 		nodeName = localNode()
 	}
 	if entries, err := local.Conntrack(ctx, nodeName); err != nil {
 		partial = true
-		failedNodes = append(failedNodes, nodeName)
+		if errors.Is(err, host.ErrConntrackUnavailable) {
+			unavailableNodes = append(unavailableNodes, nodeName)
+		} else {
+			failedNodes = append(failedNodes, nodeName)
+		}
 	} else {
 		for _, e := range entries {
 			items = append(items, toConntrackEntryResponse(nodeName, e))
@@ -139,24 +156,28 @@ func fetchClusterConntrack(ctx context.Context, local ConntrackLocalSource, peer
 	}
 
 	if peers == nil {
-		return items, partial, failedNodes
+		return items, partial, failedNodes, unavailableNodes
 	}
 	list, err := peers.Peers(ctx)
 	if err != nil {
-		return items, true, append(failedNodes, "<cluster peer discovery>")
+		return items, true, append(failedNodes, "<cluster peer discovery>"), unavailableNodes
 	}
 	for _, p := range list {
 		entries, err := peers.Conntrack(ctx, p, p.Node)
 		if err != nil {
 			partial = true
-			failedNodes = append(failedNodes, p.Node)
+			if errors.Is(err, host.ErrConntrackUnavailable) {
+				unavailableNodes = append(unavailableNodes, p.Node)
+			} else {
+				failedNodes = append(failedNodes, p.Node)
+			}
 			continue
 		}
 		for _, e := range entries {
 			items = append(items, toConntrackEntryResponse(p.Node, e))
 		}
 	}
-	return items, partial, failedNodes
+	return items, partial, failedNodes, unavailableNodes
 }
 
 // conntrackFilter is GET /conntrack's parsed, optional-and-ANDed filter set
@@ -229,7 +250,7 @@ func handleListConntrack(local ConntrackLocalSource, peers PeerConntrackSource, 
 			}
 		}
 
-		items, partial, failed := fetchClusterConntrack(r.Context(), local, peers, localNode)
+		items, partial, failed, unavailable := fetchClusterConntrack(r.Context(), local, peers, localNode)
 
 		filtered := make([]conntrackEntryResponse, 0, len(items))
 		for _, e := range items {
@@ -254,6 +275,6 @@ func handleListConntrack(local ConntrackLocalSource, peers PeerConntrackSource, 
 			return a.DstPort < b.DstPort
 		})
 
-		writeJSON(w, http.StatusOK, conntrackListResponse{Items: filtered, Partial: partial, FailedNodes: failed})
+		writeJSON(w, http.StatusOK, conntrackListResponse{Items: filtered, Partial: partial, FailedNodes: failed, UnavailableNodes: unavailable})
 	}
 }

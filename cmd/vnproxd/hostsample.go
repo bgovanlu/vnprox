@@ -70,7 +70,7 @@ func setupHostSample(cfg *config.Config, flowSvc *flow.Service, localNode func()
 		if activeSampler == "" {
 			activeSampler = "conntrack"
 		}
-		sampler := hostsample.NewConntrackSampler(hostsample.NewProcConntrackReader(), localNode())
+		sampler := hostsample.NewConntrackSampler(hostsample.NewNetlinkConntrackReader(), localNode())
 		sampler.Logger = logger
 		actors = append(actors, func(ctx context.Context) error {
 			return sampler.Run(ctx, interval, ingest)

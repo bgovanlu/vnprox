@@ -17,18 +17,29 @@
 // the daemon's supervised run group when its own config flag is set; this
 // package itself never decides to start on its own.
 //
-// # conntrack.go: /proc/net/nf_conntrack polling
+// # conntrack.go / conntrack_netlink_linux.go: netlink conntrack polling
 //
-// Periodically reads and diffs the kernel's connection-tracking table
-// (Linux's nf_conntrack, exposed at /proc/net/nf_conntrack when the
-// nf_conntrack module is loaded — true by default on any node running
-// PVE's firewall or SDN NAT/masquerade zones). This works with the
-// capabilities vnproxd already holds (CAP_DAC_READ_SEARCH is enough to read
-// the procfs file; no new capability needed) — see this package's ebpf.go
-// for the higher-fidelity, higher-privilege alternative. Poll interval:
-// [flows] host_sample_interval_sec, default 10 (DefaultHostSampleInterval)
-// — coarser than T-1002's live UDP ingestion by design, since conntrack
-// sampling is inherently a periodic snapshot/diff, not a per-packet stream.
+// Periodically reads and diffs the kernel's connection-tracking table via
+// the netlink conntrack socket (netlink.ConntrackTableList,
+// NewNetlinkConntrackReader) — true by default on any node running PVE's
+// firewall or SDN NAT/masquerade zones has the nf_conntrack module loaded.
+// This used to read /proc/net/nf_conntrack directly; T-3711 found that path
+// does not exist on PVE 9 kernels (CONFIG_NF_CONNTRACK_PROCFS=n) even
+// though the module is loaded and netlink works fine, and switched the
+// default reader to netlink (NewFileConntrackReader remains as a secondary
+// text-format path — see ConntrackReader's doc comment). Reading the
+// netlink conntrack table needs CAP_NET_ADMIN; this works with the
+// capabilities vnproxd already holds — packaging/systemd/vnprox.service's
+// CapabilityBoundingSet already grants CAP_NET_ADMIN for internal/host's
+// own rtnetlink link/address work, no new capability needed — see this
+// package's ebpf.go for the higher-fidelity, higher-privilege alternative.
+// Poll interval: [flows] host_sample_interval_sec, default 10
+// (DefaultHostSampleInterval) — coarser than T-1002's live UDP ingestion by
+// design, since conntrack sampling is inherently a periodic snapshot/diff,
+// not a per-packet stream. A genuinely unavailable conntrack interface
+// (no CAP_NET_ADMIN, or no netlink conntrack support at all) is reported
+// once and stops the sampler (ConntrackSampler.Run) rather than retrying
+// forever — see ErrConntrackUnavailable.
 //
 // Attribution to a particular bridge/subnet is not done inside this
 // sampler at all: every Record it emits is fed through the same

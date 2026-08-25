@@ -1,6 +1,8 @@
 package peer
 
 import (
+	"errors"
+	"fmt"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -313,6 +315,29 @@ func TestTwoDaemonHarness_Conntrack(t *testing.T) {
 
 	if _, err := h.client.Conntrack(t.Context(), h.nodeA, "nosuch"); err == nil {
 		t.Fatal("expected an error for an unknown node")
+	}
+}
+
+// TestTwoDaemonHarness_Conntrack_UnavailableCrossesTheWire is T-3711: when
+// the remote node's own host.Reader.Conntrack fails with
+// host.ErrConntrackUnavailable (no CAP_NET_ADMIN, or no netlink conntrack
+// support at all), that fact must survive the HTTP round-trip —
+// peer.Client.Conntrack's caller (GET /conntrack's cluster fan-out) needs
+// errors.Is(err, host.ErrConntrackUnavailable) to put this node in
+// unavailableNodes rather than failedNodes, so this asserts the real
+// client/server pair (not a fake) preserves it end to end.
+func TestTwoDaemonHarness_Conntrack_UnavailableCrossesTheWire(t *testing.T) {
+	h := newTwoDaemonHarness(t)
+	h.readerA.conntrackErr = map[string]error{
+		"pve1": fmt.Errorf("no CAP_NET_ADMIN: %w", host.ErrConntrackUnavailable),
+	}
+
+	_, err := h.client.Conntrack(t.Context(), h.nodeA, "pve1")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !errors.Is(err, host.ErrConntrackUnavailable) {
+		t.Errorf("errors.Is(err, host.ErrConntrackUnavailable) = false, err = %v", err)
 	}
 }
 

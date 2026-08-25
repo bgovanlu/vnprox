@@ -3591,11 +3591,16 @@ export interface ConntrackEntry {
 
 /** GET /conntrack response envelope — the same cluster-fan-out shape GET
  * /audit / GET /flows use, minus pagination (a live table snapshot has no
- * cursor to resume — every request re-reads current state fresh). */
+ * cursor to resume — every request re-reads current state fresh).
+ * `unavailableNodes` (T-3711, additive) separately names a node whose
+ * conntrack interface itself cannot be provided (no CAP_NET_ADMIN, or no
+ * netlink conntrack support at all) — distinct from `failedNodes`' ordinary
+ * read failure; a node is never listed in both. */
 export interface ConntrackPage {
   items: ConntrackEntry[];
   partial?: boolean;
   failedNodes?: string[];
+  unavailableNodes?: string[];
 }
 
 // --- Diagnosis (docs/api.md's "Diagnosis" section; internal/diagnose,
@@ -3991,12 +3996,16 @@ export interface MicrosegDryRunReport {
 
 export type HubEntryType = "blueprint" | "plugin";
 
-/** One catalog entry from GET /hub/index. `vetted` is the informational
- * badge (the signer is in the hub's own recognized list); it never bypasses
- * the per-installation trust decision an install still enforces.
- * capabilities/extensionPoints/transport are populated only for plugins so
- * a browse UI can surface a plugin's declared capability scope for review
- * before an install is confirmed. */
+/** One catalog entry from GET /hub/index. `vetted` (T-3709) means the
+ * signer is in the operator's own allowlist AND the artifact passed
+ * automated hygiene checks at publish time (capability manifest
+ * well-formed, catalog/manifest capability agreement, strict decoding —
+ * never a reproducible-build claim). It is never a human's endorsement and
+ * never bypasses the per-installation trust decision an install still
+ * enforces — see docs/hub-registry.md's "Automated vetting" section for the
+ * exact checks. capabilities/extensionPoints/transport are populated only
+ * for plugins so a browse UI can surface a plugin's declared capability
+ * scope for review before an install is confirmed. */
 export interface HubEntry {
   type: HubEntryType;
   id: string;

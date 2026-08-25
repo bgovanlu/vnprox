@@ -523,10 +523,22 @@ func (c *Client) Conntrack(ctx context.Context, p Peer, node string) ([]host.Con
 		return nil, err
 	}
 	var out conntrackResponse
-	if err := decodeInto(resp, &out); err != nil {
-		return nil, err
+	if decErr := decodeInto(resp, &out); decErr != nil {
+		return nil, mapConntrackUnavailable(decErr)
 	}
 	return out.Entries, nil
+}
+
+// mapConntrackUnavailable rewraps a *ResponseError carrying the
+// conntrack_unavailable code (T-3711) so callers can
+// errors.Is(err, host.ErrConntrackUnavailable) across the wire — the same
+// convention mapTimerNotFound already establishes for this client.
+func mapConntrackUnavailable(err error) error {
+	var respErr *ResponseError
+	if errors.As(err, &respErr) && respErr.Code == errCodeConntrackUnavailable {
+		return fmt.Errorf("peer: %w: %s", host.ErrConntrackUnavailable, respErr.Message)
+	}
+	return err
 }
 
 // IPv6RA fetches node's bounded, host-local IPv6 RA/DHCPv6 observation from

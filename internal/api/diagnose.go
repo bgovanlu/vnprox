@@ -533,7 +533,7 @@ func diagnoseConntrackStep(local ConntrackLocalSource, peers PeerConntrackSource
 			return diagnose.Outcome{Err: err}
 		}
 
-		items, partial, failed := fetchClusterConntrack(ctx, local, peers, localNode)
+		items, partial, failed, unavailable := fetchClusterConntrack(ctx, local, peers, localNode)
 
 		var filtered []conntrackEntryResponse
 		var scopeDesc string
@@ -567,12 +567,12 @@ func diagnoseConntrackStep(local ConntrackLocalSource, peers PeerConntrackSource
 
 		summary := fmt.Sprintf("%d connection(s) for %s", len(filtered), scopeDesc)
 		if partial {
-			summary += fmt.Sprintf(" (partial: %d node(s) unreachable)", len(failed))
+			summary += fmt.Sprintf(" (partial: %d node(s) unreachable, %d unavailable)", len(failed), len(unavailable))
 		}
 		return diagnose.Outcome{
 			Eligible: true,
 			Summary:  summary,
-			Detail:   conntrackListResponse{Items: filtered, Partial: partial, FailedNodes: failed},
+			Detail:   conntrackListResponse{Items: filtered, Partial: partial, FailedNodes: failed, UnavailableNodes: unavailable},
 		}
 	}
 }

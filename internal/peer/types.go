@@ -105,6 +105,16 @@ type conntrackResponse struct {
 	Entries []host.ConntrackEntry `json:"entries"`
 }
 
+// errCodeConntrackUnavailable is host.ErrConntrackUnavailable's wire error
+// code (T-3711) — handleConntrack sets it (503) when the peer's own
+// Reader.Conntrack call fails with that sentinel, and
+// mapConntrackUnavailable (client.go) rewraps a *ResponseError carrying it
+// back into errors.Is(err, host.ErrConntrackUnavailable), the same
+// "carry a sentinel across the wire via a stable code" convention
+// errCodeTimerNotFound/ErrTimerNotFound already establish for this
+// client.
+const errCodeConntrackUnavailable = "conntrack_unavailable"
+
 // ipv6RAResponse is GET /api/peer/host/ipv6-ra's body (T-1404): a plain
 // read, no {available} envelope needed — an interface with no observed RA
 // is itself a clean, unremarkable answer, the same convention

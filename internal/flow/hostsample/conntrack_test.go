@@ -2,6 +2,8 @@ package hostsample
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"testing"
@@ -57,15 +59,18 @@ func TestParseConntrackTable_MalformedLinesSkipped(t *testing.T) {
 }
 
 // fixtureReader serves a fixed sequence of testdata files, one per call —
-// simulating successive polls of a live /proc/net/nf_conntrack whose
-// counters advance between reads.
+// simulating successive polls of a live conntrack table whose counters
+// advance between reads. It implements ConntrackReader by reading and
+// parsing each file, the same as realConntrackReader's text path, so these
+// tests exercise ConntrackSampler's diff/dedup logic independent of
+// whichever concrete reader (netlink or text-file) is wired in.
 type fixtureReader struct {
 	files []string
 	idx   int
 	mu    sync.Mutex
 }
 
-func (f *fixtureReader) ReadTable(_ context.Context) ([]byte, error) {
+func (f *fixtureReader) ReadEntries(_ context.Context) ([]ConntrackEntry, int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	name := f.files[f.idx]
@@ -74,9 +79,10 @@ func (f *fixtureReader) ReadTable(_ context.Context) ([]byte, error) {
 	}
 	data, err := os.ReadFile("testdata/" + name)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return data, nil
+	entries, skipped := ParseConntrackTable(data)
+	return entries, skipped, nil
 }
 
 func TestConntrackSampler_Sample_FirstPollEmitsAbsoluteCounters(t *testing.T) {
@@ -296,5 +302,91 @@ func TestConntrackSampler_FeedsSharedFlowServiceRing(t *testing.T) {
 		if r.Source != flow.SourceConntrack {
 			t.Errorf("queried record %+v: source = %q, want %q", r, r.Source, flow.SourceConntrack)
 		}
+	}
+}
+
+// erroringReader always fails ReadEntries with a fixed error, counting how
+// many times it was called — used below to prove Run's stop-vs-retry
+// behavior without a live kernel.
+type erroringReader struct {
+	err   error
+	calls int
+	mu    sync.Mutex
+}
+
+func (r *erroringReader) ReadEntries(_ context.Context) ([]ConntrackEntry, int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls++
+	return nil, 0, r.err
+}
+
+func (r *erroringReader) callCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
+}
+
+// TestConntrackSampler_Run_StopsOnceOnUnavailable is T-3711's required
+// regression test for the "detect and report once, never an error loop"
+// behavior: this test fails against the pre-fix Run implementation (which
+// logged "conntrack poll failed" and kept ticking forever, regardless of
+// the error) because that version never returns before the context
+// carries it off, and ReadEntries would be called many times over the
+// interval below rather than exactly once. A reader whose interface is
+// genuinely unavailable (ErrConntrackUnavailable) must be polled exactly
+// once and Run must return promptly, well before ctx's own deadline.
+func TestConntrackSampler_Run_StopsOnceOnUnavailable(t *testing.T) {
+	reader := &erroringReader{err: fmt.Errorf("hostsample: %w: test", ErrConntrackUnavailable)}
+	s := NewConntrackSampler(reader, "pve1")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx, 5*time.Millisecond, nil) }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Run returned %v, want nil (an unavailable interface is a clean stop, not an error)", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Run did not stop promptly on ErrConntrackUnavailable — it kept polling instead of reporting once and stopping")
+	}
+
+	if got := reader.callCount(); got != 1 {
+		t.Errorf("ReadEntries was called %d times, want exactly 1 (report once, then stop — no retry loop)", got)
+	}
+}
+
+// TestConntrackSampler_Run_RetriesOnTransientError proves the stop
+// behavior above is scoped to ErrConntrackUnavailable specifically: an
+// ordinary (non-sentinel) read failure — the ordinary "blip" case — must
+// keep being retried on every tick, exactly like before T-3711.
+func TestConntrackSampler_Run_RetriesOnTransientError(t *testing.T) {
+	reader := &erroringReader{err: errors.New("transient read failure")}
+	s := NewConntrackSampler(reader, "pve1")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(60 * time.Millisecond)
+		cancel()
+	}()
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx, 5*time.Millisecond, nil) }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Run returned %v, want nil after ctx cancellation", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after ctx cancellation")
+	}
+
+	if got := reader.callCount(); got < 2 {
+		t.Errorf("ReadEntries was called %d times, want at least 2 — a transient error must keep retrying, not stop after one poll", got)
 	}
 }

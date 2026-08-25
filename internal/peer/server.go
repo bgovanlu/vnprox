@@ -682,6 +682,19 @@ func (s *Server) handleConntrack(w http.ResponseWriter, r *http.Request) {
 	node := r.URL.Query().Get("node")
 	entries, err := s.opts.Reader.Conntrack(r.Context(), node)
 	if err != nil {
+		if errors.Is(err, host.ErrConntrackUnavailable) {
+			// Distinguishable from an ordinary read failure (T-3711): the
+			// client-side counterpart, mapConntrackUnavailable, rewraps
+			// this code back into errors.Is(err, host.ErrConntrackUnavailable)
+			// so GET /conntrack's cluster fan-out can put this node in
+			// unavailableNodes rather than failedNodes, the same
+			// distinction handleFRRBGPSummary's {available:false} makes
+			// for FRR — carried here via the error-envelope code instead,
+			// since conntrackResponse's success shape is deliberately not
+			// an {available} envelope (see its doc comment).
+			writeJSONError(w, http.StatusServiceUnavailable, errCodeConntrackUnavailable, "reading conntrack table: "+err.Error())
+			return
+		}
 		s.writeHostError(w, "reading conntrack table", err)
 		return
 	}

@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/vishvananda/netlink"
@@ -53,9 +54,21 @@ type Real struct {
 	IPPath      string
 	SSPath      string
 	PingPath    string
-	// ConntrackPath is the conntrack binary name/path Conntrack invokes
-	// (T-1305); defaults to "conntrack" (resolved via PATH). Overridable
-	// for tests.
+	// ConntrackPath, when non-empty, is a text-format conntrack table
+	// path (/proc/net/nf_conntrack's own line format — ParseConntrackTable)
+	// Conntrack reads instead of the netlink conntrack socket. Empty by
+	// default: the production read path is netlink
+	// (netlink.ConntrackTableList, T-3711), not this file — PVE 9 kernels
+	// ship CONFIG_NF_CONNTRACK_PROCFS=n, so /proc/net/nf_conntrack does
+	// not exist there even though the netlink interface works fine (see
+	// this task's card). This field exists as a secondary path for an
+	// operator override (an unusual deployment that exposes a conntrack
+	// table at a text-format path — e.g. a container with a bind-mounted
+	// host procfs) and for tests; it is never set by NewReal, and Conntrack
+	// never reaches for it unless a caller sets it explicitly. This
+	// comment previously (incorrectly) described this field as "the
+	// conntrack binary name/path" — stale from an earlier exec-based
+	// design that was never implemented; resolved rather than preserved.
 	ConntrackPath string
 	// RDisc6Path is the rdisc6 (ndisc6 package) binary name/path IPv6RA
 	// invokes (T-1404); defaults to "rdisc6" (resolved via PATH).
@@ -102,7 +115,9 @@ func NewReal() *Real {
 		SSPath:                "ss",
 		PingPath:              "ping",
 		DHCPLeaseGlob:         "/var/lib/misc/dnsmasq.*.leases",
-		ConntrackPath:         DefaultConntrackPath,
+		// ConntrackPath is deliberately left empty — see its doc comment
+		// on Real: the default read path is netlink, not a text-format
+		// procfs path (T-3711).
 	}
 }
 
@@ -367,22 +382,137 @@ func (r *Real) DHCPLeases(_ context.Context, _ string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Conntrack implements Reader (T-1305) by reading and parsing ConntrackPath
-// (/proc/net/nf_conntrack) — present whenever the nf_conntrack kernel
-// module is loaded. A malformed line is skipped defensively (see
-// ParseConntrackTable's doc comment); only a read failure (module not
-// loaded, permission denied) is surfaced as an error.
+// Conntrack implements Reader (T-1305) via the netlink conntrack socket by
+// default (netlink.ConntrackTableList over both IPv4 and IPv6, T-3711):
+// PVE 9 kernels ship CONFIG_NF_CONNTRACK_PROCFS=n, so /proc/net/nf_conntrack
+// does not exist even though the nf_conntrack module is loaded and the
+// netlink interface (what `conntrack -L` itself uses) works fine — verified
+// on a real PVE 9.2.4 node, see this task's card. Reading the netlink
+// conntrack table needs CAP_NET_ADMIN; packaging/systemd/vnprox.service
+// already grants it (vnproxd runs as root with CAP_NET_ADMIN/CAP_NET_RAW in
+// its CapabilityBoundingSet, for the rtnetlink link/address work Links()
+// already does), so a packaged install should never hit
+// ErrConntrackPermissionDenied — it exists for an unprivileged dev/test run
+// or a future non-root deployment (T-604). r.ConntrackPath, when
+// explicitly set, is a secondary text-format override (see its doc
+// comment) and takes priority over netlink when non-empty.
 func (r *Real) Conntrack(_ context.Context, _ string) ([]ConntrackEntry, error) {
-	path := r.ConntrackPath
-	if path == "" {
-		path = DefaultConntrackPath
+	if r.ConntrackPath != "" {
+		data, err := os.ReadFile(r.ConntrackPath)
+		if err != nil {
+			return nil, fmt.Errorf("host: reading conntrack table %s: %w", r.ConntrackPath, err)
+		}
+		entries, _ := ParseConntrackTable(data)
+		return entries, nil
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("host: reading conntrack table %s: %w", path, err)
+	return readNetlinkConntrackTable()
+}
+
+// readNetlinkConntrackTable dumps both the IPv4 and IPv6 conntrack tables
+// over netlink and converts every flow to a ConntrackEntry. A per-family
+// read error (other than netlink.ErrDumpInterrupted, which still carries a
+// valid — if possibly incomplete — partial result, per
+// netlink.ConntrackTableList's own doc comment) aborts the whole read,
+// wrapped via wrapConntrackNetlinkErr so callers can distinguish "this
+// node cannot provide conntrack at all" from a plain read failure.
+func readNetlinkConntrackTable() ([]ConntrackEntry, error) {
+	var entries []ConntrackEntry
+	for _, family := range [...]netlink.InetFamily{unix.AF_INET, unix.AF_INET6} {
+		flows, err := netlink.ConntrackTableList(netlink.ConntrackTable, family)
+		if err != nil && !errors.Is(err, netlink.ErrDumpInterrupted) {
+			return nil, wrapConntrackNetlinkErr(err)
+		}
+		for _, f := range flows {
+			entries = append(entries, conntrackEntryFromFlow(f))
+		}
 	}
-	entries, _ := ParseConntrackTable(data)
 	return entries, nil
+}
+
+// wrapConntrackNetlinkErr classifies a netlink.ConntrackTableList error
+// into ErrConntrackUnavailable's two documented causes — EPERM/EACCES
+// (missing CAP_NET_ADMIN, additionally wrapping ErrConntrackPermissionDenied
+// since the operator fix differs) and "the kernel has no nf_conntrack
+// netlink support at all" (ENOENT/EPROTONOSUPPORT/EAFNOSUPPORT/
+// ENOPROTOOPT — the netfilter conntrack netlink family itself isn't
+// registered, e.g. nf_conntrack_netlink not loaded) — or leaves any other
+// error (a transient read failure: socket timeout, wrong sender pid, ...)
+// as a plain wrapped error so callers keep retrying rather than treating a
+// blip as permanent unavailability, mirroring
+// ErrCorosyncUnavailable/ErrOVSUnavailable/ErrLLDPUnavailable's own
+// "only the structural case gets the sentinel" convention.
+func wrapConntrackNetlinkErr(err error) error {
+	switch {
+	case errors.Is(err, syscall.EPERM), errors.Is(err, syscall.EACCES):
+		return fmt.Errorf("%w: %w: %w", ErrConntrackUnavailable, ErrConntrackPermissionDenied, err)
+	case errors.Is(err, syscall.ENOENT), errors.Is(err, syscall.EPROTONOSUPPORT),
+		errors.Is(err, syscall.EAFNOSUPPORT), errors.Is(err, syscall.ENOPROTOOPT):
+		return fmt.Errorf("%w: %w", ErrConntrackUnavailable, err)
+	default:
+		return fmt.Errorf("host: reading conntrack table via netlink: %w", err)
+	}
+}
+
+// tcpConntrackStateNames maps netlink/nl's raw TCP_CONNTRACK_* state byte
+// (ProtoInfoTCP.State) to the same textual state name the `conntrack` CLI
+// and the old /proc/net/nf_conntrack text form both printed (e.g.
+// "ESTABLISHED", "TIME_WAIT") — docs/api.md's Conntrack section documents
+// `state` in those terms, so callers see the identical vocabulary
+// regardless of which read path produced it. Value 9 covers both
+// nl.TCP_CONNTRACK_LISTEN and nl.TCP_CONNTRACK_SYN_SENT2 (the same numeric
+// constant — LISTEN is obsolete per the kernel's own enum comment); the
+// kernel's own tcp_conntrack_names[] table names slot 9 "SYN_SENT2", so
+// that is the label used here.
+var tcpConntrackStateNames = map[uint8]string{
+	nl.TCP_CONNTRACK_NONE:        "NONE",
+	nl.TCP_CONNTRACK_SYN_SENT:    "SYN_SENT",
+	nl.TCP_CONNTRACK_SYN_RECV:    "SYN_RECV",
+	nl.TCP_CONNTRACK_ESTABLISHED: "ESTABLISHED",
+	nl.TCP_CONNTRACK_FIN_WAIT:    "FIN_WAIT",
+	nl.TCP_CONNTRACK_CLOSE_WAIT:  "CLOSE_WAIT",
+	nl.TCP_CONNTRACK_LAST_ACK:    "LAST_ACK",
+	nl.TCP_CONNTRACK_TIME_WAIT:   "TIME_WAIT",
+	nl.TCP_CONNTRACK_CLOSE:       "CLOSE",
+	nl.TCP_CONNTRACK_SYN_SENT2:   "SYN_SENT2",
+}
+
+// conntrackEntryFromFlow converts one netlink.ConntrackFlow (as
+// netlink.ConntrackTableList returns, T-3711) into a ConntrackEntry.
+// NAT detection follows parseConntrackLine's exact logic, adapted from
+// scanning text tokens to comparing netlink's already-typed Forward/Reverse
+// IPTuple values directly: for an untranslated connection the kernel's
+// reply (Reverse) tuple exactly mirrors the original (Forward) tuple
+// (reverse.dst==forward.src, reverse.src==forward.dst); a divergence in
+// either pair means that side is NAT'd. State is only ever populated for
+// TCP (the only protocol netlink's ProtoInfo decodes,
+// tcpConntrackStateNames above) — unlike the old procfs text parser,
+// netlink (github.com/vishvananda/netlink v1.3.1) does not decode
+// CTA_STATUS, so the old bracket-derived ASSURED/UNREPLIED fallback for
+// UDP/ICMP is not recoverable from this path and State is left empty for
+// those protocols; see this task's completion report.
+func conntrackEntryFromFlow(f *netlink.ConntrackFlow) ConntrackEntry {
+	e := ConntrackEntry{
+		Proto:      int(f.Forward.Protocol),
+		SrcIP:      f.Forward.SrcIP.String(),
+		DstIP:      f.Forward.DstIP.String(),
+		SrcPort:    int(f.Forward.SrcPort),
+		DstPort:    int(f.Forward.DstPort),
+		TimeoutSec: int(f.TimeOut),
+	}
+	if tcp, ok := f.ProtoInfo.(*netlink.ProtoInfoTCP); ok && tcp != nil {
+		e.State = tcpConntrackStateNames[tcp.State]
+	}
+	if f.Reverse.SrcIP != nil && f.Reverse.DstIP != nil {
+		revDstIP, revDstPort := f.Reverse.DstIP.String(), int(f.Reverse.DstPort)
+		if revDstIP != e.SrcIP || revDstPort != e.SrcPort {
+			e.NatSrc = &NatAddr{IP: revDstIP, Port: revDstPort}
+		}
+		revSrcIP, revSrcPort := f.Reverse.SrcIP.String(), int(f.Reverse.SrcPort)
+		if revSrcIP != e.DstIP || revSrcPort != e.DstPort {
+			e.NatDst = &NatAddr{IP: revSrcIP, Port: revSrcPort}
+		}
+	}
+	return e
 }
 
 // Links implements Reader using github.com/vishvananda/netlink for link,

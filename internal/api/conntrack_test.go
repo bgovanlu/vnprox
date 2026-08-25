@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -37,14 +38,18 @@ func (f *fakeConntrackLocalSource) Conntrack(_ context.Context, node string) ([]
 }
 
 type fakePeerConntrackSource struct {
-	perPeer   map[string][]host.ConntrackEntry
-	failNodes map[string]bool
-	peers     []peer.Peer
+	perPeer          map[string][]host.ConntrackEntry
+	failNodes        map[string]bool
+	unavailableNodes map[string]bool
+	peers            []peer.Peer
 }
 
 func (f *fakePeerConntrackSource) Peers(context.Context) ([]peer.Peer, error) { return f.peers, nil }
 
 func (f *fakePeerConntrackSource) Conntrack(_ context.Context, p peer.Peer, _ string) ([]host.ConntrackEntry, error) {
+	if f.unavailableNodes[p.Node] {
+		return nil, fmt.Errorf("fake: peer conntrack unavailable: %w", host.ErrConntrackUnavailable)
+	}
 	if f.failNodes[p.Node] {
 		return nil, errors.New("fake: peer unreachable")
 	}
@@ -160,6 +165,52 @@ func TestConntrackRoute_LocalFailure_DegradesOnlyLocal(t *testing.T) {
 	}
 	if !body.Partial || len(body.FailedNodes) != 1 || body.FailedNodes[0] != "pve1" {
 		t.Errorf("partial=%v failedNodes=%v, want partial=true failedNodes=[pve1]", body.Partial, body.FailedNodes)
+	}
+	if len(body.UnavailableNodes) != 0 {
+		t.Errorf("unavailableNodes = %v, want empty (this is an ordinary read failure, not host.ErrConntrackUnavailable)", body.UnavailableNodes)
+	}
+}
+
+// TestConntrackRoute_UnavailableInterface_SurfacesDistinctlyFromFailure is
+// T-3711's API-layer requirement: a node whose conntrack read fails
+// because the interface itself cannot be provided (host.ErrConntrackUnavailable
+// — no CAP_NET_ADMIN, or no netlink conntrack support at all) must be
+// named in unavailableNodes, never failedNodes — "this node cannot
+// provide conntrack" and "the read failed" are different statements. This
+// covers both the local node and a peer (whose error crosses the peer
+// wire as the conntrack_unavailable code, mapped back by
+// peer.Client.Conntrack — see internal/peer/client_test.go's own coverage
+// of that translation).
+func TestConntrackRoute_UnavailableInterface_SurfacesDistinctlyFromFailure(t *testing.T) {
+	local := &fakeConntrackLocalSource{err: fmt.Errorf("wrapped: %w", host.ErrConntrackUnavailable)}
+	peers := &fakePeerConntrackSource{
+		peers:            []peer.Peer{{Node: "pve2", Addr: "10.0.0.2:8007"}, {Node: "pve3", Addr: "10.0.0.3:8007"}},
+		failNodes:        map[string]bool{"pve3": true},
+		unavailableNodes: map[string]bool{"pve2": true},
+	}
+	r := conntrackTestRouter(local, peers, nil)
+
+	body := getConntrack(t, r, "")
+	if !body.Partial {
+		t.Fatal("partial = false, want true")
+	}
+	if len(body.FailedNodes) != 1 || body.FailedNodes[0] != "pve3" {
+		t.Errorf("failedNodes = %v, want [pve3] (an ordinary peer read failure)", body.FailedNodes)
+	}
+	wantUnavailable := map[string]bool{"pve1": true, "pve2": true}
+	if len(body.UnavailableNodes) != len(wantUnavailable) {
+		t.Fatalf("unavailableNodes = %v, want %v", body.UnavailableNodes, wantUnavailable)
+	}
+	for _, n := range body.UnavailableNodes {
+		if !wantUnavailable[n] {
+			t.Errorf("unexpected node %q in unavailableNodes", n)
+		}
+	}
+	// A node must never appear in both lists.
+	for _, n := range body.FailedNodes {
+		if wantUnavailable[n] {
+			t.Errorf("node %q appears in both failedNodes and unavailableNodes", n)
+		}
 	}
 }
 

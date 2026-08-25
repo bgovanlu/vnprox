@@ -1,33 +1,65 @@
 // conntrack.go implements T-1305's live conntrack/NAT table read:
 // Reader.Conntrack (docs/architecture.md §7's "app-owned data only" rule
 // does not apply here — this is a live, ephemeral kernel read, never
-// persisted). The real, per-node collection reads
-// /proc/net/nf_conntrack (netlink_linux.go's Real.Conntrack); the parser
-// below is pure and platform-independent (no build tag), following T-1004's
-// internal/flow/hostsample.ParseConntrackTable precedent for the general
-// shape of the format and its "skip and count, never fail the whole read"
-// tolerance — but unlike that sampler (which only needs the diffable
-// packets/bytes counters), this parser recovers the fields the conntrack
-// explorer actually shows: connection state, remaining timeout, and NAT
-// translation.
+// persisted). The real, per-node collection now reads the netlink
+// conntrack socket by default (netlink_linux.go's Real.Conntrack,
+// T-3711) — PVE 9 kernels ship CONFIG_NF_CONNTRACK_PROCFS=n, so
+// /proc/net/nf_conntrack does not exist there even though the module is
+// loaded and netlink works fine; ParseConntrackTable below now backs only
+// a secondary, explicitly-opted-into text-format path (Real.ConntrackPath,
+// see its doc comment) — an operator override or a test fixture, never the
+// default. It remains pure and platform-independent (no build tag),
+// following T-1004's internal/flow/hostsample.ParseConntrackTable
+// precedent for the general shape of the format and its "skip and count,
+// never fail the whole read" tolerance — but unlike that sampler (which
+// only needs the diffable packets/bytes counters), this parser recovers
+// the fields the conntrack explorer actually shows: connection state,
+// remaining timeout, and NAT translation.
 
 package host
 
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"strconv"
 	"strings"
 )
 
 // DefaultConntrackPath is the standard Linux procfs conntrack table —
-// present whenever the nf_conntrack kernel module is loaded (true by
-// default on any node running PVE's firewall or an SDN NAT/masquerade
-// zone), mirroring internal/flow/hostsample.DefaultConntrackPath (that
-// package's own copy of the same constant — see this file's doc comment on
-// why the two packages each read the same file for different purposes
-// rather than sharing one reader).
+// present whenever the nf_conntrack kernel module is loaded AND the
+// running kernel was built with CONFIG_NF_CONNTRACK_PROCFS (PVE 9 kernels
+// are not — T-3711), mirroring internal/flow/hostsample.DefaultConntrackPath
+// (that package's own copy of the same constant — see this file's doc
+// comment on why the two packages each parse the same text format for
+// different purposes rather than sharing one reader). No longer read by
+// default — see Real.ConntrackPath's doc comment.
 const DefaultConntrackPath = "/proc/net/nf_conntrack"
+
+// ErrConntrackUnavailable indicates the netlink conntrack interface itself
+// is not usable on this node: refused for lack of CAP_NET_ADMIN (see
+// ErrConntrackPermissionDenied, which additionally wraps this for that
+// specific cause) or the kernel has no nf_conntrack netlink support at all
+// (module not loaded, or built without conntrack netlink support).
+// Real.Conntrack (netlink_linux.go, T-3711) wraps this so callers can
+// errors.Is-check it without string-matching, mirroring
+// ErrCorosyncUnavailable/ErrOVSUnavailable/ErrLLDPUnavailable — and so
+// hostsample.ConntrackSampler.Run can report it once and stop polling
+// rather than retrying forever, and internal/api/conntrack.go can surface
+// "this node cannot provide conntrack" distinctly from an ordinary read
+// failure.
+var ErrConntrackUnavailable = errors.New("host: conntrack netlink interface unavailable")
+
+// ErrConntrackPermissionDenied indicates the netlink conntrack dump was
+// refused specifically for lack of CAP_NET_ADMIN (T-3711) — distinguished
+// from ErrConntrackUnavailable's other causes because the operator fix
+// differs: grant the capability (packaging/systemd/vnprox.service already
+// does for a packaged install; this case is expected only for an
+// unprivileged dev/test run or a future non-root deployment, T-604), not
+// "conntrack genuinely isn't available on this node." Always wrapped
+// together with ErrConntrackUnavailable, never alone, so a caller that
+// only checks the broader sentinel still catches this case.
+var ErrConntrackPermissionDenied = errors.New("host: conntrack netlink read requires CAP_NET_ADMIN")
 
 // NatAddr is one NAT-translated endpoint — the address/port a connection's
 // source or destination was actually rewritten to, recovered by comparing

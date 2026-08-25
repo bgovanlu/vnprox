@@ -1,0 +1,58 @@
+# T-3711 — conntrack over netlink, verified on the nested lab (pve-lab-1, 10.99.0.11)
+# Date: 2026-08-25.  Node: pve-lab-1, a disposable nested guest on pvecube.
+# pvecube itself was NOT reconfigured: the card forbids enabling conntrack sampling there.
+# Binary under test: vnproxd built from the T-3711 working tree.
+
+=== 1. The defect premise, on this kernel ===
+7.0.2-6-pve
+ls: cannot access '/proc/net/nf_conntrack': No such file or directory
+# CONFIG_NF_CONNTRACK_PROCFS is not set
+5
+
+=== 2. netlink interface works ===
+conntrack -C: 389
+
+=== 3. vnproxd config + running binary ===
+67:conntrack_sampling_enabled = true
+active
+
+=== 4. AC1: real conntrack-derived flow records in the store ===
+conntrack|891
+-- newest conntrack rows --
+source     src_ip      src_port  dst_ip      dst_port  proto  packets  bytes
+---------  ----------  --------  ----------  --------  -----  -------  -----
+conntrack  10.99.0.11  5405      10.99.0.12  5405      17     409      67676
+conntrack  127.0.0.1   51462     127.0.0.1   8006      6      10       2353 
+conntrack  127.0.0.1   56076     127.0.0.1   85        6      5        693  
+conntrack  127.0.0.1   45718     127.0.0.1   85        6      5        693  
+conntrack  127.0.0.1   41476     127.0.0.1   8006      6      9        2301 
+conntrack  127.0.0.1   45620     127.0.0.1   85        6      5        693  
+
+=== 5. AC2: no repeating error loop ===
+lines matching 'conntrack poll failed' in the last 10 min: 0
+lines matching 'no such file or directory' in the last 10 min: 0
+WARN/ERROR total in the last 10 min: 131
+
+=== 6. AC2 negative half: the genuinely-unavailable path reports ONCE and stops ===
+# Method: uid 0 retained (so every other root-only read still succeeds), but
+# CAP_NET_ADMIN dropped via capsh --drop + securebits NOROOT. Ran 35s against a
+# 10s sample interval, so at least three polls occurred.
+# Two earlier attempts using an unprivileged uid are NOT reported as passes: the
+# daemon exited on TLS and then on the cluster secret before ever reaching the
+# sampler, so they proved nothing. Recorded here because 'no error appeared' is
+# exactly the false pass this card exists to warn about.
+--- 35s, uid 0, CAP_NET_ADMIN dropped (interval 10s => >=3 polls) ---
+fatal lines: 0
+--- conntrack-related lines ---
+{"level":"ERROR","msg":"hostsample: conntrack interface unavailable on this node; stopping conntrack sampling","error":"hostsample: conntrack netlink interface unavailable: hostsample: conntrack netlink read requires CAP_NET_ADMIN: operation not permitted"}
+--- count: ---
+1
+
+=== 7. WARN/ERROR classification (none are conntrack) ===
+    178 collect: peer host poll failed, keeping last-known state
+     15 collect: poll failed
+      1 mtuprobe: probe attempt failed, keeping prior reading
+      1 latmesh: persisting probe samples
+      1 ceph: discovering public/cluster network config and OSD placement
+# The peer-poll warnings are pre-existing lab conditions (no peer vnproxd, no PVE
+# cluster CA in the guest), unrelated to this card. No conntrack line among them.

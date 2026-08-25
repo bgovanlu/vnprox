@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -16,21 +17,30 @@ import (
 )
 
 // DefaultConntrackPath is the standard Linux procfs conntrack table —
-// present whenever the nf_conntrack kernel module is loaded (true by
-// default on any node running PVE's firewall or an SDN NAT/masquerade
-// zone).
+// present whenever the nf_conntrack kernel module is loaded AND the
+// running kernel was built with CONFIG_NF_CONNTRACK_PROCFS (PVE 9 kernels
+// are not — T-3711). No longer read by default; see
+// NewNetlinkConntrackReader/NewFileConntrackReader below.
 const DefaultConntrackPath = "/proc/net/nf_conntrack"
 
 // DefaultHostSampleInterval is [flows] host_sample_interval_sec's default
 // (10s) — shared by both samplers in this package, per T-1004's task card.
 const DefaultHostSampleInterval = 10 * time.Second
 
-// ConntrackReader is the seam ConntrackSampler polls through: real reads
-// (realConntrackReader, backed by DefaultConntrackPath) return the current
-// procfs table; a test double returns canned/sequential fixture bytes
-// without a live kernel.
+// ConntrackReader is the seam ConntrackSampler polls through: the
+// production reader (NewNetlinkConntrackReader, conntrack_netlink_linux.go,
+// T-3711) dumps the live netlink conntrack table directly; the
+// text-format reader (realConntrackReader, NewFileConntrackReader) parses
+// a /proc/net/nf_conntrack-format file — used by tests, and available as a
+// secondary operator override for an unusual deployment (e.g. a conntrack
+// table exposed at a non-default text path inside a container) — never
+// what cmd/vnproxd wires in by default.
 type ConntrackReader interface {
-	ReadTable(ctx context.Context) ([]byte, error)
+	// ReadEntries returns the current poll's parsed connections plus the
+	// count of malformed/unparsable input skipped along the way (always 0
+	// for the netlink reader, since there is no free-text to skip — that
+	// count only has meaning for realConntrackReader's text path).
+	ReadEntries(ctx context.Context) (entries []ConntrackEntry, skipped int, err error)
 }
 
 // realConntrackReader reads path fresh on every call — /proc files have no
@@ -40,26 +50,25 @@ type realConntrackReader struct {
 	path string
 }
 
-// NewProcConntrackReader builds a ConntrackReader over the real procfs
-// conntrack table at DefaultConntrackPath.
-func NewProcConntrackReader() ConntrackReader {
-	return realConntrackReader{path: DefaultConntrackPath}
-}
-
-// NewFileConntrackReader builds a ConntrackReader over an arbitrary path —
-// used by tests to point at a fixture file, and available for an operator
-// to override in an unusual deployment (e.g. a conntrack table exposed at
-// a non-default path inside a container).
+// NewFileConntrackReader builds a ConntrackReader over an arbitrary
+// text-format (/proc/net/nf_conntrack-shaped) path — used by tests to
+// point at a fixture file, and available for an operator to override in an
+// unusual deployment (e.g. a conntrack table exposed at a non-default text
+// path inside a container, or a kernel that genuinely still has
+// CONFIG_NF_CONNTRACK_PROCFS). This is a secondary path: cmd/vnproxd wires
+// in NewNetlinkConntrackReader by default (T-3711) — see ConntrackReader's
+// doc comment.
 func NewFileConntrackReader(path string) ConntrackReader {
 	return realConntrackReader{path: path}
 }
 
-func (r realConntrackReader) ReadTable(_ context.Context) ([]byte, error) {
+func (r realConntrackReader) ReadEntries(_ context.Context) ([]ConntrackEntry, int, error) {
 	data, err := os.ReadFile(r.path)
 	if err != nil {
-		return nil, fmt.Errorf("hostsample: reading conntrack table %s: %w", r.path, err)
+		return nil, 0, fmt.Errorf("hostsample: reading conntrack table %s: %w", r.path, err)
 	}
-	return data, nil
+	entries, skipped := ParseConntrackTable(data)
+	return entries, skipped, nil
 }
 
 // ConntrackEntry is one decoded /proc/net/nf_conntrack line's "original
@@ -222,15 +231,16 @@ func NewConntrackSampler(reader ConntrackReader, node string) *ConntrackSampler 
 }
 
 // Sample polls once and returns the diffed flow.Records (source: conntrack)
-// plus the count of malformed lines skipped in this poll. An error is only
-// ever the reader's own error (e.g. the procfs file couldn't be read) —
-// never a parse failure, which is always a defensive skip instead.
+// plus the count of malformed lines skipped in this poll (always 0 for the
+// production netlink reader). An error is only ever the reader's own error
+// (the netlink dump failed, or — for the text-format reader — the file
+// couldn't be read) — never a parse failure, which is always a defensive
+// skip instead.
 func (s *ConntrackSampler) Sample(ctx context.Context) ([]flow.Record, int, error) {
-	data, err := s.Reader.ReadTable(ctx)
+	entries, skipped, err := s.Reader.ReadEntries(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
-	entries, skipped := ParseConntrackTable(data)
 
 	now := s.Now
 	if now == nil {
@@ -294,9 +304,20 @@ func (s *ConntrackSampler) Sample(ctx context.Context) ([]flow.Record, int, erro
 // non-empty batch Sample produces — the same run-loop shape
 // flow.Service.RunPruneLoop and flow.Listener.Run both use (prime
 // immediately, then tick; never returns a non-nil error on a clean
-// shutdown). A reader error is logged and does not stop the loop — a
-// transient procfs read failure (e.g. a container without nf_conntrack
-// loaded yet) should not take down an otherwise-working daemon.
+// shutdown).
+//
+// Two error outcomes are handled differently (T-3711 — this used to log
+// "conntrack poll failed" every interval forever, indistinguishable from a
+// working-but-empty poll except by reading the log): a genuinely
+// unavailable conntrack interface (Sample's error wraps
+// ErrConntrackUnavailable — no CAP_NET_ADMIN, or the kernel has no
+// conntrack netlink support at all) is logged ONCE at Error level with a
+// clear reason, and the loop stops (Run returns nil, not an error — this
+// is a clean, expected degradation, not a crash) rather than retrying a
+// condition that will not change until the daemon restarts with different
+// privileges. Any other error (a transient read failure) is logged at
+// Warn and does not stop the loop — retrying is the right response to a
+// blip.
 func (s *ConntrackSampler) Run(ctx context.Context, interval time.Duration, ingest func(ctx context.Context, records []flow.Record)) error {
 	logger := s.Logger
 	if logger == nil {
@@ -306,11 +327,17 @@ func (s *ConntrackSampler) Run(ctx context.Context, interval time.Duration, inge
 		interval = DefaultHostSampleInterval
 	}
 
-	poll := func() {
+	// poll runs one Sample and reports whether the sampler must stop
+	// permanently.
+	poll := func() (stop bool) {
 		records, skipped, err := s.Sample(ctx)
 		if err != nil {
+			if errors.Is(err, ErrConntrackUnavailable) {
+				logger.Error("hostsample: conntrack interface unavailable on this node; stopping conntrack sampling", "error", err)
+				return true
+			}
 			logger.Warn("hostsample: conntrack poll failed", "error", err)
-			return
+			return false
 		}
 		if skipped > 0 {
 			logger.Debug("hostsample: skipped malformed conntrack lines", "skipped", skipped)
@@ -318,9 +345,12 @@ func (s *ConntrackSampler) Run(ctx context.Context, interval time.Duration, inge
 		if len(records) > 0 && ingest != nil {
 			ingest(ctx, records)
 		}
+		return false
 	}
 
-	poll() // prime immediately rather than waiting a full interval
+	if poll() { // prime immediately rather than waiting a full interval
+		return nil
+	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -328,7 +358,9 @@ func (s *ConntrackSampler) Run(ctx context.Context, interval time.Duration, inge
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			poll()
+			if poll() {
+				return nil
+			}
 		}
 	}
 }
