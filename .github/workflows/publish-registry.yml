@@ -1,0 +1,115 @@
+name: Publish registry key-custody attestation (sigstore)
+
+# T-3709: the keyless-signing half of the hosted blueprint/plugin registry's
+# key custody story — NOT the index-signing workflow. index.json itself
+# keeps being signed the ordinary Ed25519 way, by a human reviewer running
+# `vnproxctl hub index`/`hub revoke` (docs/hub-registry.md's "Publishing:
+# the process") — that path is unchanged by T-3709 and does not go through
+# GitHub Actions at all.
+#
+# What THIS workflow signs is `registry/trusted-signers.json`: a small
+# document, published far less often than index.json (only at key
+# rotation), naming which Ed25519 fingerprint(s) currently hold the
+# registry's index-signing key custody. Signing it keylessly, via GitHub
+# Actions' own OIDC identity, gives an operator a publicly-auditable,
+# Fulcio/Rekor-logged answer to "is this really the current fingerprint?"
+# instead of an unverifiable "trust me" side channel (a release note, a
+# forum post) — see internal/hubreg/sigstoreverify's package doc and
+# docs/hub-registry.md's "Sigstore-backed key custody" section for the full
+# design, including what this is weaker than (a long-lived Ed25519 key
+# still signs every ordinary index publish; Sigstore governs custody of
+# THAT key's fingerprint, not the index itself).
+#
+# STATUS (2026-08-25): correct as written, NOT yet exercised. GitHub
+# Actions has run no non-Pages workflow in this repository since
+# 2026-08-13 (billing — docs/development.md's CI section). A push to
+# registry/trusted-signers.json will not trigger this workflow, and
+# workflow_dispatch will not run, until Actions is restored. A green check
+# on this file is not evidence it has produced a real signature; see the
+# T-3709 task report for exactly what remains unverified until it runs.
+#
+# The certificate identity this workflow's signing certificate carries
+# (once it does run) is:
+#   issuer:  https://token.actions.githubusercontent.com
+#   subject: https://github.com/<owner>/<repo>/.github/workflows/publish-registry.yml@refs/heads/main
+# — the exact two values an operator's `vnproxctl hub verify
+# --sigstore-key-bundle --sigstore-issuer --sigstore-identity` must pin.
+# Signing from any other workflow file, branch, or repository fork produces
+# a DIFFERENT certificate subject and is refused by that check — that
+# refusal is the point of pinning an exact identity rather than "any GitHub
+# Actions run."
+#
+# cosign (Sigstore's own CLI) does the signing; nothing here re-implements
+# the Fulcio/Rekor protocol. `cosign sign-blob --bundle` writes exactly the
+# sigstore-go bundle JSON shape internal/hubreg/sigstoreverify parses.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "registry/trusted-signers.json"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # commit the signed bundle back
+  id-token: write # Sigstore keyless OIDC — the reason this workflow exists
+
+concurrency:
+  group: publish-registry-key-custody
+  cancel-in-progress: false
+
+env:
+  COSIGN_VERSION: "v2.4.1"
+
+jobs:
+  sign-and-publish:
+    # Guard against a fork's workflow_dispatch minting a certificate whose
+    # subject looks legitimate to a careless copy-paste of this file, but is
+    # never the identity an operator actually pins (that identity names
+    # THIS repository's own workflow ref explicitly).
+    if: github.repository == 'bgovanlu/vnprox'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+
+      - name: Require registry/trusted-signers.json to exist
+        run: |
+          if [ ! -f registry/trusted-signers.json ]; then
+            echo "::error::registry/trusted-signers.json is missing — nothing to sign. This workflow signs a key-custody attestation a human already wrote/edited; it does not build one, and it does NOT sign registry/index.json (that stays Ed25519-signed by vnproxctl hub index/revoke)." >&2
+            exit 1
+          fi
+
+      - name: Sign the key-custody attestation (keyless)
+        working-directory: registry
+        run: |
+          cosign sign-blob \
+            --yes \
+            --bundle trusted-signers.json.sigstore.json \
+            trusted-signers.json
+
+      - name: Verify the bundle this run just produced
+        working-directory: registry
+        run: |
+          cosign verify-blob \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/publish-registry.yml@refs/heads/main" \
+            --bundle trusted-signers.json.sigstore.json \
+            trusted-signers.json
+
+      - name: Commit the signed bundle
+        run: |
+          git config user.name "vnprox-registry-bot"
+          git config user.email "noreply@users.noreply.github.com"
+          git add registry/trusted-signers.json.sigstore.json
+          if git diff --cached --quiet; then
+            echo "trusted-signers.json.sigstore.json unchanged (re-run over identical content) — nothing to commit"
+            exit 0
+          fi
+          git commit -m "registry: sign trusted-signers.json (keyless, run ${{ github.run_id }})"
+          git push

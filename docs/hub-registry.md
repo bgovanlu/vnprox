@@ -99,6 +99,127 @@ Verify a published index yourself, exactly as the daemon does:
 vnproxctl hub verify --index index.json --signers <fingerprint>
 ```
 
+## Sigstore-backed key custody (T-3709)
+
+`index_signers` above is a list of trusted fingerprints an operator has to
+obtain somehow. Historically that has meant an unverifiable side channel —
+release notes, a forum post, a maintainer's word — for exactly the value
+that decides whether the daemon trusts a registry's catalog at all. T-3709
+adds a keyless, publicly-auditable way to obtain that fingerprint instead,
+using [sigstore-go](https://github.com/sigstore/sigstore-go): Fulcio-issued,
+OIDC-bound certificates and Rekor transparency-log inclusion.
+
+**This does not change what the daemon does.** `index.json` is still,
+unchanged, signed the ordinary Ed25519 way (everything above this section),
+and the daemon still runs `internal/hubreg.Gate`/`Verify` on every fetch —
+that code has no Sigstore dependency and never will (see the acceptance
+test below). What T-3709 adds is a separate, much smaller, much
+less-frequently-published document — a **key-custody attestation** — that a
+registry's CI can sign keylessly to vouch for which Ed25519 fingerprint(s)
+currently hold index-signing custody:
+
+```jsonc
+// registry/trusted-signers.json — published far less often than index.json,
+// typically only at key rotation
+{
+  "schemaVersion": 1,
+  "generatedAt": 1770000000,
+  "registryUrl": "https://hub.example.com/vnprox",
+  "indexSigners": [
+    { "fingerprint": "<the current index-signing key fingerprint>",
+      "note": "primary index key, rotated 2026-08-24" }
+  ]
+}
+```
+
+`.github/workflows/publish-registry.yml` signs this file keylessly
+(`cosign sign-blob --bundle`, `id-token: write`) whenever it changes,
+writing the sibling bundle `trusted-signers.json.sigstore.json` next to it —
+the same `cosign sign-blob --bundle` shape
+`internal/hubreg/sigstoreverify` parses.
+
+**Verifying it — an explicit, separate operator step:**
+
+```
+vnproxctl hub verify --sigstore-key-bundle trusted-signers.json \
+                     --sigstore-bundle trusted-signers.json.sigstore.json \
+                     --sigstore-issuer https://token.actions.githubusercontent.com \
+                     --sigstore-identity "https://github.com/<owner>/<repo>/.github/workflows/publish-registry.yml@refs/heads/main"
+```
+
+This checks the Fulcio certificate chain, the Rekor transparency-log
+inclusion, and — the check a bare "the signature verifies" story would
+miss — that the signing certificate's **identity** (OIDC issuer + subject,
+exact or regexp) matches what you configured. On success it prints the
+attested fingerprint(s) and the attestation's own transparency-log entry
+id. **vnproxctl never writes daemon config for you.** Completing the pin is
+a second, deliberate action: copy the printed fingerprint(s) into your own
+`vnprox.toml`'s `[hub] index_signers`, exactly the manual step Ed25519 key
+rotation (below, "Index key rotation") has always required — Sigstore
+replaces the *unverifiable* side channel that fingerprint used to travel
+over, not the manual pin itself.
+
+**Revoking an attestation you no longer trust** uses the same
+`--log-entry` addressing mode as any other `hub revoke`, and — unlike
+addressing by artifact id or by signer — needs no fingerprint, only the
+transparency-log entry id `hub verify --sigstore-key-bundle` printed:
+
+```
+vnproxctl hub revoke --root ./registry --key index-signing.key \
+                     --log-entry <id> --reason "compromised workflow run"
+```
+
+This still needs `--key`, the same as every other `hub revoke` invocation:
+`index.json` is always Ed25519-signed in this design (there is no
+keylessly-signed document for a revocation to ride inside without a
+re-sign), so revoking by log entry writes an ordinary revocation record
+(`Revocation.TransparencyLogIndex`) into the same signed index everything
+else uses. An operator who wants to check whether a given attestation's log
+entry has already been revoked, before pinning its fingerprints, can do so
+in the same `hub verify` call:
+
+```
+vnproxctl hub verify --sigstore-key-bundle trusted-signers.json \
+                     --sigstore-bundle trusted-signers.json.sigstore.json \
+                     --sigstore-issuer ... --sigstore-identity ... \
+                     --check-revoked-against index.json
+```
+
+**Say the cost out loud, and do not describe this as equivalent to
+per-fetch keyless verification.** An earlier design (preserved, not merged,
+on the `sigstore-in-daemon` branch) verified index.json itself this way, on
+every single fetch, inside vnproxd — there was never a persistent private
+key anywhere for an attacker to steal; every verification required a fresh
+Fulcio certificate from a live OIDC token. That design was abandoned for
+its dependency cost: `sigstore-go` grows the module graph from 64 to
+roughly 400 modules (a TUF client, a Certificate Transparency verifier,
+gRPC, OpenTelemetry all arrive transitively) and vnproxd is the privileged
+daemon that controls host networking. This design is **materially
+weaker**: a long-lived Ed25519 private key still signs every ordinary index
+publish, exactly as before T-3709 existed at all. If that key is stolen
+between attestations, an attacker can forge index signatures indefinitely,
+and nothing described on this page would ever see it happen — this
+mechanism is never in the request path of an ordinary index fetch, only in
+the path of an operator explicitly re-pinning trust. What it buys instead
+is a better rotation and distribution story: "here is the new fingerprint"
+becomes a cryptographically checkable, Fulcio/Rekor-logged claim instead of
+an unverifiable side channel — not a removal of key-custody risk. See
+`docs/security.md`'s hub section for the same account from the threat-model
+side.
+
+**The structural guarantee this still keeps.** A served index can never
+downgrade or otherwise change what the daemon trusts, because the daemon
+has no code path that can even parse a Sigstore bundle: `internal/hubreg`
+(imported by `cmd/vnproxd`) has no dependency on `sigstore-go`, and
+`internal/hubreg/sigstoreverify` (which does) is imported only by
+`cmd/vnproxctl`. This is checked by the build, not left to a reviewer to
+remember — `go list -deps ./cmd/vnproxd` must never contain `sigstore`,
+enforced by `cmd/vnproxd`'s own `TestVnproxdDoesNotImportSigstore` on every
+`make check`. The only thing a served index can ever do to the daemon's
+trust is what it could already do before T-3709: fail Ed25519 verification
+against whatever `[hub] index_signers` an operator most recently,
+explicitly configured.
+
 ## Self-hosting your own registry
 
 Everything below this heading through "Keys" — publishing, indexing, and
@@ -225,13 +346,23 @@ vnproxctl hub revoke --root ./registry --key index-signing.key \
 vnproxctl hub revoke --root ./registry --key index-signing.key \
                      --signer <publisher fingerprint> \
                      --reason "publisher signing key compromised"
+
+# one sigstore key-custody attestation event you no longer trust (T-3709 —
+# still needs --key; see "Sigstore-backed key custody" above for why)
+vnproxctl hub revoke --root ./registry --key index-signing.key \
+                     --log-entry <id> \
+                     --reason "compromised workflow run"
 ```
 
 A revoked entry stays in the signed document (so the revocation is itself
 published and auditable) but is not offered to clients, and any fetch of its
 artifact is refused. Because the revocation is inside the signed index, a
 client that has fetched the index honours it with no further network access —
-including when the registry is unreachable.
+including when the registry is unreachable. `--log-entry` revocations are
+never offered to clients as a catalog entry in the first place (they name no
+artifact at all — see `Revocation.Matches`); they exist only for
+`vnproxctl hub verify --sigstore-key-bundle --check-revoked-against` to
+consult.
 
 Revocation is a **catalog** action. It stops new installs; it does not reach
 into an installation and remove something already installed. Withdrawing

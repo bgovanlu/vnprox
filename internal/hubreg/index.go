@@ -72,23 +72,41 @@ type Document struct {
 	Signature *blueprint.BundleSignature `json:"signature,omitempty"`
 }
 
-// Revocation withdraws artifacts from the catalog. Exactly one of the two
-// addressing modes must be used:
+// Revocation withdraws artifacts from the catalog, or (T-3709) denies trust
+// in one Sigstore signing event. Exactly one of three addressing modes must
+// be used:
 //
 //   - by artifact: Type+ID (+Version to scope it to one version; empty Version
 //     revokes every version of that id).
 //   - by signer: SignerFingerprint alone, which revokes every entry signed by
 //     that key — the key-compromise case, where enumerating the affected
 //     artifacts by hand is exactly what goes wrong under pressure.
+//   - by transparency-log entry: TransparencyLogIndex alone (T-3709), which
+//     denies trust in one Sigstore-signed key-custody attestation event (see
+//     internal/hubreg/sigstoreverify's package doc, and
+//     docs/hub-registry.md's "Sigstore-backed key custody" section) — the
+//     keyless equivalent of "by signer", for an attestation that has no
+//     persistent signer key to name. It never matches an artifact entry
+//     (Matches below only ever compares Type/ID/SignerFingerprint), so it
+//     rides in this same list without disturbing what ordinary Ed25519
+//     artifact/catalog revocation does; the daemon reads and stores it like
+//     any other revocation record but never acts on it — only
+//     Document.IsLogEntryRevoked, called from vnproxctl's sigstore-key-bundle
+//     verification path, ever looks at this field. This is why the deny-list
+//     data model can live here, in the package the daemon imports, even
+//     though the sigstore-go verification code that PRODUCES a transparency
+//     log entry id lives in the vnproxctl-only sibling package: this package
+//     only ever compares two strings.
 //
 //nolint:govet // fieldalignment: wire envelope; field order is the JSON shape and the signing order, not packing.
 type Revocation struct {
-	Type              hub.EntryType `json:"type,omitempty"`
-	ID                string        `json:"id,omitempty"`
-	Version           string        `json:"version,omitempty"`
-	SignerFingerprint string        `json:"signerFingerprint,omitempty"`
-	Reason            string        `json:"reason"`
-	At                int64         `json:"at,omitempty"`
+	Type                 hub.EntryType `json:"type,omitempty"`
+	ID                   string        `json:"id,omitempty"`
+	Version              string        `json:"version,omitempty"`
+	SignerFingerprint    string        `json:"signerFingerprint,omitempty"`
+	TransparencyLogIndex string        `json:"transparencyLogIndex,omitempty"`
+	Reason               string        `json:"reason"`
+	At                   int64         `json:"at,omitempty"`
 }
 
 // Matches reports whether r revokes e.
@@ -116,13 +134,35 @@ func (r Revocation) Matches(e hub.Entry) bool {
 
 // key is a revocation's identity for idempotent insertion.
 func (r Revocation) key() string {
-	return strings.Join([]string{string(r.Type), r.ID, r.Version, strings.ToLower(r.SignerFingerprint)}, "\x00")
+	return strings.Join([]string{string(r.Type), r.ID, r.Version, strings.ToLower(r.SignerFingerprint), r.TransparencyLogIndex}, "\x00")
 }
 
 // IsRevoked reports whether any revocation in d withdraws e, and which one.
 func (d Document) IsRevoked(e hub.Entry) (Revocation, bool) {
 	for _, r := range d.Revocations {
 		if r.Matches(e) {
+			return r, true
+		}
+	}
+	return Revocation{}, false
+}
+
+// IsLogEntryRevoked reports whether d's revocation deny-list names
+// logEntryID — T-3709's keyless key-custody revocation check: a Sigstore
+// key-custody attestation that still verifies cryptographically
+// (internal/hubreg/sigstoreverify's VerifyKeyAttestation) is refused by
+// vnproxctl if its own signing event is named here. logEntryID must be in
+// the same "<hex log key id>:<log index>" form
+// internal/hubreg/sigstoreverify's LogEntryID produces — this package does
+// not compute that value itself (it has no sigstore-go dependency), it only
+// compares the string vnproxctl already computed. An empty logEntryID never
+// matches (there is nothing to look up).
+func (d Document) IsLogEntryRevoked(logEntryID string) (Revocation, bool) {
+	if logEntryID == "" {
+		return Revocation{}, false
+	}
+	for _, r := range d.Revocations {
+		if r.TransparencyLogIndex != "" && r.TransparencyLogIndex == logEntryID {
 			return r, true
 		}
 	}
@@ -294,8 +334,8 @@ func validateEntry(e hub.Entry) error {
 }
 
 func validateRevocation(r Revocation) error {
-	if r.ID == "" && r.SignerFingerprint == "" {
-		return fmt.Errorf("%w: a revocation must name an artifact id or a signer fingerprint", ErrInvalidIndex)
+	if r.ID == "" && r.SignerFingerprint == "" && r.TransparencyLogIndex == "" {
+		return fmt.Errorf("%w: a revocation must name an artifact id, a signer fingerprint, or a transparency-log entry", ErrInvalidIndex)
 	}
 	if r.ID != "" {
 		if err := validSlug("id", r.ID); err != nil {

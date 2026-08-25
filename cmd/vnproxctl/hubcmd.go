@@ -21,7 +21,11 @@
 //	         and re-signs the index.
 //	verify   verifies a published index against a pinned signer fingerprint —
 //	         the same code path the daemon's gate runs, available to anyone
-//	         auditing the hosting.
+//	         auditing the hosting. Also (T-3709, --sigstore-key-bundle) verifies
+//	         a Sigstore-signed key-custody attestation naming the registry's
+//	         current Ed25519 index-signer fingerprint(s) — see hubcmd_sigstore.go
+//	         and internal/hubreg/sigstoreverify's package doc for why this is a
+//	         SEPARATE document from index.json, not a second way to verify it.
 //	keygen   creates an Ed25519 key file (the T-1107 on-disk format).
 
 package main
@@ -91,13 +95,38 @@ func printHubUsage(w io.Writer) {
 
   vnproxctl hub revoke --root <registry dir> --key <index key> --reason <why>
                        [--type T --id ID [--version V]] [--signer <fingerprint>]
-        Withdraw an artifact, every version of an id, or everything a
-        compromised signing key produced. Revocations live inside the signed
-        index, so clients honour them with no extra network call.
+                       [--log-entry <id>]
+        Withdraw an artifact, every version of an id, everything a
+        compromised signing key produced, or (T-3709, --log-entry) deny-list
+        one Sigstore transparency-log entry — the id "hub verify
+        --sigstore-key-bundle" prints for a key-custody attestation you no
+        longer trust. Revocations live inside the signed index, so clients
+        honour them with no extra network call.
 
   vnproxctl hub verify --index <index.json> --signers <fp[,fp...]>
         Verify a published index exactly as a client does: signature, signer,
         schema and structure. Prints the catalog and any revocations.
+
+  vnproxctl hub verify --sigstore-key-bundle <attestation.json>
+                       --sigstore-bundle <bundle.json>
+                       --sigstore-issuer <issuer> --sigstore-identity <SAN>
+                       [--sigstore-issuer-regexp R] [--sigstore-identity-regexp R]
+                       [--sigstore-trusted-root <file>]
+                       [--check-revoked-against <index.json>]
+        T-3709: verify a registry's Sigstore-signed key-custody attestation
+        (Fulcio certificate chain, Rekor transparency-log inclusion, and
+        certificate identity) and print the Ed25519 index-signer
+        fingerprint(s) it vouches for, plus its own transparency-log entry
+        id (the value --log-entry above takes). This does NOT verify
+        index.json itself — that is still --index/--signers above, run by
+        the daemon on every fetch. vnproxctl never writes daemon config: an
+        operator copies the printed fingerprint(s) into their own
+        vnprox.toml's [hub] index_signers by hand, the same explicit step
+        Ed25519 key rotation has always required (docs/hub-registry.md's
+        "Sigstore-backed key custody" section has the full account,
+        including what this is weaker than). Omitting
+        --sigstore-trusted-root fetches the Sigstore public-good trusted
+        root live via TUF.
 
   vnproxctl hub keygen --key <path>
         Create an Ed25519 signing key file (0600, never overwritten).
@@ -297,6 +326,7 @@ func runHubRevoke(args []string, stdout, stderr io.Writer) int {
 	id := fs.String("id", "", "artifact id to revoke (all versions unless --version is given)")
 	version := fs.String("version", "", "single version to revoke")
 	signer := fs.String("signer", "", "revoke every artifact signed by this fingerprint (key compromise)")
+	logEntry := fs.String("log-entry", "", "deny-list one sigstore transparency-log entry (T-3709; the id `hub verify --sigstore-key-bundle` prints) — the keyless equivalent of --signer, for a key-custody attestation you no longer trust")
 	reason := fs.String("reason", "", "why this is revoked (required; published in the index)")
 	output := fs.String("o", defaultOutputFormat, outputFlagUsage)
 	if err := fs.Parse(args); err != nil {
@@ -311,8 +341,8 @@ func runHubRevoke(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "vnproxctl hub revoke: --root, --key and --reason are required\n")
 		return ExitUsage
 	}
-	if *id == "" && *signer == "" {
-		_, _ = fmt.Fprintf(stderr, "vnproxctl hub revoke: name what to revoke: --id (with --type) or --signer\n")
+	if *id == "" && *signer == "" && *logEntry == "" {
+		_, _ = fmt.Fprintf(stderr, "vnproxctl hub revoke: name what to revoke: --id (with --type), --signer, or --log-entry\n")
 		return ExitUsage
 	}
 
@@ -327,12 +357,13 @@ func runHubRevoke(args []string, stdout, stderr io.Writer) int {
 		return ExitError
 	}
 	rev := hubreg.Revocation{
-		Type:              hub.EntryType(*kind),
-		ID:                *id,
-		Version:           *version,
-		SignerFingerprint: *signer,
-		Reason:            *reason,
-		At:                time.Now().Unix(),
+		Type:                 hub.EntryType(*kind),
+		ID:                   *id,
+		Version:              *version,
+		SignerFingerprint:    *signer,
+		TransparencyLogIndex: *logEntry,
+		Reason:               *reason,
+		At:                   time.Now().Unix(),
 	}
 	doc, changed, err := hubreg.AddRevocation(doc, rev)
 	if err != nil {
@@ -365,6 +396,14 @@ func runHubVerify(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	indexPath := fs.String("index", "", "path to a published index.json")
 	signers := fs.String("signers", "", "comma-separated trusted index-signer fingerprints (the [hub] index_signers value)")
+	sigstoreKeyBundle := fs.String("sigstore-key-bundle", "", "path to a Sigstore-signed key-custody attestation document (T-3709; mutually exclusive with --index/--signers)")
+	sigstoreBundlePath := fs.String("sigstore-bundle", "", "path to the sibling sigstore bundle for --sigstore-key-bundle")
+	sigstoreIssuer := fs.String("sigstore-issuer", "", "expected OIDC issuer (exact)")
+	sigstoreIssuerRegexp := fs.String("sigstore-issuer-regexp", "", "expected OIDC issuer (regexp)")
+	sigstoreIdentity := fs.String("sigstore-identity", "", "expected certificate subject (exact)")
+	sigstoreIdentityRegexp := fs.String("sigstore-identity-regexp", "", "expected certificate subject (regexp)")
+	sigstoreTrustedRoot := fs.String("sigstore-trusted-root", "", "pinned sigstore trusted-root file (omit to fetch the public-good root live via TUF)")
+	checkRevokedAgainst := fs.String("check-revoked-against", "", "an index.json whose revocation deny-list is checked against the attestation's own transparency-log entry")
 	output := fs.String("o", defaultOutputFormat, outputFlagUsage)
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
@@ -374,8 +413,20 @@ func runHubVerify(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: %v\n", ofErr)
 		return ExitUsage
 	}
+	if *sigstoreKeyBundle != "" {
+		return runHubVerifySigstoreKey(hubVerifySigstoreKeyArgs{
+			attestationPath:     *sigstoreKeyBundle,
+			bundlePath:          *sigstoreBundlePath,
+			issuer:              *sigstoreIssuer,
+			issuerRegexp:        *sigstoreIssuerRegexp,
+			identity:            *sigstoreIdentity,
+			identityRegexp:      *sigstoreIdentityRegexp,
+			trustedRootPath:     *sigstoreTrustedRoot,
+			checkRevokedAgainst: *checkRevokedAgainst,
+		}, stdout, stderr, jsonOut)
+	}
 	if *indexPath == "" || *signers == "" {
-		_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: --index and --signers are required\n")
+		_, _ = fmt.Fprintf(stderr, "vnproxctl hub verify: --index and --signers are required (or use --sigstore-key-bundle for the sigstore key-custody path)\n")
 		return ExitUsage
 	}
 	raw, err := os.ReadFile(*indexPath)
@@ -408,10 +459,13 @@ func runHubVerify(args []string, stdout, stderr io.Writer) int {
 	}
 	for _, r := range doc.Revocations {
 		target := r.ID
-		if target == "" {
-			target = "signer " + r.SignerFingerprint
-		} else if r.Version != "" {
+		switch {
+		case target != "" && r.Version != "":
 			target += "@" + r.Version
+		case target == "" && r.SignerFingerprint != "":
+			target = "signer " + r.SignerFingerprint
+		case target == "" && r.TransparencyLogIndex != "":
+			target = "log entry " + r.TransparencyLogIndex
 		}
 		_, _ = fmt.Fprintf(stdout, "  REVOKED   %s: %s\n", target, r.Reason)
 	}

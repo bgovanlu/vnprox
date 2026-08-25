@@ -367,6 +367,19 @@ type HAConfig struct {
 // own. On, the daemon warns at startup (the [peer] tls_trust precedent) and
 // the existing explicit-trust flow applies. It has no effect whatsoever on
 // signed artifacts: signature verification is never optional.
+//
+// This struct deliberately has no Sigstore field of any kind (T-3709). An
+// operator can obtain an IndexSigners fingerprint via a Sigstore-verified,
+// Fulcio/Rekor-logged key-custody attestation instead of an unverifiable
+// side channel — but that verification (internal/hubreg/sigstoreverify)
+// runs only inside vnproxctl, as an explicit, separate operator command
+// (`vnproxctl hub verify --sigstore-key-bundle`), and its result is a
+// fingerprint an operator copies into IndexSigners by hand. The daemon
+// itself never performs Sigstore verification and has no config surface
+// for it — see docs/hub-registry.md's "Sigstore-backed key custody"
+// section and cmd/vnproxd's TestVnproxdDoesNotImportSigstore, which is
+// this package's own half of the reason: pulling sigstore-go's dependency
+// tree into a package cmd/vnproxd imports would defeat the whole split.
 type HubConfig struct {
 	RegistryURL   string
 	VettedSigners []string

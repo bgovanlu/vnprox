@@ -91,6 +91,20 @@ snapshot_pin_days = 7
 #                       # behaviour: an unauthenticated catalog, no revocation.
 #                       # It says who may publish the CATALOG — it never makes an
 #                       # artifact trusted.
+#                       #
+#                       # Obtaining a fingerprint to put here: the ordinary way is
+#                       # out of band (release notes, the registry maintainer's own
+#                       # word). T-3709 adds a verifiable alternative for a registry
+#                       # that publishes one — `vnproxctl hub verify
+#                       # --sigstore-key-bundle` checks a Sigstore-signed
+#                       # key-custody attestation (Fulcio cert chain, Rekor
+#                       # inclusion, certificate identity) and prints the
+#                       # fingerprint(s) it vouches for, to copy in here by hand.
+#                       # This daemon has NO Sigstore dependency of its own and
+#                       # never will (see docs/hub-registry.md's "Sigstore-backed
+#                       # key custody" section) — index_signers above is still the
+#                       # only thing this daemon ever checks an index against, on
+#                       # every fetch, unchanged.
 
 # Opt-in compatibility telemetry (T-2503) — OFF, and this whole section is
 # commented out on purpose.
