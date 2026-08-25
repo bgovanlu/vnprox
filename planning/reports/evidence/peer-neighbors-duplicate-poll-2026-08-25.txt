@@ -1,0 +1,24 @@
+# Duplicate peer neighbor polls, rejected by the replay guard — observed 2026-08-25
+# Method: read-only journal reads on pvecube. pve001 was not logged into.
+
+## Rate, per day, from pvecube's journal
+   1801 Aug 18
+   2883 Aug 19
+   2885 Aug 20
+   2885 Aug 21
+   2885 Aug 22
+   2885 Aug 23
+   2885 Aug 24
+   1131 Aug 25
+
+## Which endpoints
+  20205 "path":"/api/peer/host/neighbors"
+     34 "path":"/api/peer/host/dhcp-leases"
+
+## The decisive pair: same path, same peer, 21ms apart, one 200 and one 401
+Aug 25 09:25:20 pvecube vnproxd[3093254]: {"time":"2026-08-25T09:25:20.591346349-04:00","level":"INFO","msg":"http request","method":"GET","path":"/api/peer/host/neighbors","status":200,"bytes":4442,"duration_ms":1,"request_id":"vnproxd-1787664320589709756-179","remote_addr":"192.168.1.7:21618"}
+Aug 25 09:25:20 pvecube vnproxd[3093254]: {"time":"2026-08-25T09:25:20.615222223-04:00","level":"INFO","msg":"http request","method":"GET","path":"/api/peer/host/neighbors","status":401,"bytes":85,"duration_ms":0,"request_id":"vnproxd-1787664320615158976-181","remote_addr":"192.168.1.7:21618"}
+
+## Status split over 30 minutes — exactly half succeed
+     60 "status":200
+     60 "status":401
