@@ -83,6 +83,21 @@ different and worse thing, and scoring it as inert understated it.
 This also re-opens the Degraded column, which correction 3 had emptied. That is the honest outcome:
 the column was empty because nothing had been switched on, not because everything worked.
 
+**Closed 2026-08-25 — `T-1004` and `T-1305` are now `Live`.** `T-3711` replaced both procfs reads
+with `netlink.ConntrackTableList`. Evidence is a run on the nested lab, not a fixture
+(`planning/reports/evidence/T-3711-conntrack-netlink-lab-2026-08-25.txt`): with
+`conntrack_sampling_enabled = true` on a PVE 9 kernel that has no `/proc/net/nf_conntrack`, 298 real
+conntrack-derived flow records reached the store, including live corosync traffic between the two
+lab guests — traffic neither we nor a fixture authored. Zero `conntrack poll failed` lines.
+
+The unavailable path was verified separately and deserves its own note, because two earlier attempts
+at it produced a **false pass**: run as an unprivileged uid, the daemon exited on TLS and then on the
+cluster secret before ever reaching the sampler, so "no error appeared" meant "nothing ran". The
+passing method keeps uid 0 and drops only `CAP_NET_ADMIN` (`capsh --drop` plus securebits `NOROOT`);
+over 35 seconds against a 10-second interval it emitted exactly one line, naming the capability. An
+absence of errors is not evidence that a code path behaved — it is usually evidence it was never
+reached.
+
 ### 3. T-3705's re-score of the 17 `Shipped, unproven` rows (2026-08-23)
 
 Worked against `vnprox-dev` (still the same quorate 2-node cluster, `pvecm status` re-checked
@@ -237,7 +252,7 @@ Wave 1 and are unchanged here.
 | 10 | T-1001 | Prometheus exporter | GET /metrics in Prometheus text exposition format, exporting data the sampler and findings engine already compute — no new collection logic, this is an export surface only, per doc | Shipped | Documented | Covered | Live |
 | 10 | T-1002 | Flow ingestion engine | Ingest sFlow v5, NetFlow v5/v9, and IPFIX into a bounded, node-local ring store, with cluster fan-in so any node's UI can query flows observed anywhere in the cluster — the same pe | Shipped | Documented | Covered | Shipped, inert |
 | 10 | T-1003 | Flow explorer + map flow painting | Turn ingested flows into two UI surfaces: a filterable/sortable/aggregatable explorer table, and animated, weighted edges layered on the T-902 v2 map renderer — the topology map be | Shipped | Documented | Covered | Shipped, inert |
-| 10 | T-1004 | Host-local flow sampling (conntrack/eBPF) | Per-bridge flow sampling on nodes with no external sFlow/NetFlow source — a conntrack-based sampler first (works with the capabilities vnproxd already holds), an eBPF-based sampler | Shipped | Documented | Covered | Degraded |
+| 10 | T-1004 | Host-local flow sampling (conntrack/eBPF) | Per-bridge flow sampling on nodes with no external sFlow/NetFlow source — a conntrack-based sampler first (works with the capabilities vnproxd already holds), an eBPF-based sampler | Shipped | Documented | Covered | Live |
 | 10 | T-1005 | Alert routing | Route findings/drift transitions to webhooks directly from vnprox, independent of PVE's own notification-target system — closing the documented gap in pvenotify.go's doc comment (P | Shipped | Documented | Covered | Live |
 | 10 | T-1006 | Firewall log analytics | Aggregate the v1 log viewer (internal/fwlog) into rule hit counts, top blocked-source/destination rankings, and an unused-rule report that closes the loop between firewall editing | Shipped | Documented | Covered | Live |
 | 10 | T-1007 | History playback | Scrub the map's traffic paint and flow-painted edges back through the retained metric/flow window — "what did the network look like at 02:00" — with a timeline control showing even | Shipped | Documented | Covered | Live |
@@ -260,7 +275,7 @@ Wave 1 and are unchanged here.
 | 13 | T-1302 | Capture UX: BPF builder, in-browser decode, pcap download | The right-click-to-capture entry point on the map, a guided BPF filter builder that submits to T-1301's server-side validator, live capture status, in-browser protocol decode, and | Shipped | Documented | Covered | Live |
 | 13 | T-1303 | Latency & loss mesh | Continuous, low-rate node↔node probes on every shared VLAN/fabric (corosync, migration, storage, guest), rendered as a latency heatmap on the map with bounded jitter/loss/ latency | Shipped | Documented | Covered | Live |
 | 13 | T-1304 | Guest network interior inspector | An opt-in inspector tab showing a guest's inside view — interfaces, addresses, routing table, DNS config, listening sockets, default-gateway reachability — via the QEMU guest agent | Shipped | Documented | Covered | Live |
-| 13 | T-1305 | Conntrack & NAT table explorer | Live per-node conntrack read, peer-proxied, filtered by guest/flow, showing state, timers, and NAT translations — the "what is this connection doing right now" complement to the fl | Shipped | Documented | Covered | Degraded |
+| 13 | T-1305 | Conntrack & NAT table explorer | Live per-node conntrack read, peer-proxied, filtered by guest/flow, showing state, timers, and NAT translations — the "what is this connection doing right now" complement to the fl | Shipped | Documented | Covered | Live |
 | 13 | T-1306 | Path MTU prober | Active per-path MTU discovery across bridges, bonds, and VXLAN/EVPN tunnels, upgrading the MTU findings T-803 already ships (config-derived, vxlan_underlay_mtu) with a *verified* ( | Shipped | Documented | Covered | Live |
 | 13 | T-1307 | Guided diagnosis flows | A "Diagnose" action on any guest/edge that runs the ladder automatically — config check (simulator) → live probe (verify-live) → guest interior → conntrack → capture — and produces | Shipped | Documented | Covered | Live |
 | 14 | T-1401 | WireGuard tunnel engine & changeset integration core ★ | First-class WireGuard as a new wg.* changeset op group — key/config generation included — flowing through the ordinary stage→validate→diff→apply→confirm/rollback lifecycle, with pr | Shipped | Documented | Covered | Shipped, inert |

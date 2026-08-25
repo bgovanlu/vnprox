@@ -1,0 +1,47 @@
+# IPFIX decode verified against a third-party exporter — 2026-08-25
+
+## Why this run exists
+internal/flow's IPFIX support (NewIPFIXListener + template handling) had been reviewed but
+never fed by anything except bytes this project wrote itself. Per CLAUDE.md's mock rule, a
+decoder and a fixture derived from one reading of the spec agree with each other forever.
+This run replaces our bytes with softflowd's.
+
+## Method
+  exporter : softflowd 1.1.1-1 (Debian package, unmodified), 'softflowd -v 10' = IPFIX
+  capture  : live traffic on ens18, the dev box's real uplink
+  decoder  : the REAL internal/flow.NewIPFIXListener + TemplateCache, no test doubles,
+             driven by a throwaway main() that only printed what Run() handed it
+  duration : ~35s of live traffic
+  NOT run on pvecube or pve001. Nothing was deployed. softflowd's own systemd unit was
+  stopped and disabled immediately after install; it was run by hand, foreground.
+
+## Result
+TOTAL DECODED RECORDS: 135 (listener err: <nil>)
+
+First 12 records as our decoder produced them:
+record  1: ipfix 160.79.104.10:443 -> 192.168.1.45:52452 proto=6 packets=3 bytes=282
+record  2: ipfix 192.168.1.45:52452 -> 160.79.104.10:443 proto=6 packets=3 bytes=156
+record  3: ipfix 160.79.104.10:443 -> 192.168.1.45:54550 proto=6 packets=180 bytes=11974
+record  4: ipfix 192.168.1.45:54550 -> 160.79.104.10:443 proto=6 packets=77 bytes=509179
+record  5: ipfix 104.16.5.34:443 -> 192.168.1.45:56854 proto=6 packets=3 bytes=156
+record  6: ipfix 192.168.1.45:56854 -> 104.16.5.34:443 proto=6 packets=4 bytes=208
+record  7: ipfix 192.168.1.79:40324 -> 239.255.255.250:3702 proto=17 packets=1 bytes=772
+record  8: ipfix 192.168.1.49:44868 -> 255.255.255.255:10001 proto=17 packets=1 bytes=257
+record  9: ipfix fe80::feec:daff:feb9:1e93:39790 -> ff02::1:10001 proto=17 packets=1 bytes=277
+record 10: ipfix 160.79.104.10:443 -> 192.168.1.45:38844 proto=6 packets=4 bytes=208
+record 11: ipfix 192.168.1.45:38844 -> 160.79.104.10:443 proto=6 packets=4 bytes=208
+record 12: ipfix 34.149.66.165:443 -> 192.168.1.45:57454 proto=6 packets=4 bytes=208
+
+## What this establishes
+ - IPFIX templates from an independent implementation are parsed correctly.
+ - IPv4 and IPv6 both decode (record 9 is a link-local v6 flow to ff02::1).
+ - TCP (proto 6) and UDP (proto 17) both decode, including broadcast (255.255.255.255)
+   and multicast (239.255.255.250) destinations.
+ - octetDeltaCount/packetDeltaCount map onto Bytes/Packets sensibly.
+
+## One reading worth not over-claiming
+Record 4 shows 77 packets / 509179 bytes — about 6.6 KB per packet, above the 1500-byte MTU.
+That is expected: softflowd captures through libpcap, above GRO/TSO, so it counts
+pre-segmentation superpackets. It is a property of the capture point, not a decode error.
+Stated here so a later reader does not 'discover' it as a bug, and so that if it is ever
+shown to be a decode error instead, this note is on record as the assumption that was made.
