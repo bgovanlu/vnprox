@@ -1,4 +1,12 @@
 {
-  "comment": "T-2505. Tests whose failure is tolerated until a stated date. An entry needs a file, the test's FULL title (describe ancestry joined to the test title by ' \u203a '), a reason saying what is actually known about the flake, the ticket that will remove the entry, and an expiry no more than 42 days out. On the day after `expires` the build fails whether or not the test did \u2014 an expiry nobody enforces is a disabled test wearing a deadline. internal/e2egate/gate_test.go's TestRepoQuarantineIsValid checks this file on every `make check`, so an entry that quietly expires turns the tree red without anyone running the e2e suite. Empty is the healthy state; keeping it that way is the point.",
-  "entries": []
+  "comment": "T-2505. Tests whose failure is tolerated until a stated date. An entry needs a file, the test's FULL title (describe ancestry joined to the test title by ' › '), a reason saying what is actually known about the flake, the ticket that will remove the entry, and an expiry no more than 42 days out. On the day after `expires` the build fails whether or not the test did — an expiry nobody enforces is a disabled test wearing a deadline. internal/e2egate/gate_test.go's TestRepoQuarantineIsValid checks this file on every `make check`, so an entry that quietly expires turns the tree red without anyone running the e2e suite. Empty is the healthy state; keeping it that way is the point.",
+  "entries": [
+    {
+      "file": "simulator.spec.ts",
+      "title": "T-504 AC5: Trace path from the map pre-fills and runs (guest->guest, guest->external, IP->guest)",
+      "reason": "Element-stability race, not a product defect, and pre-existing rather than introduced: measured 1-of-3 failures in isolation (repeat-each=3, workers=1) on the candidate tree AND an identical 1-of-3 on 62e63841, the commit before the change it first failed under. Both failures are 'locator.click: Timeout 5000ms exceeded ... waiting for element to be visible, enabled and stable'; the control run's own log ends '- element is visible, enabled and stable', i.e. it settled just outside the budget. Cause is waitForLayout (simulator.spec.ts:71), which returns as soon as react-flow transforms START to diverge (nodes.length >= 4 && transforms.size > 1) rather than when layout has SETTLED, so a click can land mid-animation on a node carrying transition-opacity. Corroborated by duration: siblings in this file take 5-7s, this test took 33.7s / 1.2m / 1.2m.",
+      "ticket": "T-3713",
+      "expires": "2026-09-22"
+    }
+  ]
 }
