@@ -359,8 +359,8 @@ worth a round-trip before implementation starts.
 | T-4205 pictograms | done — 23 glyphs in `web/src/icons/`, kinds derived from `internal/inventory/ref.go` |
 | T-4206 motion | tokens done + one global reduced-motion gate; primitive adoption in the same wave |
 | T-4207 density | not started |
-| T-4208 component library | not started |
-| T-4209 empty states | not started — unblocked now that T-4205 has landed |
+| T-4208 component library | done — 8 primitives in `web/src/components/`, 88 tests; forced `--color-status-on-solid` |
+| T-4209 empty states | in progress — `emptystate/EmptyIllustration.tsx` + adoption across 58 call sites |
 | T-4210 visual gate | done — `web/e2e/visual.spec.ts`, route list derived from `App.tsx` |
 
 **Defects this phase found, all filed rather than absorbed:**
@@ -370,6 +370,20 @@ worth a round-trip before implementation starts.
 - **T-4212** — the axe sweep's hand-kept route list has drifted from `App.tsx`: `/guest` and
   `/wireguard` have never been accessibility-checked. Found by T-4210 deriving its own inventory
   from source instead of copying that list.
+- **T-4213** — the visual gate's 2% diff tolerance was justified by unstoppable clocks, but
+  Playwright 1.61 ships `page.clock.install()`. The tolerance is wide enough to hide a real
+  regression and should shrink once timestamps are frozen.
+- **T-4214** — the accent got a ramp but never got semantic aliases, so 21 call sites across 19
+  files still hand-pick a step per theme, one recipe copy-pasted verbatim into nine of them.
+  Found by reading `EmptyIllustration.tsx`, whose comment claims "the accent ramp is pre-resolved
+  for both themes" one line above `text-accent-600 dark:text-accent-400`.
+
+Two of those four (T-4211, T-4214) are the same defect at different addresses: a role that needs
+different values per theme, left as a *value* token rather than a *role* token, so the conditional
+reappears at every call site. `--color-status-on-solid` was the third instance and got fixed
+inline because a component forced it. The general lesson for the phases below: **a design token
+that cannot re-point is not a design token, it is a constant with a nice name** — and the tell is
+always a `dark:` variant surviving in code that claims not to need one.
 
 **The lesson worth carrying into Phase 43,** because it will recur on the canvas: on this phase's
 palette work the *measurement disagreed with the screen twice*. The amber that satisfied the
