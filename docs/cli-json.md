@@ -38,6 +38,18 @@ comment for why.
 - **Description** says what the field is and, for a command whose JSON
   mirrors an HTTP response 1:1, which route.
 
+**One command is documented differently: `watch`.** Every command above
+emits exactly one JSON document per invocation, which is what
+`assertDocumentedJSON`/`jsondoc_test.go`'s fenced-table mechanism decodes and
+compares. `vnproxctl watch -o json` (T-4010) instead streams
+**newline-delimited JSON** — it never terminates on its own (it is a live
+view over the WS `"events"` topic) and one event or connection-status
+transition becomes one line, not one field of one document. Its shape is
+documented in its own section below using the same table format for
+readability, but there is no fenced anti-drift pair for it in the source —
+`cmd/vnproxctl/watchcmd_test.go`'s `TestRunWatch_NDJSONShape` is that
+command's own line-shape regression test instead.
+
 **Commands that do not appear here** emit no structured data to document —
 either pure side effects with a one-line confirmation (`vnproxctl telemetry
 preview`, which is a deliberate exception: it prints the *exact bytes* the
@@ -659,3 +671,50 @@ direct pmxcfs read, works daemon-down.
 | `inventory` | object | `{clusterCA?, certificates}` — every certificate this node's pmxcfs can see |
 | `issues` | array | problems found (array of object: `{check, severity, detail, remediation}`), empty when clean |
 <!-- cli-json:certs:end -->
+
+## watch
+
+`vnproxctl watch -o json` (T-4010) — a live view over the WS `"events"`
+topic (`internal/topology/hub.go`, frozen at D10:
+`docs/adr/0010-platform-api-freeze-at-v3-0.md`). Requires a token with the
+`automation` scope; fails fast (see below) otherwise. Runs until
+Ctrl-C/SIGTERM or `--max-events` is reached — **newline-delimited JSON, not
+a single document** (see the note above this table). Every line has a
+top-level `"type"`, either `"event"` or `"status"`.
+
+An `"event"` line passes the wire event's own fields through **verbatim**
+under the added `type` tag — this table documents the tag this command
+adds, not the frozen envelope itself (that contract is `docs/api.md`'s
+WebSocket section and `docs/architecture.md` §13.3; a field appearing here
+that isn't in that contract would be a bug in this command, not a new
+platform field):
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | string | always `"event"` on this line shape |
+| `event` | string | the wire event's own name, e.g. `changeset.status`, `drift.changed`, `findings.changed`, `audit.appended` |
+| *(other fields)* | — | every other field the server's event carried, unmodified — see `docs/api.md`'s WebSocket section's event table for each event name's own payload shape |
+
+A `"status"` line reports a connection-lifecycle transition (connected,
+reconnecting, disconnected, reconnected, stopped) — this is this command's
+own bookkeeping, not anything the daemon sent, which is exactly why it
+needs its own tag: a script consuming the stream can tell "the cluster has
+been quiet" from "the stream had a gap" without a second, human-only
+channel:
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | string | always `"status"` on this line shape |
+| `status` | string | `connected`\|`reconnecting`\|`disconnected`\|`reconnected`\|`stopped` |
+| `at` | string | RFC3339 timestamp of the transition |
+| `attempt?` | number | which reconnect attempt this is, for `reconnecting`/`reconnected` |
+| `gapSeconds?` | number | how long the connection was down, on `reconnected` |
+| `error?` | string | the dial/read/write error that caused this transition, when there was one |
+
+**Fails fast, before ever dialing `/api/ws`,** if the token's `GET
+/auth/me` capabilities don't include `automation` — the `"events"` topic's
+subscribe protocol is ack-less (docs/api.md: a refused subscribe is
+silently dropped, never rejected on the wire), so this command checks the
+one place that scope is actually knowable ahead of time rather than opening
+a connection that would just never receive anything. Exits `ExitAuth` (4)
+with a message naming the missing scope.

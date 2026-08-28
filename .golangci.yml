@@ -176,6 +176,19 @@ linters:
         linters:
           - staticcheck
         text: "SA1019"
+      # T-4010's `vnproxctl watch` is a real client of the same locked
+      # nhooyr.io/websocket dependency (docs/development.md) — it dials
+      # /api/ws exactly the way the web UI's own WS client does, over the
+      # module the deprecation notice covers wholesale (see the hub.go
+      # exclusion above for the full rationale; not repeated per file).
+      - path: cmd/vnproxctl/watchcmd\.go
+        linters:
+          - staticcheck
+        text: "SA1019"
+      - path: cmd/vnproxctl/watchcmd_test\.go
+        linters:
+          - staticcheck
+        text: "SA1019"
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

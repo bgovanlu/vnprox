@@ -82,6 +82,7 @@ var commandTable = []commandSpec{
 	{name: "plugin", subcommands: []string{"scaffold"}, run: runPlugin},
 	{name: "apply", run: runApply},
 	{name: "spec", subcommands: []string{"export", "import", "pin", "unpin"}, run: runSpec},
+	{name: "watch", run: runWatch},
 }
 
 // run implements main's logic in a way that's testable without exec'ing a
@@ -202,6 +203,14 @@ HTTP-backed commands (T-1105) — require the daemon up and --token/VNPROX_TOKEN
                                          GitOps reconciler's declared desired state
   vnproxctl spec unpin                   DELETE /spec/pin
 
+  vnproxctl watch                        Live view over the WS "events" topic (T-1104, frozen at
+                                         D10): findings, applies and drift as they happen. Requires
+                                         a token with the "automation" scope (fails fast with a
+                                         clear error otherwise); reconnects on drop, printing the
+                                         gap rather than going quiet. Plain line-oriented output
+                                         when stdout isn't a terminal; -o json for
+                                         newline-delimited events.
+
   vnproxctl completion bash|zsh          Print a shell completion script for this binary's
                                          subcommands and flags, generated from the same dispatch
                                          table main.go uses — source it, don't hand-maintain it
@@ -297,6 +306,13 @@ remote/apply flags (every command in this family):
 spec flags (every subcommand): --config/--url/--token/--insecure/--timeout/-o, as for the remote
 family. spec export's own: --out <path> (write the YAML there instead of stdout; ignored with
 -o json).
+
+watch flags: --config/--url/--token/--insecure/--timeout/-o, as for the remote family (--timeout
+bounds only the /auth/me preflight and each dial handshake, never the live connection itself).
+watch's own: --kind <names> (comma-separated event names to show, e.g.
+changeset.status,drift.changed; default: all), --max-events <n> (exit after this many events, 0 =
+run until Ctrl-C/SIGTERM), --no-color (disable ANSI colors on a TTY). -o json emits
+newline-delimited JSON, one object per line (documented in docs/cli-json.md's "watch" section).
 
 Exit codes (stable, documented in exitcodes.go): 0 success, 1 error,
 2 usage, 3 validation-failed/plan-pending, 4 auth, 5 network,

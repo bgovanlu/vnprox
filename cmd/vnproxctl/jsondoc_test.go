@@ -193,6 +193,13 @@ func TestEveryDataEmittingCommandSupportsOJSON(t *testing.T) {
 		{"spec", "import"},
 		{"spec", "pin"},
 		{"spec", "unpin"},
+		// T-4010's `watch` supports -o json like every other command here,
+		// but it streams newline-delimited JSON (one object per line, no
+		// single top-level document) rather than one decodable value — see
+		// docs/cli-json.md's "watch" section and watchcmd_test.go's own
+		// TestRunWatch_NDJSONShape for the per-line anti-drift check this
+		// table's single-document assertDocumentedJSON helper can't express.
+		{"watch"},
 	}
 	for _, cmd := range commands {
 		t.Run(strings.Join(cmd, "_"), func(t *testing.T) {
