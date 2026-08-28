@@ -98,8 +98,21 @@ type Node struct {
 	// more naturally: a string is pointer-bearing and the slices below are
 	// too, so putting it after them extends the GC's scan prefix by a word
 	// (fieldalignment measures 192 bytes that way against 184 here).
-	MediaPort string   `json:"mediaPort,omitempty"`
-	Badges    []string `json:"badges"`
+	MediaPort string `json:"mediaPort,omitempty"`
+	// Duplex is the NIC's negotiated duplex mode ("full" | "half"; see
+	// internal/host/ethtool_linux.go's platformEthtoolSpeedDuplex), carried
+	// so T-3907's cabling plan view can show "speed/duplex where known"
+	// without a second host read — it comes from the exact same SIOCETHTOOL
+	// ioctl call that already fills SpeedMbps/MediaPort, just not previously
+	// projected onto the wire. Set for physnic nodes only, and
+	// independently of SpeedMbps: a NIC can report a duplex mode with an
+	// unreported speed (or vice versa) depending on which sub-read the
+	// driver answered, so this is gated on its own non-empty value, never on
+	// SpeedMbps>0 — the same non-conflation MediaPort's own comment above
+	// explains. "" (omitted) when unreported — never guessed. Sits with the
+	// other strings for the same fieldalignment reason MediaPort does.
+	Duplex string   `json:"duplex,omitempty"`
+	Badges []string `json:"badges"`
 	// Members lists the Ref strings of every entity this synthetic
 	// collapse node absorbed (T-1907's physical-layer "phys-group:<node>"
 	// per-node summary — see collapsePhysical). Unlike a "guest-group:

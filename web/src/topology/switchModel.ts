@@ -57,6 +57,10 @@ export interface SwitchPortNic {
    * shape. */
   mediaPort?: string;
   speedMbps?: number;
+  /** T-3907, mirrors TopologyNode.duplex — see its doc comment
+   * (api/types.ts). Consumed by the cabling plan view; the faceplate itself
+   * has no use for it yet. */
+  duplex?: string;
   /** T-1907: true when this "port" is actually a collapsed phys-group pill
    * standing in for `count` real NICs (isPhysGroupId(ref)) — the faceplate's
    * uplink-bay equivalent of SwitchAccessPort.isGroup. Its click expands,
@@ -291,6 +295,7 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
       findings: n?.findings,
       mediaPort: n?.mediaPort,
       speedMbps: n?.speedMbps,
+      duplex: n?.duplex,
       isGroup,
       count: isGroup ? n?.collapsedCount : undefined,
     };

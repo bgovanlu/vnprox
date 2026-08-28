@@ -332,6 +332,10 @@ func buildNodes(snap inventory.Snapshot, byRef map[inventory.Ref]inventory.Entit
 				n.SpeedMbps = nic.SpeedMbps
 			}
 			n.MediaPort = nic.MediaPort
+			// T-3907: same "carry it whenever the driver answered,
+			// independent of SpeedMbps' own guard" rule as MediaPort — see
+			// Node.Duplex's doc comment.
+			n.Duplex = nic.Duplex
 		}
 		nodes = append(nodes, n)
 	}
