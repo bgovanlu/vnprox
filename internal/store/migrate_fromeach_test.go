@@ -177,6 +177,7 @@ var versionSeeds = map[int]versionSeed{
 	47: {seedV47, assertV47},
 	48: {seedV48, assertV48},
 	49: {seedV49, assertV49},
+	50: {seedV50, assertV50},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1808,6 +1809,45 @@ func assertV49(t *testing.T, db *sql.DB) {
 		}
 		if entries != `[{"type":"zone","id":"zone-v49"}]` {
 			t.Errorf("changeset_sdn_pending_acks (v49) entries_json = %q, unexpected", entries)
+		}
+	}
+}
+
+func seedV50(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// A recorded neighbor-binding transition (0050_neighbor_bindings.sql —
+	// T-3905): the local node's first-ever observation of one (node, ip),
+	// so prev_mac is NULL (mirrors the migration comment's own "NULL for
+	// this (node, ip)'s first-ever row" case).
+	mustExec(t, db, `INSERT INTO neighbor_bindings (at, node, ip, mac, prev_mac, iface, state)
+	      VALUES (1791000000, 'pve1', '10.0.0.50', 'aa:bb:cc:dd:ee:50', NULL, 'vmbr0', 'REACHABLE')`)
+}
+
+func assertV50(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+
+	var mac, iface, state string
+	var prevMAC sql.NullString
+	var at int64
+	if err := db.QueryRowContext(ctx, `SELECT at, mac, prev_mac, iface, state FROM neighbor_bindings WHERE node = 'pve1' AND ip = '10.0.0.50'`).
+		Scan(&at, &mac, &prevMAC, &iface, &state); err != nil {
+		t.Errorf("neighbor_bindings row (v50) lost across migration: %v", err)
+	} else {
+		if at != 1791000000 {
+			t.Errorf("neighbor_bindings (v50) at = %d, want 1791000000", at)
+		}
+		if mac != "aa:bb:cc:dd:ee:50" {
+			t.Errorf("neighbor_bindings (v50) mac = %q, unexpected", mac)
+		}
+		if prevMAC.Valid {
+			t.Errorf("neighbor_bindings (v50) prev_mac = %v, want NULL", prevMAC)
+		}
+		if iface != "vmbr0" {
+			t.Errorf("neighbor_bindings (v50) iface = %q, want vmbr0", iface)
+		}
+		if state != "REACHABLE" {
+			t.Errorf("neighbor_bindings (v50) state = %q, want REACHABLE", state)
 		}
 	}
 }

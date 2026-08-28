@@ -1774,6 +1774,20 @@ export interface TwoPersonState {
   satisfied: boolean;
 }
 
+/** T-4006's audited override of a declared freeze-window policy rule, on
+ * record for a changeset (`POST /changesets/{id}/freeze-override`'s response
+ * shape). Unlike `BreakGlassRecord` above there is no `ackableAt` — the
+ * escape hatch here downgrades a VALIDATE-time finding to a visible warning
+ * rather than gating an authorization check, so there is no separate
+ * unacknowledgeable finding tied to it; the override itself, and the
+ * `[overridden: ...]`-annotated finding it produces, are the visible trail. */
+export interface FreezeOverrideRecord {
+  changesetId: string;
+  reason: string;
+  invokedBy: string;
+  invokedAt: number;
+}
+
 /** One zone/vnet/subnet real PVE currently reports staged-but-not-yet-
  * applied outside this changeset's own ops (T-3101-followup-01): the
  * foreign-SDN-pending "surface and confirm" gate's review-screen content —

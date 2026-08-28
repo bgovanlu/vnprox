@@ -55,7 +55,7 @@ func (s *Service) ValidatePeerHostWrite(ctx context.Context, node, content strin
 		Params: &IfaceRawReplaceParams{Content: content},
 	}}
 	var out []string
-	for _, f := range s.validate(ctx, "", ops) {
+	for _, f := range s.validate(ctx, "", "", ops) {
 		if f.Severity != SeverityError {
 			continue
 		}

@@ -47,8 +47,10 @@ import { buildApplyStrategy, canaryEligibility, defaultSelection, selectionError
 import { PolicyVerdictPanel } from "./PolicyVerdictPanel";
 import { ProposePanel } from "./ProposePanel";
 import { BreakGlassPanel } from "./BreakGlassPanel";
+import { FreezeOverridePanel } from "./FreezeOverridePanel";
+import { freezeBlocksApply } from "./freezeOverride";
 import { policyFindings, policyVerdict } from "./policyVerdict";
-import { useBreakGlassMutation, usePoliciesQuery, usePolicyVerdictQuery } from "./governanceQueries";
+import { useBreakGlassMutation, useFreezeOverrideMutation, usePoliciesQuery, usePolicyVerdictQuery } from "./governanceQueries";
 
 export interface ReviewApplyScreenProps {
   changeset: Changeset;
@@ -173,6 +175,16 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
   const breakGlass = useBreakGlassMutation(changeset.id);
   const breakGlassError =
     breakGlass.error instanceof Error && breakGlass.error.message !== "" ? breakGlass.error.message : undefined;
+
+  // T-4006: a declared freeze window's audited override. Unlike break-glass
+  // it does not gate an authorization check — it downgrades the freeze
+  // rule's blocking finding to a visible warning — so it is offered
+  // whenever THAT is what is blocking (freezeBlocksApply), independent of
+  // twoPersonBlocks above.
+  const freezeBlocked = freezeBlocksApply(changeset.findings, policyTestQuery.data);
+  const freezeOverride = useFreezeOverrideMutation(changeset.id);
+  const freezeOverrideError =
+    freezeOverride.error instanceof Error && freezeOverride.error.message !== "" ? freezeOverride.error.message : undefined;
 
   // Pre-apply the server hasn't built a plan yet (plan_json is written at
   // apply time) — show the client-side preview mirroring BuildPlan so the
@@ -536,6 +548,20 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
           error={breakGlassError}
           onInvoke={(reason) => {
             breakGlass.mutate(reason);
+          }}
+        />
+
+        {/* T-4006: the freeze-window override, same three-deliberate-actions
+            shape as break-glass above. Offered only while a freeze-tagged
+            deny rule is what blocks — it downgrades that rule's finding to
+            a visible warning, and nothing else. */}
+        <FreezeOverridePanel
+          record={freezeOverride.data}
+          blocked={freezeBlocked}
+          pending={freezeOverride.isPending}
+          error={freezeOverrideError}
+          onInvoke={(reason) => {
+            freezeOverride.mutate(reason);
           }}
         />
 

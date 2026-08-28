@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
@@ -38,6 +40,35 @@ const (
 	policyFieldTargetVlanAware  = "target.vlanAware"
 	policyFieldChangesetOpCount = "changeset.opCount"
 
+	// time.* (T-4006) is the freeze-window fact vocabulary: the evaluation
+	// instant (PolicyInput.EvalTime — the validate call's own "now", or the
+	// apply/schedule-fire call's own "now" when a scheduled changeset is
+	// revalidated at fire time), decomposed so an ordinary PolicyRule can
+	// express both a one-off date range and a recurring weekly/monthly
+	// window using only the existing closed operator set. There is no new
+	// rule type: a freeze window IS a PolicyRule whose Match uses these
+	// facts (plus an op-type wildcard) and whose Assert is empty, exactly
+	// like "never touch vmbr9" (PolicyRule's own doc comment).
+	//
+	// time.now is the one timezone-FREE fact: an absolute unix instant, for
+	// one-off ranges ("2026-12-15T00:00Z..2027-01-02T00:00Z") where the
+	// bounds are computed once, at authoring time, in whatever zone the
+	// author meant.
+	//
+	// The other four are LOCAL WALL-CLOCK facts, resolved in the rule's own
+	// Zone field (policy.go) — never UTC, never the daemon's local zone,
+	// because a silent default is exactly the trap the task card warns
+	// about ("a freeze window that ... silently uses UTC while the operator
+	// means local time will fail exactly when it matters"). PolicySet.Validate
+	// refuses to load a rule that names one of these without an explicit,
+	// loadable Zone (validatePolicyRule).
+	policyFieldTimeNow         = "time.now"
+	policyFieldTimeWeekday     = "time.weekday"
+	policyFieldTimeMinuteOfDay = "time.minuteOfDay"
+	policyFieldTimeDate        = "time.date"
+	policyFieldTimeDayOfMonth  = "time.dayOfMonth"
+	policyFieldTimeMonth       = "time.month"
+
 	policyParamsPrefix = "params."
 )
 
@@ -45,7 +76,9 @@ const (
 // name. Every one of them is either a field of the op itself or a fact
 // derived from the changeset's NET EFFECT on the inventory snapshot (the
 // base snapshot with every op in the changeset folded in — the same
-// projection safetyValidate's own guards use, validate_projection.go).
+// projection safetyValidate's own guards use, validate_projection.go), or
+// (time.*) a fact derived from the evaluation instant rather than from
+// inventory at all.
 //
 // "Net effect" is the deliberate choice for the derived facts: an
 // organisational rule is about the state the cluster is left in ("a bridge
@@ -63,6 +96,67 @@ var factFields = map[string]bool{
 	policyFieldTargetUplinks:    true,
 	policyFieldTargetVlanAware:  true,
 	policyFieldChangesetOpCount: true,
+	policyFieldTimeNow:          true,
+	policyFieldTimeWeekday:      true,
+	policyFieldTimeMinuteOfDay:  true,
+	policyFieldTimeDate:         true,
+	policyFieldTimeDayOfMonth:   true,
+	policyFieldTimeMonth:        true,
+}
+
+// localTimeFactFields is time.* minus time.now — the facts that need a
+// Zone to mean anything, so PolicySet.Validate can require one.
+var localTimeFactFields = map[string]bool{
+	policyFieldTimeWeekday:     true,
+	policyFieldTimeMinuteOfDay: true,
+	policyFieldTimeDate:        true,
+	policyFieldTimeDayOfMonth:  true,
+	policyFieldTimeMonth:       true,
+}
+
+// isTimeFact reports whether field is any time.* fact (used by fieldLookup
+// to route to timeFact rather than the op/inventory-derived fact path).
+func isTimeFact(field string) bool { return strings.HasPrefix(field, "time.") }
+
+// weekdayAbbrevs is time.weekday's closed, documented value set, indexed by
+// time.Weekday (Sunday=0).
+var weekdayAbbrevs = [7]string{"sun", "mon", "tue", "wed", "thu", "fri", "sat"}
+
+func weekdayAbbrev(w time.Weekday) string { return weekdayAbbrevs[int(w)] }
+
+func knownWeekdayAbbrev(s string) bool {
+	for _, w := range weekdayAbbrevs {
+		if w == s {
+			return true
+		}
+	}
+	return false
+}
+
+// zoneCache memoizes time.LoadLocation, which re-parses tzdata on every
+// call — worth avoiding since a freeze rule's Zone is looked up once per
+// (rule, op) pair evaluated. A sync.Map because, unlike paramFieldCache,
+// this one is populated from EvaluatePolicy, which callers may legitimately
+// invoke concurrently (the validate route and a background schedule tick
+// can run at the same time).
+var zoneCache sync.Map
+
+// loadPolicyZone resolves an IANA zone name, or time.UTC for "" (the
+// zone-free time.now path only calls this with a non-empty rule.Zone in
+// practice, but a defensive default beats a nil *time.Location).
+func loadPolicyZone(name string) (*time.Location, error) {
+	if name == "" {
+		return time.UTC, nil
+	}
+	if v, ok := zoneCache.Load(name); ok {
+		return v.(*time.Location), nil
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return nil, err
+	}
+	zoneCache.Store(name, loc)
+	return loc, nil
 }
 
 func knownFactFields() []string {
@@ -86,13 +180,39 @@ func knownTargetKind(s string) bool {
 // the snapshot. Its zero value (no rules, no protected set) is a complete
 // no-op, which is what makes running the evaluator unconditionally inside
 // ValidateWithSafety safe (AC6).
+//
+// Field order is densest-pointer-first: govet's fieldalignment measures
+// bytes up to the final pointer, so a field whose own pointer bytes stop
+// short (PolicySet's Rules slice is followed by a pointer-free Version int)
+// is pushed to the end, even though it was declared earlier.
 type PolicyInput struct {
+	// EvalTime (T-4006) is the instant every time.* fact is computed
+	// against. It is supplied by the caller, never read from a clock in
+	// here — EvaluatePolicy stays pure (this file's own doc comment). The
+	// zero value (used by every caller that predates T-4006, and by the
+	// example-policy fixture harness for rules that never reference
+	// time.*) makes every time.* fact resolve against 0001-01-01, which a
+	// real freeze rule's Zone-required load-time check (policy.go) makes
+	// harmless: a rule that never names a time.* field never looks at it.
+	EvalTime time.Time
 	// Protected is the onboarding-confirmed protected-interface set
 	// (protected.go), so a rule can say "target.protected eq true" — the
 	// declarative generalization of the one organisational rule this
 	// codebase used to hard-code.
 	Protected ProtectedSet
-	Set       PolicySet
+	// OverriddenTags (T-4006), when a rule's own Tags intersects it,
+	// downgrades that rule's otherwise-blocking (PolicyDeny) findings to
+	// SeverityWarning rather than removing them — the audited, non-silent
+	// escape hatch a freeze-window rule needs (freeze_override.go's own
+	// doc comment explains why "authorization gate checked only at apply",
+	// T-2604's break-glass shape, does not fit a VALIDATE-time refusal).
+	// The map's value is a short human-readable note (who overrode it and
+	// why), folded into the finding message so the override is visible on
+	// the very finding it defeats, not only in the separate audit log.
+	// Nil/empty is a complete no-op — every pre-T-4006 caller and every
+	// caller that never invoked an override sees byte-identical findings.
+	OverriddenTags map[string]string
+	Set            PolicySet
 }
 
 // PolicyRuleResult is one rule's outcome over one changeset: which ops it
@@ -118,11 +238,16 @@ type PolicyResult struct {
 	Rules    []PolicyRuleResult `json:"rules,omitempty"`
 }
 
-// Denied reports whether any deny rule fired (i.e. whether this evaluation
-// blocks the changeset).
+// Denied reports whether any finding this evaluation produced actually
+// blocks the changeset. Deliberately computed from the FINDINGS' own
+// severity rather than from each rule's declared Severity: a PolicyDeny
+// rule whose violation was downgraded to SeverityWarning by an audited
+// override (PolicyInput.OverriddenTags — T-4006) must report Denied()
+// false, the same way hasError(findings) already would, so the two can
+// never disagree about whether a changeset is actually blocked.
 func (r PolicyResult) Denied() bool {
-	for _, rr := range r.Rules {
-		if rr.Severity == PolicyDeny && len(rr.ViolatingOps) > 0 {
+	for _, f := range r.Findings {
+		if f.Severity == SeverityError {
 			return true
 		}
 	}
@@ -178,13 +303,14 @@ func EvaluatePolicy(in PolicyInput, ops []Op, snap inventory.Snapshot) PolicyRes
 	if in.Set.IsEmpty() {
 		return PolicyResult{}
 	}
-	ev := newPolicyEvaluator(ops, snap, in.Protected)
+	ev := newPolicyEvaluator(ops, snap, in.Protected, in.EvalTime)
 
 	var out PolicyResult
 	for _, rule := range in.Set.Rules {
 		rr := PolicyRuleResult{RuleID: rule.ID, Description: rule.Description, Severity: rule.Severity, Tags: rule.Tags}
+		overrideNote := overrideNoteFor(rule, in.OverriddenTags)
 		for i, op := range ops {
-			get := ev.fieldLookup(i, op)
+			get := ev.fieldLookup(i, op, rule.Zone)
 			if !allConditionsHold(rule.Match, get) {
 				continue
 			}
@@ -200,17 +326,38 @@ func EvaluatePolicy(in PolicyInput, ops []Op, snap inventory.Snapshot) PolicyRes
 				}
 			}
 			rr.ViolatingOps = append(rr.ViolatingOps, i)
-			out.Findings = append(out.Findings, policyFinding(rule, op, failed))
+			out.Findings = append(out.Findings, policyFinding(rule, op, failed, overrideNote))
 		}
 		out.Rules = append(out.Rules, rr)
 	}
 	return out
 }
 
+// overrideNoteFor returns the note to fold into rule's violation messages
+// when an audited override (T-4006) applies to it — i.e. when rule carries
+// a tag present in overridden — or "" when none applies.
+func overrideNoteFor(rule PolicyRule, overridden map[string]string) string {
+	if len(overridden) == 0 {
+		return ""
+	}
+	for _, tag := range rule.Tags {
+		if note, ok := overridden[tag]; ok {
+			return note
+		}
+	}
+	return ""
+}
+
 // policyFinding renders one violation. AC1: the message names the rule id
 // AND its description; reason names the specific assertion that failed (or
 // says the match itself is the violation, for an assert-less rule).
-func policyFinding(rule PolicyRule, op Op, failed PolicyCondition) Finding {
+//
+// overrideNote, when non-empty, downgrades what would otherwise be a
+// blocking SeverityError to SeverityWarning and names the override inline —
+// T-4006's audited escape hatch is visible on the finding it defeats, not
+// only in the separate audit log. A PolicyWarn rule is unaffected (it was
+// never blocking to begin with).
+func policyFinding(rule PolicyRule, op Op, failed PolicyCondition, overrideNote string) Finding {
 	reason := "the op is forbidden by this rule"
 	if failed.Field != "" {
 		reason = fmt.Sprintf("failed assertion %s %s %s", failed.Field, failed.Op, formatPolicyValue(failed.Value))
@@ -219,6 +366,10 @@ func policyFinding(rule PolicyRule, op Op, failed PolicyCondition) Finding {
 	severity := SeverityError
 	if rule.Severity == PolicyWarn {
 		severity = SeverityWarning
+	}
+	if overrideNote != "" && severity == SeverityError {
+		severity = SeverityWarning
+		msg = fmt.Sprintf("%s [overridden: %s]", msg, overrideNote)
 	}
 	return Finding{Severity: severity, Code: codePolicyViolation, Message: msg, Ref: op.Target.String()}
 }
@@ -384,7 +535,15 @@ func policyString(v any) (string, bool) {
 // policyEvaluator holds the per-changeset state every op's fact lookup
 // shares: the net-effect projection, the effective guest attachment counts,
 // the effective VLAN-awareness map, and the protected-ref index.
+//
+// Field order is densest-pointer-first: govet's fieldalignment measures
+// bytes up to the final pointer, so paramsJSON (a slice with a pointer-free
+// trailing len/cap it doesn't fully use) sits after the plain maps/pointer,
+// and opCount (no pointer at all) sits last of all.
 type policyEvaluator struct {
+	// evalTime (T-4006) is PolicyInput.EvalTime, carried through unchanged
+	// — the instant every time.* fact in fact/timeFact is computed against.
+	evalTime    time.Time
 	proj        *projection
 	guestCounts map[ifaceKey]int
 	vnetGuests  map[string]int
@@ -394,7 +553,7 @@ type policyEvaluator struct {
 	opCount     int
 }
 
-func newPolicyEvaluator(ops []Op, snap inventory.Snapshot, protected ProtectedSet) *policyEvaluator {
+func newPolicyEvaluator(ops []Op, snap inventory.Snapshot, protected ProtectedSet, evalTime time.Time) *policyEvaluator {
 	ev := &policyEvaluator{
 		proj:        newProjection(snap),
 		guestCounts: map[ifaceKey]int{},
@@ -403,6 +562,7 @@ func newPolicyEvaluator(ops []Op, snap inventory.Snapshot, protected ProtectedSe
 		protected:   map[inventory.Ref]bool{},
 		paramsJSON:  make([]map[string]any, len(ops)),
 		opCount:     len(ops),
+		evalTime:    evalTime,
 	}
 	for _, refs := range protected {
 		for _, r := range refs {
@@ -468,13 +628,57 @@ func (ev *policyEvaluator) indexGuestAttachments(ops []Op, snap inventory.Snapsh
 	}
 }
 
-// fieldLookup returns the getter one op's conditions resolve against.
-func (ev *policyEvaluator) fieldLookup(index int, op Op) policyFieldGetter {
+// fieldLookup returns the getter one (rule, op) pair's conditions resolve
+// against. zone is the rule's own PolicyRule.Zone — needed only by the
+// local-wall-clock time.* facts (timeFact), since every other fact is
+// either op/inventory-derived or (time.now) zone-free.
+func (ev *policyEvaluator) fieldLookup(index int, op Op, zone string) policyFieldGetter {
 	return func(field string) (any, bool) {
-		if strings.HasPrefix(field, policyParamsPrefix) {
+		switch {
+		case strings.HasPrefix(field, policyParamsPrefix):
 			return ev.paramValue(index, op, strings.TrimPrefix(field, policyParamsPrefix))
+		case isTimeFact(field):
+			return ev.timeFact(field, zone)
+		default:
+			return ev.fact(field, op)
 		}
-		return ev.fact(field, op)
+	}
+}
+
+// timeFact resolves one of the time.* facts (policy_eval.go's const block)
+// against ev.evalTime. The four local-wall-clock facts are computed by
+// converting evalTime into zone via time.Time.In — DST-correct by
+// construction the same way findings.QuietHours.Contains documents (a wall
+// clock reading tracks the clock on the wall through a DST change, which is
+// what "every Friday afternoon" means to a human) — never by a fixed-offset
+// arithmetic shortcut that would drift twice a year.
+//
+// zone == "" only happens for a rule PolicySet.Validate should have refused
+// to load (validatePolicyRule requires an explicit Zone on any rule naming
+// a local-wall-clock fact); loadPolicyZone's "" => UTC default here is
+// defense in depth, not the documented behavior.
+func (ev *policyEvaluator) timeFact(field, zone string) (any, bool) {
+	if field == policyFieldTimeNow {
+		return ev.evalTime.Unix(), true
+	}
+	loc, err := loadPolicyZone(zone)
+	if err != nil {
+		return nil, false
+	}
+	local := ev.evalTime.In(loc)
+	switch field {
+	case policyFieldTimeWeekday:
+		return weekdayAbbrev(local.Weekday()), true
+	case policyFieldTimeMinuteOfDay:
+		return local.Hour()*60 + local.Minute(), true
+	case policyFieldTimeDate:
+		return local.Format("2006-01-02"), true
+	case policyFieldTimeDayOfMonth:
+		return local.Day(), true
+	case policyFieldTimeMonth:
+		return int(local.Month()), true
+	default:
+		return nil, false
 	}
 }
 

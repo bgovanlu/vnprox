@@ -3931,6 +3931,53 @@
         }
       }
     },
+    "/api/v1/calendar": {
+      "get": {
+        "operationId": "getCalendar",
+        "summary": "List declared freeze windows alongside pending scheduled changesets.",
+        "tags": [
+          "policy"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Response body; see docs/api.md for this route's shape."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or the credential is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is valid but lacks the required capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/capacity/export": {
       "get": {
         "operationId": "getCapacityExport",
@@ -5281,6 +5328,83 @@
                 "schema": {
                   "type": "object",
                   "description": "Response body; see docs/api.md for this route's shape."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or the credential is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is valid but lacks the required capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/changesets/{id}/freeze-override": {
+      "post": {
+        "operationId": "postChangesetsByIdFreezeOverride",
+        "summary": "Record an audited override of a declared freeze-window policy rule, with a written reason.",
+        "tags": [
+          "changesets"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Response body; see docs/api.md for this route's shape."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was malformed or failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

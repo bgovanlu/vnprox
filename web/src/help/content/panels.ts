@@ -1326,6 +1326,34 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
     seeAlso: ["changeset-review-page", "policy-verdict", "safety-model", "audit-page"],
   },
   {
+    id: "freeze-windows",
+    title: "Freeze windows & the change calendar",
+    surface: "panel",
+    summary:
+      "Time-based deny/warn rules — declared as ordinary policy, evaluated at validate — plus the calendar view showing them alongside scheduled applies, and the audited override for a genuine incident.",
+    docRef: "docs/features/change-management.md",
+    keywords: ["freeze", "freeze window", "change freeze", "calendar", "maintenance window", "schedule", "timezone"],
+    sections: [
+      {
+        heading: "A freeze window is an ordinary policy rule",
+        body: "There is no separate freeze-rule language: a freeze is a `deny` or `warn` policy rule tagged `freeze`, whose match conditions reference the evaluation instant (`time.now`, an absolute one-off range) or the local wall clock in an explicitly declared zone (`time.weekday`, `time.minuteOfDay`, `time.date`, `time.dayOfMonth`, `time.month`). It is evaluated by the same engine every other policy rule runs through, at the same validate stage — never a second gate.",
+      },
+      {
+        heading: "Timezone is never assumed",
+        body: "A rule that names a local-wall-clock fact must declare its own IANA zone; the daemon refuses to load one that does not, rather than silently defaulting to UTC or its own local zone. A one-off date range built from `time.now` needs no zone at all — it is an absolute instant range, resolved once at authoring time.",
+      },
+      {
+        heading: "Deny blocks, warn annotates",
+        body: "A `deny` freeze produces a blocking error the same way any other policy `deny` does, refusing staging before an operator invests in review. A `warn` freeze rides the changeset's findings to the review surface without blocking — the same distinction every other policy rule already makes.",
+      },
+      {
+        heading: "The override is audited, never silent",
+        body: "If this is a genuine incident, a freeze can be overridden with a required, recorded reason — its own audit action, `change.freeze_override`. Unlike break-glass, this does not gate an authorization check: the freeze rule's finding stays on the changeset, downgraded from blocking to a visible warning that names the override, never quietly removed. It is pinned to the operations it was taken for and does not survive an edit.",
+      },
+    ],
+    seeAlso: ["changeset-review-page", "policy-verdict", "break-glass", "governance-page"],
+  },
+  {
     id: "compliance-panel",
     title: "Compliance profiles",
     surface: "panel",

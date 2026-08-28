@@ -121,13 +121,19 @@ func (s *Service) policyForValidation(ctx context.Context, clusterID string) (Po
 // for the caller to persist as bookkeeping (recordPolicyStats). The
 // returned findings concern the POLICY SET itself (e.g. it is unparsable),
 // not the ops, and are prepended by the caller to the pipeline's own.
-func (s *Service) validationInputs(ctx context.Context, clusterID string, report *PolicyResult) (SafetyOptions, []Finding) {
+// changesetID/ops (T-4006) are used only to look up a freeze-window
+// override pinned to changesetID's current ops (overriddenPolicyTags,
+// freeze_override.go) — "" / nil is a complete no-op, matching every
+// pre-T-4006 caller.
+func (s *Service) validationInputs(ctx context.Context, clusterID, changesetID string, ops []Op, report *PolicyResult) (SafetyOptions, []Finding) {
 	safety := s.safetyOptions()
 	safety.Allocations = s.dhcpAllocations(ctx)
 	safety.Switches = s.switchSafetyInput(ctx)
 	policy, policyFindings := s.policyForValidation(ctx, clusterID)
 	safety.Policy = policy
 	safety.PolicyReport = report
+	safety.EvalTime = s.now()
+	safety.OverriddenTags = s.overriddenPolicyTags(ctx, changesetID, ops)
 	return safety, policyFindings
 }
 
@@ -189,7 +195,10 @@ func (s *Service) policyDenial(ctx context.Context, cs Changeset) error {
 		return nil
 	}
 	expanded, _ := s.expandRawReplaceOps(ctx, cs.Ops)
-	result := EvaluatePolicy(PolicyInput{Set: set, Protected: s.safetyOptions().Protected}, expanded, s.inventorySnapshot())
+	result := EvaluatePolicy(PolicyInput{
+		Set: set, Protected: s.safetyOptions().Protected,
+		EvalTime: s.now(), OverriddenTags: s.overriddenPolicyTags(ctx, cs.ID, cs.Ops),
+	}, expanded, s.inventorySnapshot())
 	if !result.Denied() {
 		return nil
 	}
@@ -345,7 +354,12 @@ func (s *Service) EvaluatePolicySet(ctx context.Context, set PolicySet, ops []Op
 		return PolicyResult{}, nil
 	}
 	expanded, _ := s.expandRawReplaceOps(ctx, ops)
-	in := PolicyInput{Set: set, Protected: s.safetyOptions().Protected}
+	// EvalTime is "now": `vnproxctl policy test`/`POST /policies/test` is a
+	// dry run, so it should show a freeze-tagged rule firing (or not)
+	// exactly as it would right now — no OverriddenTags, deliberately: this
+	// is a diagnostic tool, and hiding a violation behind an override here
+	// would defeat the point of testing the rule.
+	in := PolicyInput{Set: set, Protected: s.safetyOptions().Protected, EvalTime: s.now()}
 	return EvaluatePolicy(in, expanded, s.inventorySnapshot()), nil
 }
 

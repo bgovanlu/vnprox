@@ -8,6 +8,9 @@ coverage.out
 # that rebuilt them, and a merge conflict nobody can resolve by reading it.
 /vnproxd
 /vnproxctl
+# contrib/terraform-provider-vnprox is its own Go module; `go build .` there
+# writes a binary of the same name into that directory.
+/contrib/terraform-provider-vnprox/terraform-provider-vnprox
 
 # Packaging (make deb scratch space; see packaging/Makefile)
 /packaging/build/

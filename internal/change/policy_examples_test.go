@@ -4,6 +4,7 @@ package change
 
 import (
 	"testing"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
@@ -25,11 +26,18 @@ const (
 	expectPass policyExpectation = "pass"
 )
 
+// Field order is densest-pointer-first: govet's fieldalignment measures
+// bytes up to the final pointer, so a pointer-free field sitting above one
+// costs alignment for nothing.
 type policyFixture struct {
-	snap   inventory.Snapshot
-	name   string
-	expect policyExpectation
-	ops    []Op
+	// evalTime (T-4006) is the instant time.* facts are computed against.
+	// The zero value (every fixture that predates T-4006) is harmless: a
+	// rule that never names a time.* field never looks at it.
+	evalTime time.Time
+	snap     inventory.Snapshot
+	name     string
+	expect   policyExpectation
+	ops      []Op
 }
 
 // examplePolicyFixtures is the fixture corpus, keyed by the rule id in
@@ -105,8 +113,36 @@ func examplePolicyFixtures() map[string][]policyFixture {
 				ops: []Op{mkOp(OpBridgeUpdate, testRef(inventory.KindBridge, "pve1", "vmbr0"), &BridgeUpdateParams{MTU: intPtr(1500)})},
 			},
 		},
+		"friday-afternoon-freeze": {
+			{
+				// America/New_York is EST (-05:00, no DST) in January, so a
+				// fixed -05:00 offset instant lands on the wall-clock time
+				// the name says once policy_eval.go converts it via the
+				// real "America/New_York" *time.Location — no tzdata lookup
+				// needed to BUILD the fixture, only to evaluate it (which
+				// exercises the real path).
+				name: "Friday 15:00 America/New_York, inside the freeze", expect: expectFire, snap: bridgeSnap,
+				ops:      []Op{mkOp(OpBridgeUpdate, testRef(inventory.KindBridge, "pve1", "vmbr0"), &BridgeUpdateParams{MTU: intPtr(1500)})},
+				evalTime: time.Date(2026, time.January, 16, 15, 0, 0, 0, estFixedZone), // a Friday
+			},
+			{
+				name: "Monday 15:00 America/New_York, same time of day but not Friday", expect: expectPass, snap: bridgeSnap,
+				ops:      []Op{mkOp(OpBridgeUpdate, testRef(inventory.KindBridge, "pve1", "vmbr0"), &BridgeUpdateParams{MTU: intPtr(1500)})},
+				evalTime: time.Date(2026, time.January, 19, 15, 0, 0, 0, estFixedZone), // a Monday
+			},
+			{
+				name: "Friday 20:00 America/New_York, right weekday but outside the hour range", expect: expectPass, snap: bridgeSnap,
+				ops:      []Op{mkOp(OpBridgeUpdate, testRef(inventory.KindBridge, "pve1", "vmbr0"), &BridgeUpdateParams{MTU: intPtr(1500)})},
+				evalTime: time.Date(2026, time.January, 16, 20, 0, 0, 0, estFixedZone), // a Friday, evening
+			},
+		},
 	}
 }
+
+// estFixedZone is a fixed UTC-5 offset — America/New_York's own offset in
+// January (EST, no DST) — used to build fixture instants without a tzdata
+// lookup at fixture-construction time.
+var estFixedZone = time.FixedZone("EST", -5*60*60)
 
 func TestExamplePolicySet_Parses(t *testing.T) {
 	set, err := ExamplePolicySet()
@@ -154,7 +190,7 @@ func TestExamplePolicySet_EveryRuleHasAFiringAndAPassingFixture(t *testing.T) {
 			only := PolicySet{Version: set.Version, Rules: []PolicyRule{rule}}
 			for _, tc := range cases {
 				t.Run(tc.name, func(t *testing.T) {
-					res := EvaluatePolicy(PolicyInput{Set: only}, tc.ops, tc.snap)
+					res := EvaluatePolicy(PolicyInput{Set: only, EvalTime: tc.evalTime}, tc.ops, tc.snap)
 					violated := len(res.Rules) == 1 && len(res.Rules[0].ViolatingOps) > 0
 					switch tc.expect {
 					case expectFire:
@@ -209,7 +245,7 @@ func TestExamplePolicySet_DenyRulesActuallyBlock(t *testing.T) {
 				continue
 			}
 			only := PolicySet{Version: set.Version, Rules: []PolicyRule{rule}}
-			got := ValidateWithSafety(tc.ops, tc.snap, SafetyOptions{Policy: only})
+			got := ValidateWithSafety(tc.ops, tc.snap, SafetyOptions{Policy: only, EvalTime: tc.evalTime})
 			var blocked bool
 			for _, f := range got {
 				if f.Code == codePolicyViolation && f.Severity == SeverityError {

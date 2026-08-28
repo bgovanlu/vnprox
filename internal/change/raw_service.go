@@ -48,10 +48,22 @@ func (s *Service) ReadRawInterfaces(ctx context.Context, node string) (content, 
 // T-2601: the cluster's declarative policy set is part of the pipeline's
 // inputs (validationInputs), so a policy `deny` blocks here — at validate,
 // before any diff or plan is ever computed.
-func (s *Service) validate(ctx context.Context, clusterID string, ops []Op) []Finding {
+//
+// changesetID (T-4006), when non-empty, is the changeset these ops belong
+// to — used ONLY to look up a possible freeze-window override
+// (freeze_override.go) pinned to it, so a `time.*` deny finding can be
+// downgraded to a visible warning for the exact changeset it was invoked
+// for. Callers that have no changeset yet (Create, CreateRequest, and
+// ValidatePeerHostWrite's raw peer content, none of which have an id an
+// override could be recorded against) pass "".
+func (s *Service) validate(ctx context.Context, clusterID, changesetID string, ops []Op) []Finding {
 	expanded, rawFindings := s.expandRawReplaceOps(ctx, ops)
 	var report PolicyResult
-	safety, policyFindings := s.validationInputs(ctx, clusterID, &report)
+	// ops (not expanded) is what freeze-override fingerprinting compares
+	// against — InvokeFreezeOverride fingerprints the changeset's own
+	// persisted Ops, never the raw-op expansion, so the two must agree on
+	// which bytes they hash (see overriddenPolicyTags's doc comment).
+	safety, policyFindings := s.validationInputs(ctx, clusterID, changesetID, ops, &report)
 	findings := ValidateWithSafety(expanded, s.inventorySnapshot(), safety)
 	s.recordPolicyStats(ctx, clusterID, report)
 
@@ -68,8 +80,8 @@ func (s *Service) validate(ctx context.Context, clusterID string, ops []Op) []Fi
 // short-circuits or reorders the existing classes, so a single-cluster
 // deployment (clusterID == "" and no ClusterMembership seam) sees byte-for-
 // byte the same findings validate already produced.
-func (s *Service) validateScoped(ctx context.Context, clusterID string, ops []Op) []Finding {
-	findings := s.validate(ctx, clusterID, ops)
+func (s *Service) validateScoped(ctx context.Context, clusterID, changesetID string, ops []Op) []Finding {
+	findings := s.validate(ctx, clusterID, changesetID, ops)
 	// Skip the membership fetch entirely for an unscoped (implicit-default-
 	// cluster) changeset — the common single-cluster case — since
 	// ValidateClusterScope is a guaranteed no-op there anyway.

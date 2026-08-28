@@ -35,6 +35,11 @@ type PolicyService interface {
 	SetPolicySet(ctx context.Context, author string, set change.PolicySet) (change.PolicyStatus, error)
 	EvaluatePolicySet(ctx context.Context, set change.PolicySet, ops []change.Op) (change.PolicyResult, error)
 	EvaluatePolicyForChangeset(ctx context.Context, set change.PolicySet, changesetID string) (change.PolicyResult, error)
+	// Calendar (T-4006) is the change-calendar view's read: every declared
+	// freeze window in the installed policy set alongside every
+	// currently-pending scheduled changeset — see change.Service.Calendar's
+	// own doc comment.
+	Calendar(ctx context.Context) (change.CalendarView, error)
 }
 
 // policyPutRequest is `PUT /policies`' body: a whole policy document,
@@ -73,6 +78,10 @@ func mountPolicyRoutes(r chi.Router, svc PolicyService, auth AuthService) {
 		// sits with the reads and needs no CSRF — the same placement
 		// POST /interfaces/lint already has.
 		r.Post("/policies/test", handleTestPolicy(svc))
+		// T-4006: the change-calendar view — freeze windows (derived from
+		// the same policy set GET /policies serves) alongside pending
+		// scheduled changesets. A read, like the two routes above.
+		r.Get("/calendar", handleGetCalendar(svc))
 	})
 
 	r.Group(func(r chi.Router) {
@@ -93,6 +102,21 @@ func handleGetPolicies(svc PolicyService) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, status)
+	}
+}
+
+// handleGetCalendar serves `GET /calendar` (T-4006): the change-calendar
+// view. Read-only, like handleGetPolicies immediately above — enforcement
+// still happens exactly once, inside the change engine's validate stage;
+// this route only renders what is already declared/scheduled.
+func handleGetCalendar(svc PolicyService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		view, err := svc.Calendar(r.Context())
+		if err != nil {
+			writePolicyError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, view)
 	}
 }
 

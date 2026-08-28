@@ -46,6 +46,12 @@ export interface PolicyRule {
   tags?: string[];
   match: PolicyCondition[];
   assert?: PolicyCondition[];
+  /** T-4006: the IANA zone (e.g. "America/New_York") a rule's local-wall-
+   * clock `time.*` facts (`time.weekday`, `time.minuteOfDay`, `time.date`,
+   * `time.dayOfMonth`, `time.month`) are resolved in. Absent/empty unless
+   * the rule uses one of those — a rule using only the zone-free `time.now`
+   * needs none. */
+  zone?: string;
 }
 
 /** A whole policy document. `rules` is `null` on the wire (never `[]`)
@@ -133,4 +139,62 @@ export function putPolicies(set: PolicySet): Promise<PolicyStatus> {
  * the INSTALLED set, which is what the review screen's deny panel does. */
 export function testPolicy(req: PolicyTestRequest): Promise<PolicyResult> {
   return apiFetch<PolicyResult>("/policies/test", { method: "POST", json: req });
+}
+
+// --- T-4006: freeze windows & the change calendar --------------------------
+
+/** One declared freeze window, rendered for the calendar (`GET /calendar`'s
+ * `freezeWindows` entries) — the server's own best-effort reading of a
+ * freeze-tagged `PolicyRule`'s `match` conditions (internal/change/
+ * freeze_calendar.go). `recognized: false` means the rule used a `time.*`
+ * shape this renderer does not understand; only `ruleId`/`description`/
+ * `severity` are meaningful then, and the calendar must fall back to
+ * listing it by description rather than drawing a box for it — never guess
+ * a shape it cannot back up. THE POLICY RULE ITSELF, evaluated at validate
+ * time, is still the sole enforcement; this is a read of that same data,
+ * never a second opinion about it. */
+export interface FreezeWindowView {
+  ruleId: string;
+  description: string;
+  severity: string;
+  zone?: string;
+  recognized: boolean;
+  weekdays?: string[];
+  daysOfMonth?: number[];
+  months?: number[];
+  minuteOfDayStart?: number;
+  minuteOfDayEnd?: number;
+  epochStart?: number;
+  epochEnd?: number;
+}
+
+/** One scheduled changeset (T-1103's `Schedule`, `internal/change/
+ * schedule.go`), as `GET /calendar` renders it. Never carries a callback
+ * token — that is delivered once, at schedule-creation time, by
+ * `POST /changesets/{id}/schedule`'s own response, not here. */
+export interface Schedule {
+  changesetId: string;
+  windowStart: number;
+  windowEnd: number;
+  confirmTimeoutSec: number;
+  missedWindowPolicy: string;
+  status: string;
+  createdBy: string;
+  createdAt: number;
+  firedAt?: number;
+  cancelledAt?: number;
+}
+
+/** `GET /calendar`'s whole response: every declared freeze window alongside
+ * every currently-PENDING scheduled changeset — the one place an operator
+ * sees why a staged apply would be refused, or why a schedule they already
+ * set is about to be, before either happens. */
+export interface CalendarView {
+  freezeWindows: FreezeWindowView[];
+  schedules: Schedule[] | null;
+}
+
+/** GET /calendar — `netRead`. */
+export function fetchCalendar(): Promise<CalendarView> {
+  return apiFetch<CalendarView>("/calendar");
 }

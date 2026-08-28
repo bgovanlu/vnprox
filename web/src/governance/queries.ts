@@ -7,8 +7,8 @@ import { fetchComplianceProfiles, fetchComplianceReport } from "../api/complianc
 import type { ComplianceProfileSummary, ComplianceReport } from "../api/compliance";
 import { fetchDigestSchedule, putDigestSchedule } from "../api/digest";
 import type { DigestSchedule, DigestScheduleUpdate } from "../api/digest";
-import { putPolicies } from "../api/policies";
-import type { PolicySet, PolicyStatus } from "../api/policies";
+import { fetchCalendar, putPolicies } from "../api/policies";
+import type { CalendarView, PolicySet, PolicyStatus } from "../api/policies";
 import {
   addTenantScope,
   createTenant,
@@ -22,11 +22,27 @@ import {
 import type { TenantDetail, TenantListItem, TenantRole } from "../api/tenants";
 import { POLICIES_QUERY_KEY } from "../changesets/governanceQueries";
 
+export const CALENDAR_QUERY_KEY = ["calendar"] as const;
 export const COMPLIANCE_PROFILES_KEY = ["compliance", "profiles"] as const;
 export const complianceReportKey = (profile: string) => ["compliance", "report", profile] as const;
 export const DIGEST_SCHEDULE_KEY = ["digest", "schedule"] as const;
 export const TENANTS_KEY = ["tenants"] as const;
 export const tenantKey = (id: string) => ["tenants", id] as const;
+
+// ---- calendar (T-4006) -----------------------------------------------------
+
+/** GET /calendar — every declared freeze window alongside every pending
+ * scheduled changeset. `retry: false`: a `503`-shaped failure on this route
+ * (no policy store wired) is a settled deployment fact, not a transient one. */
+export function useCalendarQuery(enabled = true) {
+  return useQuery<CalendarView>({
+    queryKey: CALENDAR_QUERY_KEY,
+    queryFn: fetchCalendar,
+    enabled,
+    retry: false,
+    staleTime: 15_000,
+  });
+}
 
 // ---- policies -------------------------------------------------------------
 

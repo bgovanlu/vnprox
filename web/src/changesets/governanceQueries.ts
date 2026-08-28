@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchPolicies, testPolicy } from "../api/policies";
 import type { PolicyResult, PolicyStatus } from "../api/policies";
 import { invokeBreakGlass } from "./breakGlass";
+import { invokeFreezeOverride } from "./freezeOverride";
 import { changesetKey } from "./queries";
 
 export const POLICIES_QUERY_KEY = ["policies"] as const;
@@ -52,6 +53,25 @@ export function useBreakGlassMutation(changesetId: string) {
     mutationFn: (reason: string) => invokeBreakGlass(changesetId, reason),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: changesetKey(changesetId) });
+    },
+  });
+}
+
+/** POST /changesets/{id}/freeze-override (T-4006). Invalidates the
+ * changeset — the blocking `policy.violation` finding is what
+ * `freezeBlocksApply` actually keys off, and re-reading the changeset is
+ * what shows it downgraded to a visible `[overridden: ...]` warning.
+ * Also invalidates the policy-test query so PolicyVerdictPanel's own
+ * (deliberately override-blind — see EvaluatePolicySet's doc comment)
+ * diagnostic view refreshes too, even though it will keep reporting the
+ * freeze rule as violating by design. */
+export function useFreezeOverrideMutation(changesetId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reason: string) => invokeFreezeOverride(changesetId, reason),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: changesetKey(changesetId) });
+      void queryClient.invalidateQueries({ queryKey: policyVerdictKey(changesetId) });
     },
   });
 }

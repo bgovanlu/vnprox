@@ -17,7 +17,10 @@ func policyValidate(ops []Op, snap inventory.Snapshot, safety SafetyOptions) []F
 	if safety.Policy.IsEmpty() {
 		return nil
 	}
-	result := EvaluatePolicy(PolicyInput{Set: safety.Policy, Protected: safety.Protected}, ops, snap)
+	result := EvaluatePolicy(PolicyInput{
+		Set: safety.Policy, Protected: safety.Protected,
+		EvalTime: safety.EvalTime, OverriddenTags: safety.OverriddenTags,
+	}, ops, snap)
 	if safety.PolicyReport != nil {
 		*safety.PolicyReport = result
 	}

@@ -1124,6 +1124,11 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		// reads either, so its apply behaviour is unchanged.
 		Signoffs:   store.NewChangesetSignoffRepo(db),
 		BreakGlass: store.NewChangesetBreakGlassRepo(db),
+		// T-4006: the freeze-window override's own store, always wired
+		// (app-owned table on the same shared db) — see
+		// internal/change/freeze_override.go's doc comment for why it is
+		// separate from BreakGlass above.
+		FreezeOverrides: store.NewChangesetFreezeOverrideRepo(db),
 		// T-2604: which classes of change need N distinct approvers. Empty
 		// unless [[changesets.protected_class]] says otherwise; a malformed
 		// entry fails NewService, and therefore startup, on purpose.

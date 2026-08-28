@@ -191,6 +191,13 @@ type Config struct {
 	// Optional/nil-safe: without it InvokeBreakGlass reports
 	// ErrBreakGlassNotConfigured and no apply is ever overridden.
 	BreakGlass *store.ChangesetBreakGlassRepo
+	// FreezeOverrides (T-4006) backs the audited escape hatch for a
+	// declared freeze-window policy rule (PolicyTagFreeze) — see
+	// freeze_override.go's own doc comment for why this is a separate
+	// mechanism from BreakGlass rather than a reuse of it. Optional/
+	// nil-safe: without it InvokeFreezeOverride reports
+	// ErrFreezeOverrideNotConfigured and no freeze is ever overridden.
+	FreezeOverrides *store.ChangesetFreezeOverrideRepo
 	// ProtectedClasses (T-2604) declares which classes of change require N
 	// distinct approvers before they may be applied — op-type globs
 	// ("fw.*"), ProtectedClassMgmtPath, or "tag:<policy tag>" (twoperson.go).
@@ -300,6 +307,9 @@ type Service struct {
 	signoffs         *store.ChangesetSignoffRepo
 	breakGlass       *store.ChangesetBreakGlassRepo
 	protectedClasses []ProtectedClass
+	// freezeOverrides (T-4006): see Config.FreezeOverrides — nil-safe,
+	// freeze_override.go owns all access.
+	freezeOverrides *store.ChangesetFreezeOverrideRepo
 	// policies (T-2601): see Config.Policies — nil-safe,
 	// policy_service.go owns all access.
 	policies *store.PolicySetRepo
@@ -410,7 +420,8 @@ func NewService(cfg Config) (*Service, error) {
 		sdnPendingAcks: cfg.SDNPendingAcks,
 		policies:       cfg.Policies, policyUnmatchedAfter: cfg.PolicyUnmatchedAfter,
 		signoffs: cfg.Signoffs, breakGlass: cfg.BreakGlass, protectedClasses: protectedClasses,
-		stages: cfg.Stages, canary: cfg.Canary, holdTimers: map[string]Stopper{},
+		freezeOverrides: cfg.FreezeOverrides,
+		stages:          cfg.Stages, canary: cfg.Canary, holdTimers: map[string]Stopper{},
 		guards: map[string]*autoRollbackGuard{}, autoRollbackDefault: cfg.AutoRollbackOnError,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
 		localClusterID: cfg.LocalClusterID, membership: cfg.ClusterMembership, impactPreflight: cfg.ImpactPreflight,
@@ -630,7 +641,10 @@ func (s *Service) create(ctx context.Context, author, title string, ops []Op, pr
 		return Changeset{}, err
 	}
 	nowUnix := s.now().Unix()
-	findings := s.validateScoped(ctx, s.localClusterID, ops)
+	// changesetID is deliberately "" here: this changeset does not exist
+	// yet (its id is minted below), so no freeze-window override could
+	// ever have been recorded against it (T-4006's overriddenPolicyTags).
+	findings := s.validateScoped(ctx, s.localClusterID, "", ops)
 	c := Changeset{
 		ID: store.NewULID(), Title: title, Author: author, Status: StatusDraft, ClusterID: s.localClusterID,
 		Origin: origin, OriginTokenID: originTokenID, OriginTool: prov.Tool,
@@ -671,7 +685,7 @@ func (s *Service) CreateRequest(ctx context.Context, author, title string, ops [
 		return Changeset{}, err
 	}
 	nowUnix := s.now().Unix()
-	findings := s.validateScoped(ctx, s.localClusterID, ops)
+	findings := s.validateScoped(ctx, s.localClusterID, "", ops) // no id yet — see create's identical comment
 	c := Changeset{
 		ID: store.NewULID(), Title: title, Author: author, Status: StatusRequested, ClusterID: s.localClusterID,
 		Ops: ops, Findings: findings, CreatedAt: nowUnix, UpdatedAt: nowUnix,
@@ -706,7 +720,7 @@ func (s *Service) Approve(ctx context.Context, id, approver string) (Changeset, 
 	if transErr := c.Transition(StatusDraft, s.now().Unix()); transErr != nil {
 		return Changeset{}, transErr
 	}
-	c.Findings = s.validateScoped(ctx, c.ClusterID, c.Ops)
+	c.Findings = s.validateScoped(ctx, c.ClusterID, id, c.Ops)
 	row, err := toStoreRow(c)
 	if err != nil {
 		return Changeset{}, err
@@ -758,7 +772,7 @@ func (s *Service) UpdateDraft(ctx context.Context, id, author string, title *str
 		return Changeset{}, err
 	}
 	c.Ops = ops
-	findings := s.validateScoped(ctx, c.ClusterID, ops)
+	findings := s.validateScoped(ctx, c.ClusterID, id, ops)
 	c.Findings = findings
 	if title != nil {
 		c.Title = *title
@@ -859,7 +873,7 @@ func (s *Service) Validate(ctx context.Context, id, author string) (Changeset, e
 		return Changeset{}, &ErrIllegalTransition{From: c.Status, To: StatusValidated}
 	}
 
-	findings := s.validateScoped(ctx, c.ClusterID, c.Ops)
+	findings := s.validateScoped(ctx, c.ClusterID, id, c.Ops)
 	c.Findings = findings
 	clean := !hasError(findings)
 	prevStatus := c.Status

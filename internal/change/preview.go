@@ -849,7 +849,7 @@ func (s *Service) Preview(ctx context.Context, id string) (Preview, error) {
 		return Preview{}, err
 	}
 	snap := s.inventorySnapshot()
-	if findings := s.validateScoped(ctx, c.ClusterID, c.Ops); hasError(findings) {
+	if findings := s.validateScoped(ctx, c.ClusterID, id, c.Ops); hasError(findings) {
 		return Preview{}, &ErrValidationBlocked{Findings: findings}
 	}
 	preview, err := ComputePreview(c.Ops, snap)

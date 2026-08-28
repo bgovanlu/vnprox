@@ -240,7 +240,9 @@ CREATE TABLE policy_sets (
   revision INTEGER NOT NULL,         -- monotonic document revision, stamped by the daemon
                                      -- (NOT the document format version, which lives inside
                                      -- rules_json as `version`)
-  rules_json TEXT NOT NULL,          -- {version, rules: [{id, description, severity, match, assert, tags}]}
+  rules_json TEXT NOT NULL,          -- {version, rules: [{id, description, severity, match, assert, tags, zone}]}
+                                     -- zone (T-4006): IANA name, required whenever match/assert
+                                     -- names a local-wall-clock time.* fact (freeze windows)
   updated_by TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL
 );  -- No per-revision history table: every update writes a policy.update audit
     -- entry carrying the FULL rule-set diff (both sides of every changed rule),
@@ -256,6 +258,24 @@ CREATE TABLE policy_rule_stats (
 );  -- Backs "a policy that matches nothing is an error, not a silent pass": a rule
     -- that has never matched, over enough evaluations and a long enough window, is
     -- reported as probablyMisconfigured on GET /policies. Pure derived bookkeeping.
+
+-- T-4006 (migration 0051): the audited override of a declared freeze-window
+-- policy rule (tags: [freeze]). Same shape as changeset_breakglass above —
+-- reasoned, recorded, ops_fingerprint-pinned, never deleted except by the
+-- changeset's own deletion — but its OWN table and audit action
+-- (change.freeze_override): a freeze window is enforced as a VALIDATE-time
+-- policy finding, not an authorization gate checked only at apply, so
+-- overriding it downgrades that finding to a visible warning rather than
+-- satisfying a separate gate the way break-glass satisfies enforceTwoPerson.
+-- Folding the two into one table would make an auditor's "which ceremony
+-- happened here" question ambiguous.
+CREATE TABLE changeset_freeze_override (
+  changeset_id TEXT PRIMARY KEY REFERENCES changesets(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,              -- required, non-empty (refused above this layer)
+  invoked_by TEXT NOT NULL,
+  invoked_at INTEGER NOT NULL,       -- unix seconds
+  ops_fingerprint TEXT NOT NULL DEFAULT ''
+);
 
 -- T-2602 (migration 0038): the PAUSED STATE of a staged (canary) apply — the
 -- one row that exists between the canary stage completing and the sequence

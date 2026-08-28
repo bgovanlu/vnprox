@@ -74,3 +74,29 @@ rules:
     assert:
       - field: params.comments
         op: exists
+
+  # T-4006's worked example: a recurring weekly freeze window, expressed as
+  # an ordinary rule (op wildcard + time.* facts, empty assert — the match
+  # itself is the violation) rather than a new rule type. `tags: [freeze]`
+  # is the convention InvokeFreezeOverride and the change-calendar's
+  # renderer (freeze_calendar.go) look for; `zone` is REQUIRED because this
+  # rule names local-wall-clock facts (time.weekday, time.minuteOfDay) —
+  # PolicySet.Validate refuses to load it otherwise (policy.go).
+  - id: friday-afternoon-freeze
+    description: No changes during the Friday afternoon change freeze (14:00-18:00 America/New_York).
+    severity: deny
+    tags: [freeze]
+    zone: America/New_York
+    match:
+      - field: op
+        op: matches
+        value: "*"
+      - field: time.weekday
+        op: eq
+        value: fri
+      - field: time.minuteOfDay
+        op: gte
+        value: 840
+      - field: time.minuteOfDay
+        op: lt
+        value: 1080

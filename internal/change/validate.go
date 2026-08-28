@@ -4,6 +4,7 @@ package change
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
@@ -15,8 +16,22 @@ import (
 // are threaded in by the caller (Service, which owns the file/config
 // reads) rather than read from disk/config inside this pure validation
 // package — see safetyValidate in validate_safety.go.
+//
+// Field order is densest-pointer-first: govet's fieldalignment measures
+// bytes up to the final pointer, so fields whose own pointer bytes stop
+// short of their full size (a slice or a struct with a pointer-free tail,
+// like SwitchSafetyInput's trailing bool, Allocations' unused len/cap, or
+// PolicySet's trailing Version int) sort later, even though they were
+// declared earlier.
 type SafetyOptions struct {
-	Switches  SwitchSafetyInput
+	// EvalTime (T-4006) is threaded straight into PolicyInput.EvalTime —
+	// the instant a freeze-window rule's time.* facts are computed
+	// against. The caller (Service.validationInputs/policyDenial) supplies
+	// its own now() at the moment it is validating, so a freeze declared
+	// after a changeset was first validated is still caught the next time
+	// anything revalidates (including the scheduler's own fire-time
+	// revalidation — see schedule.go's safety-analysis point 4).
+	EvalTime  time.Time
 	Protected ProtectedSet
 	// PolicyReport, when non-nil, receives the full per-rule evaluation
 	// result the policy class produced. It is an optional out-parameter
@@ -26,7 +41,11 @@ type SafetyOptions struct {
 	// validator one — collecting it here rather than re-evaluating in the
 	// Service keeps exactly one evaluation per validate call.
 	PolicyReport *PolicyResult
-	Allocations  []DHCPRangeAllocation
+	// OverriddenTags (T-4006) is threaded straight into
+	// PolicyInput.OverriddenTags — see that field's own doc comment.
+	OverriddenTags map[string]string
+	Switches       SwitchSafetyInput
+	Allocations    []DHCPRangeAllocation
 	// Policy (T-2601) is the cluster's declarative policy-as-code rule set
 	// (policy.go). Its zero value is an empty set, which evaluates to
 	// nothing at all — so every caller that does not know about policies

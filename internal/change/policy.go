@@ -129,13 +129,35 @@ type PolicyCondition struct {
 // violates the rule. **An empty Assert means the match itself is the
 // violation** — the "never touch vmbr9 on the storage nodes" shape, which
 // has nothing to assert beyond "this op should not exist".
+//
+// Field order is densest-pointer-first (strings, then slices): govet's
+// fieldalignment measures bytes up to the final pointer, so a pointer-free
+// field sitting above one costs alignment for nothing. There is no such
+// field here — every field is a string or a slice — so the grouping below
+// exists only to keep same-kind fields together.
 type PolicyRule struct {
-	ID          string            `yaml:"id" json:"id"`
-	Description string            `yaml:"description" json:"description"`
-	Severity    PolicySeverity    `yaml:"severity" json:"severity"`
-	Tags        []string          `yaml:"tags,omitempty" json:"tags,omitempty"`
-	Match       []PolicyCondition `yaml:"match" json:"match"`
-	Assert      []PolicyCondition `yaml:"assert,omitempty" json:"assert,omitempty"`
+	ID          string         `yaml:"id" json:"id"`
+	Description string         `yaml:"description" json:"description"`
+	Severity    PolicySeverity `yaml:"severity" json:"severity"`
+	// Zone (T-4006) is the IANA timezone name (e.g. "America/New_York")
+	// that this rule's local-wall-clock time.* facts (time.weekday,
+	// time.minuteOfDay, time.date, time.dayOfMonth, time.month —
+	// policy_eval.go) are resolved in. It is per-rule, not cluster-wide,
+	// for the same reason findings.QuietHours.Zone is per-rule: a federated
+	// deployment's "Friday afternoon freeze" and "quarterly close" can be
+	// in different operations centers.
+	//
+	// REQUIRED whenever Match or Assert names one of those facts —
+	// Validate refuses to load a rule that does not declare one
+	// (validatePolicyRule): there is no implicit fallback to UTC or to the
+	// daemon's own local zone, because a silent default is precisely the
+	// failure mode the task card warns about. A rule that only uses
+	// time.now (zone-free — an absolute instant) or no time.* fact at all
+	// may leave Zone empty.
+	Zone   string            `yaml:"zone,omitempty" json:"zone,omitempty"`
+	Tags   []string          `yaml:"tags,omitempty" json:"tags,omitempty"`
+	Match  []PolicyCondition `yaml:"match" json:"match"`
+	Assert []PolicyCondition `yaml:"assert,omitempty" json:"assert,omitempty"`
 }
 
 // PolicySet is a whole policy document: a format version plus an ordered
@@ -258,7 +280,41 @@ func validatePolicyRule(file string, i int, r PolicyRule, seen map[string]bool) 
 			return err
 		}
 	}
+
+	// T-4006: a rule naming a local-wall-clock time.* fact (time.weekday,
+	// time.minuteOfDay, time.date, time.dayOfMonth, time.month) must
+	// declare, explicitly, which IANA zone that fact is resolved in — see
+	// PolicyRule.Zone's own doc comment for why there is deliberately no
+	// UTC-or-local-machine fallback. Checked here, at load time, so a
+	// deployment finds out immediately rather than the first time the
+	// freeze it thought it had turns out to have silently meant a
+	// different timezone than the operator's.
+	if usesLocalTimeFact(r) {
+		if strings.TrimSpace(r.Zone) == "" {
+			return fail("zone", "rule matches or asserts on a local-wall-clock time fact (e.g. time.weekday, time.minuteOfDay) and must declare an explicit IANA zone (e.g. \"zone: America/New_York\") — it must never silently assume UTC or the server's own local zone")
+		}
+		if _, err := loadPolicyZone(r.Zone); err != nil {
+			return fail("zone", "unknown IANA timezone %q: %v", r.Zone, err)
+		}
+	}
 	return nil
+}
+
+// usesLocalTimeFact reports whether any of r's Match/Assert conditions name
+// a local-wall-clock time.* fact (localTimeFactFields, policy_eval.go) —
+// i.e. any time.* fact except the zone-free time.now.
+func usesLocalTimeFact(r PolicyRule) bool {
+	for _, c := range r.Match {
+		if localTimeFactFields[c.Field] {
+			return true
+		}
+	}
+	for _, c := range r.Assert {
+		if localTimeFactFields[c.Field] {
+			return true
+		}
+	}
+	return false
 }
 
 func validatePolicyCondition(file, ruleID, at string, c PolicyCondition, candidates map[OpType]bool) error {
@@ -306,6 +362,17 @@ func validatePolicyCondition(file, ruleID, at string, c PolicyCondition, candida
 			}
 			if !knownTargetKind(s) {
 				return fail("value", "unknown entity kind %q", s)
+			}
+		}
+	}
+	if c.Field == policyFieldTimeWeekday {
+		for _, v := range conditionLiterals(c) {
+			s, ok := v.(string)
+			if !ok {
+				return fail("value", "time.weekday values must be strings, got %T", v)
+			}
+			if !knownWeekdayAbbrev(s) {
+				return fail("value", "unknown weekday %q (want one of sun, mon, tue, wed, thu, fri, sat)", s)
 			}
 		}
 	}

@@ -229,7 +229,7 @@ func (s *Service) beginApply(ctx context.Context, id, author string, pveGW PVEGa
 	// (or none) than the validate route did. Its policy findings are
 	// prepended to the pipeline's, exactly as Service.validate does.
 	var policyReport PolicyResult
-	safety, policyFindings := s.validationInputs(ctx, cs.ClusterID, &policyReport)
+	safety, policyFindings := s.validationInputs(ctx, cs.ClusterID, cs.ID, cs.Ops, &policyReport)
 	findings := append(policyFindings, ValidateWithSafety(cs.Ops, s.inventorySnapshot(), safety)...)
 	s.recordPolicyStats(ctx, cs.ClusterID, policyReport)
 	cs.Findings = findings

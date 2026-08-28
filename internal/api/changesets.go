@@ -88,6 +88,12 @@ type ChangesetService interface {
 	TwoPersonState(ctx context.Context, changesetID string) (change.TwoPersonState, error)
 	InvokeBreakGlass(ctx context.Context, changesetID, actor, reason string) (change.BreakGlassRecord, error)
 
+	// T-4006: the freeze-window override — same "only ever RECORDS"
+	// contract as InvokeBreakGlass immediately above. The very next
+	// validate/apply/diff for changesetID decides whether it applies,
+	// server-side, from the row this writes.
+	InvokeFreezeOverride(ctx context.Context, changesetID, actor, reason string) (change.FreezeOverrideRecord, error)
+
 	// T-3101-followup-01: the foreign-SDN-pending "surface and confirm"
 	// gate's read/record pair, mirroring GetApproval/ReviewApprove's own
 	// "read model" + "authorization-relevant record" split immediately
@@ -373,6 +379,14 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 		// hours). Folding it into the apply request would make all four
 		// incidental to a request whose subject is something else.
 		r.Post("/changesets/{id}/break-glass", handleBreakGlass(svc, lookup))
+
+		// T-4006: the freeze-window override. Its own route for the same
+		// reasons break-glass gets one immediately above: its own actor,
+		// written reason, audit action (`change.freeze_override`), and a
+		// visible (never silent) [overridden: ...] annotation on the
+		// finding it defeats rather than a request-body flag that would
+		// make all of that incidental.
+		r.Post("/changesets/{id}/freeze-override", handleFreezeOverride(svc, lookup))
 	})
 
 	// T-1103: scheduled changesets & maintenance windows. Mounted alongside
@@ -1274,6 +1288,70 @@ func writeBreakGlassError(w http.ResponseWriter, err error) {
 		return
 	}
 	writeJSONError(w, http.StatusInternalServerError, "internal_error", "break-glass could not be recorded")
+}
+
+// freezeOverrideRequest is `POST /changesets/{id}/freeze-override`'s body:
+// `{reason}` — the written reason is REQUIRED, mirroring breakGlassRequest
+// exactly.
+type freezeOverrideRequest struct {
+	Reason string `json:"reason"`
+}
+
+// handleFreezeOverride serves `POST /changesets/{id}/freeze-override`
+// (T-4006): the audited, reasoned override of a declared freeze-window
+// policy rule (PolicyTagFreeze).
+//
+// It only RECORDS the override. The very next validate/apply/diff for this
+// changeset decides, server-side, whether the recorded override applies to
+// the ops actually staged — a freeze-tagged rule's blocking finding is
+// downgraded to a visible warning naming the override; every other policy
+// rule (including a non-freeze deny) is entirely unaffected.
+func handleFreezeOverride(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		id := chi.URLParam(r, "id")
+
+		var req freezeOverrideRequest
+		if r.ContentLength != 0 {
+			dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&req); err != nil {
+				writeJSONError(w, http.StatusBadRequest, "validation_failed", "malformed request body")
+				return
+			}
+		}
+
+		rec, err := svc.InvokeFreezeOverride(r.Context(), id, username, req.Reason)
+		if err != nil {
+			writeFreezeOverrideError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rec)
+	}
+}
+
+// writeFreezeOverrideError maps T-4006's freeze-override errors to their
+// documented (status, code) pairs — mirrors writeBreakGlassError exactly.
+func writeFreezeOverrideError(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrNotFound) {
+		writeJSONError(w, http.StatusNotFound, "not_found", "no such changeset")
+		return
+	}
+	var reasonRequired *change.ErrFreezeOverrideReasonRequired
+	if errors.As(err, &reasonRequired) {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+	var notConfigured *change.ErrFreezeOverrideNotConfigured
+	if errors.As(err, &notConfigured) {
+		writeJSONError(w, http.StatusServiceUnavailable, "freeze_override_unavailable", err.Error())
+		return
+	}
+	writeJSONError(w, http.StatusInternalServerError, "internal_error", "freeze override could not be recorded")
 }
 
 // writeReviewError maps T-2003 review-surface errors (comments/approval) to

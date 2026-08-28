@@ -173,6 +173,7 @@ Each `Node`/`Edge` additionally carries a `findings` array (omitted when empty):
 | POST | `/changesets/{id}/review/approve` | record an approval decision (T-2003, below) — **not** the T-1703 `/changesets/{id}/approve` route below, which converts a tenant request-changeset to a draft |
 | POST | `/changesets/{id}/review/reject` | record a rejection decision: `{reason?}` |
 | POST | `/changesets/{id}/break-glass` | **T-2604.** Record an emergency override of the two-person rule (below): `{reason}` — required |
+| POST | `/changesets/{id}/freeze-override` | **T-4006.** Record an audited override of a declared freeze-window policy rule (below): `{reason}` — required |
 | POST | `/changesets/{id}/propose` | **T-2702.** Propose this changeset as a pull request against the spec repository (`netWrite` + CSRF). See "Changeset → pull request" below. |
 | GET | `/changesets/{id}/proposal` | **T-2702.** The pull request this changeset was proposed as, or `404 not_found` if it never was (`netRead`). |
 | GET | `/locks` | **T-2805.** The advisory locks staged drafts currently hold on entities (`netRead`). See "Advisory locks and presence" below. |
@@ -405,13 +406,16 @@ The cluster's **declarative policy-as-code guardrails**: the organisational rule
 
 A rule is `{id, description, severity, match, assert, tags?}` over the op and inventory shapes the change engine already uses. It is **data, not a scripting language**: `match` and `assert` are lists of `{field, op, value}` conditions (ANDed), where `field` is one of the derived facts below or `params.<jsonField>` of the op's own documented params shape (§ `docs/data-model.md` §3), and `op` is one of `eq ne in notIn gt gte lt lte matches notMatches exists notExists contains notContains`. `matches` is shell globbing (`fw.*`). An **empty `assert` means the match itself is the violation**. `severity: deny` produces a blocking `policy.violation` finding (`severity: "error"`); `severity: warn` produces a non-blocking one (`severity: "warning"`) that rides the changeset's `findings` to the review surface.
 
-Derived fact fields, all evaluated against the changeset's **net effect** on the live inventory: `op`, `target.kind`, `target.node`, `target.id`, `target.ref`, `target.exists`, `target.protected`, `target.guestCount`, `target.uplinkCount`, `target.vlanAware`, `changeset.opCount`.
+Derived fact fields, all evaluated against the changeset's **net effect** on the live inventory: `op`, `target.kind`, `target.node`, `target.id`, `target.ref`, `target.exists`, `target.protected`, `target.guestCount`, `target.uplinkCount`, `target.vlanAware`, `changeset.opCount`. T-4006 adds a sixth group, `time.*` — see "Freeze windows & the change calendar" below.
+
+A rule also carries an optional `zone` (IANA name, e.g. `"America/New_York"`) — **required** whenever `match`/`assert` names a local-wall-clock `time.*` fact, refused as a load error otherwise (never a silent UTC/server-local default).
 
 | Method | Path | Cap | Purpose |
 |---|---|---|---|
 | GET | `/policies` | `netRead` | the installed rule set plus per-rule statistics: `{set: {version, rules: [...]}, revision, updatedBy?, updatedAt?, rules: [PolicyRuleStatus]}` |
 | PUT | `/policies` | `netWrite` + CSRF | replace the rule set wholesale with `{version?, rules: [...]}`; audited `policy.update` |
 | POST | `/policies/test` | `netRead` | evaluate a candidate (or the installed) rule set against a changeset **without staging anything** |
+| GET | `/calendar` | `netRead` | **T-4006.** Declared freeze windows alongside pending scheduled changesets — see below |
 
 **`GET /policies` response shape**: `set` is the installed document; `revision` is the store revision (`0` when nothing is installed); `rules` carries one `PolicyRuleStatus` per rule — `{ruleId, firstSeenAt, lastMatchedAt, evalCount, matchCount, probablyMisconfigured}`. `probablyMisconfigured` is the runtime half of "a policy that matches nothing is an error, not a silent pass": true once a rule has been through enough evaluations, over a long enough window (14 days), without ever matching an op. It is a report, never a refusal.
 
@@ -422,6 +426,43 @@ Derived fact fields, all evaluated against the changeset's **net effect** on the
 **Enforcement is not on these routes.** A `deny` rule blocks inside the change engine's validate stage, which both `POST /changesets/{id}/validate` and the pre-apply revalidation run — so `POST /changesets/{id}/apply` refuses `422 validation_failed` with the policy findings in `details.findings`, and `GET /changesets/{id}/diff` refuses identically **without computing the diff at all**.
 
 A daemon may also be given a policy file (`[changesets] policy_file` in `vnprox.toml`), which it installs at startup. A file it cannot parse is fatal: the daemon does not start with a policy it cannot read.
+
+### Freeze windows & the change calendar (T-4006)
+
+**A freeze window is an ordinary `PolicyRule`, not a second rule type.** "No changes during the Friday afternoon freeze" is a `deny` (or `warn`) rule whose `match` is an op-type wildcard plus `time.*` conditions and whose `assert` is empty — the match itself is the violation, exactly like `protected.go`'s hard-coded "don't cut the management path" rule generalizes. It is evaluated by the same `EvaluatePolicy` call every other rule runs through, at the same validate stage — never a second enforcement point.
+
+**The `time.*` fact vocabulary:**
+
+- `time.now` — the evaluation instant as a unix epoch integer. **Zone-free**: for a one-off date range ("no changes over the holiday freeze"), bound it with `gte`/`lt` against two epoch values computed once, at authoring time, in whatever zone was meant.
+- `time.weekday` — `"sun"`..`"sat"`, local wall clock in the rule's own `zone`.
+- `time.minuteOfDay` — `0`-`1439`, local wall clock in `zone`.
+- `time.date` — `"YYYY-MM-DD"`, local wall clock in `zone`.
+- `time.dayOfMonth` / `time.month` — `1`-`31` / `1`-`12`, local wall clock in `zone`, for a monthly/quarterly recurrence ("the first five days of the quarter-close month").
+
+The four local-wall-clock facts require the rule's `zone` field (an IANA name); `PolicySet.Validate` refuses to load a rule that names one without it. **Timezone is never assumed** — there is no fallback to UTC or the daemon's own local zone, deliberately: a freeze window that silently used the wrong zone would fail exactly when it matters. Local-wall-clock conversion is DST-correct by construction (`time.Time.In`), the same discipline `findings.QuietHours` already documents for its own daily window.
+
+Example (the shipped worked example, `internal/change/policy_examples.yaml`):
+
+```yaml
+- id: friday-afternoon-freeze
+  description: No changes during the Friday afternoon change freeze (14:00-18:00 America/New_York).
+  severity: deny
+  tags: [freeze]
+  zone: America/New_York
+  match:
+    - {field: op, op: matches, value: "*"}
+    - {field: time.weekday, op: eq, value: fri}
+    - {field: time.minuteOfDay, op: gte, value: 840}
+    - {field: time.minuteOfDay, op: lt, value: 1080}
+```
+
+**`deny` blocks, `warn` annotates** — the same distinction every other policy rule makes: a hard freeze refuses staging outright; an advisory freeze rides the changeset's findings without blocking. Both are ordinary `severity` values; nothing about freeze windows changes that vocabulary.
+
+**Both the validate-time refusal and the scheduler's fire-time re-validation see the same data.** `POST /changesets/{id}/schedule` validates against the policy set installed *at schedule time*; the supervised scheduler (T-1103) revalidates fresh, from scratch, at `windowStart` (`fireSchedule`, never trusting the schedule-time snapshot) — so a freeze window declared *after* a changeset was scheduled still catches it at fire time, resolved `blocked` (`changeset.schedule_fire_blocked`) rather than firing anyway.
+
+**`GET /calendar`** — `{freezeWindows: [FreezeWindowView], schedules: [Schedule] | null}`. `freezeWindows` is a **best-effort reader**, not a second evaluation path: it pattern-matches every `tags: [freeze]` rule's `match` conditions for the well-known shapes above and renders `{ruleId, description, severity, zone?, recognized, weekdays?, daysOfMonth?, months?, minuteOfDayStart?, minuteOfDayEnd?, epochStart?, epochEnd?}`. `recognized: false` means the rule's `time.*` conditions were too irregular to summarize — the rule is still listed by `description`, never hidden, and the client must not draw a box for it. `schedules` is every currently-`pending` T-1103 `Schedule` row (`docs/data-model.md` §2's `changeset_schedules` shape, minus the one-time `CallbackToken`).
+
+**The escape hatch is audited, never silent.** `POST /changesets/{id}/freeze-override` — `netWrite` + CSRF, `{reason}` (required) → `200 {changesetId, reason, invokedBy, invokedAt}`. It follows T-2604's break-glass shape exactly (reasoned, recorded, its own audit action `change.freeze_override`), with one deliberate difference: a freeze window is a VALIDATE-time policy finding, not an authorization gate checked only at apply, so overriding it does not remove the finding — it **downgrades** the freeze-tagged rule's `policy.violation` finding from `severity: "error"` to `severity: "warning"`, with the message annotated `[overridden: freeze override by <who>: <reason>]`. The finding staying on screen, annotated, IS the "audited, not silent" property. The override is pinned to the ops it was taken for (`ops_fingerprint`, mirrors `changeset_breakglass`); editing the draft afterwards un-pins it and the freeze blocks again. `503 freeze_override_unavailable` on a daemon with no freeze-override store wired.
 
 ### LLDP guided install (T-605)
 
@@ -767,7 +808,7 @@ The inventory is built from a **local** read of `/etc/pve` — pmxcfs, so every 
 
 **Issue shape**: `{check, severity, node?, path?, detail, remediation}`. `severity` is `error`\|`warning`; `remediation` is always non-empty. The same issues also flow into `GET /findings` as `source: "cert"` (checks `cert_expired`, `cert_expiring`, `cert_san_mismatch`, `cert_not_chained`, `cert_ca_mismatch`, `cert_weak_key`, `cert_missing`, `cert_unreadable`), all `fixable: false` and all hysteresis-exempt — an expiry date and a SAN list are facts read from a file, not sampled measurements, so there is no noise to debounce. Finding `id` is `"cert:<check>|<node>[|<path>]"`.
 
-`vnproxctl certs [--json] [--root DIR] [--expiry-warn-days N]` renders the same view from pmxcfs directly, without the daemon — exit 0 when clean or warning-only, 1 when any error-severity problem exists. Warnings alone deliberately do not fail, so a scheduled check does not train operators to ignore it.
+`vnproxctl certs [-o json|--json] [--root DIR] [--expiry-warn-days N]` renders the same view from pmxcfs directly, without the daemon — exit 0 when clean or warning-only, 1 when any error-severity problem exists. Warnings alone deliberately do not fail, so a scheduled check does not train operators to ignore it. `--json` predates T-4011's `-o` convention and still works (either selects JSON); new scripts should prefer `-o json` for consistency with every other `vnproxctl` subcommand.
 
 ## Metrics
 
@@ -1284,6 +1325,8 @@ Blueprints v2: one versionable YAML document capturing cluster-wide L2/SDN inten
 
 `notInSpec` lists managed-kind entities present **live** but absent from the document. They are **reported, never deleted** — `POST /spec/import` has no prune path and emits no delete ops (docs/data-model.md §6). Apply/confirm the returned draft through the normal `POST /changesets/{id}/apply` + `.../confirm` lifecycle; import itself never applies.
 
+CLI: `vnproxctl spec export [--out <file>] [-o json]`, `vnproxctl spec import <file> [-o json]` (the "-" argument reads stdin like `remote changesets create -f -`; never applies).
+
 ### Spec pin (T-1102)
 
 The GitOps reconciler's declared desired state: an operator pins one spec document, and `internal/drift`'s `spec_drift` check family (`GET /drift`'s sixth check value, documented in "Inventory & topology" above) diffs live state against it every drift cycle via the exact same `spec.Import` diff engine `POST /spec/import` uses. Pinning is app-owned data (`pinned_spec` table, `docs/data-model.md` §7), never a shadow copy of PVE config, and never applies anything by itself — reconciling a `spec_drift` finding still goes through the normal `POST /drift/{id}/fix` → review → apply/confirm lifecycle.
@@ -1295,6 +1338,12 @@ The GitOps reconciler's declared desired state: an operator pins one spec docume
 | DELETE | `/spec/pin` | `netWrite` + CSRF | clears the pin, audited `spec.unpin`; `204` |
 
 **`GET`/`POST` response shape**: `{pinned: bool, content?, pinnedBy?, pinnedAt?}` — every field but `pinned` is omitted when nothing is pinned. `content` is the exact YAML document as pinned (byte-for-byte, the same document `spec_drift` reconciles against); `pinnedBy`/`pinnedAt` are the acting user and unix-seconds timestamp `POST /spec/pin` recorded. `POST` re-pins in place (no explicit unpin required first) and returns the same shape as `GET` immediately after. A `POST` whose `content` fails `spec.Parse` (e.g. `specVersion` ≠ 1) is rejected with `400 validation_failed` and nothing is stored or audited — the existing pin, if any, is unchanged.
+
+CLI: `vnproxctl spec pin [<file>] [-o json]` (bare: show the current pin; with a file: re-pin from it), `vnproxctl spec unpin [-o json]`.
+
+### Config-as-code quickstart
+
+`vnproxctl spec export > cluster.yaml` captures live state; `vnproxctl spec import cluster.yaml` (after editing it) stages a draft changeset from the diff and prints its id — apply it with `vnproxctl remote changesets apply <id>` once reviewed, or drive plan+apply+auto-confirm in one step with `vnproxctl apply cluster.yaml --apply`. `vnproxctl spec pin cluster.yaml` additionally declares that document as the desired state `internal/drift`'s `spec_drift` check diffs live state against on every cycle, so future drift from it becomes a finding rather than something only a manual `spec export` would notice. None of these commands ever applies anything by itself except `apply --apply`, which is explicit about it in its own name.
 
 ### Git spec sync (T-2701)
 

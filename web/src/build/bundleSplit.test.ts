@@ -143,7 +143,19 @@ describe("production bundle: Monaco code-split (T-208 AC4)", () => {
         // what a hair's-breadth overshoot rather than a regression looks
         // like. If a future raise finds package.json non-empty again, check
         // the new dependency is intended before moving this number.
-        expect(mainSize).toBeLessThan(4_300_000);
+        //
+        // T-4006 raised it again, from 4_300_000 to 4_320_000. `git diff
+        // web/package.json web/package-lock.json` is empty — no new runtime
+        // dependency, the benign case again. The growth is the freeze-window
+        // calendar surface: `web/src/governance/CalendarPanel.tsx` (a new
+        // GovernancePage tab, eagerly imported exactly like PoliciesPanel/
+        // CompliancePanel beside it) and `calendar.ts`, plus
+        // `web/src/changesets/FreezeOverridePanel.tsx` and
+        // `freezeOverride.ts` (the audited override, wired into
+        // ReviewApplyScreen.tsx beside BreakGlassPanel), their API types in
+        // web/src/api/policies.ts/types.ts, and one new help topic. Measured:
+        // 4_307_562, i.e. 0.18% over the old ceiling.
+        expect(mainSize).toBeLessThan(4_320_000);
 
         // The load-bearing check: Monaco's own distinctive runtime marker
         // must appear in the Monaco chunk and must NOT appear in the main
