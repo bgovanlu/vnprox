@@ -3,9 +3,11 @@
 vnprox runs as root on hypervisor hosts and can reconfigure the network of an entire cluster. Security posture is therefore conservative by design.
 
 **Found a vulnerability?** See [`SECURITY.md`](../SECURITY.md) at the repository root —
-`security@vnprox.com`, or GitHub's private vulnerability reporting if enabled on this repo. Don't
-open a public issue for a suspected vulnerability first (T-3302 — this project had no
-disclosure contact at all before 2026-08-18; an audit finding in its own right).
+GitHub's private vulnerability reporting (confirmed enabled on this
+repo, T-3805). Don't open a public issue for a suspected vulnerability first (T-3302 — this
+project had no disclosure contact at all before 2026-08-18; an audit finding in its own right).
+[`docs/security-disclosure-process.md`](security-disclosure-process.md) documents what happens
+after a report lands — draft advisory, private fix branch, coordinated release, public advisory.
 
 ## Authentication
 

@@ -37,7 +37,7 @@ you file — it's built to be safe to hand to someone else.
 - **[GitHub Issues](https://github.com/bgovanlu/vnprox/issues).** Include your `vnproxctl doctor`
   output and (unless it's not applicable — e.g. a docs issue) a support bundle.
 - **A suspected vulnerability** goes to [`SECURITY.md`](../SECURITY.md)
-  (`security@vnprox.com`, or GitHub's private vulnerability reporting — enabled on this
+  (GitHub's private vulnerability reporting — enabled on this
   repository) instead — not a public issue.
 - **The Proxmox community forum**, once the announcement in `forum-announcement.md` is actually
   posted — it isn't yet as of this writing; that file is drafted, ready-to-post text, not a live

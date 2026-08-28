@@ -22,6 +22,12 @@
 #     (T-2505-input-02, planning/tasks/phase-25.md).
 #   * The hosted runner starts from a clean checkout every time. This host does
 #     not, so the script refuses to run with a dirty tree unless ALLOW_DIRTY=1.
+#   * One job, `dco` (T-3803), has no counterpart in either workflow file —
+#     it's a local-only DCO sign-off check on commits ahead of the base
+#     branch, added here because it can run today while Actions can't.
+#   * Another, `reproducible` (T-3806), also has no workflow counterpart: it
+#     builds the .deb twice from a clean detached-HEAD git worktree and
+#     diffs the sha256sums — see scripts/verify-reproducible.sh.
 #
 # Usage:
 #   scripts/ci-local.sh                # every job
@@ -36,12 +42,15 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-NODE_MAJOR="${NODE_MAJOR:-22}"
-GO_VERSION_EXPECTED="${GO_VERSION_EXPECTED:-1.26.6}"
+# GO_VERSION_EXPECTED/NODE_MAJOR: single source of truth in
+# scripts/lib/versions.sh (T-3806) — packaging/Makefile's release build path
+# reads the same file rather than re-pinning a second literal.
+# shellcheck disable=SC1091
+. "$REPO_ROOT/scripts/lib/versions.sh"
 FUZZTIME="${FUZZTIME:-60s}"
 LOG_DIR="${LOG_DIR:-$REPO_ROOT/.ci-local}"
 
-ALL_JOBS=(check e2e cross-arm64 fuzz package packaging-matrix cluster-ssh)
+ALL_JOBS=(check e2e cross-arm64 fuzz package packaging-matrix cluster-ssh dco reproducible)
 
 # --- job selection ---------------------------------------------------------
 
@@ -200,6 +209,72 @@ job_cluster_ssh() {
     VNPROX_TEST_IMAGE=debian:12 bash packaging/test/cluster-ssh.sh
 }
 
+# job_dco (T-3803) checks that every commit ahead of the base branch carries a
+# `Signed-off-by:` trailer (the DCO — see CONTRIBUTING.md's "Developer
+# Certificate of Origin" section). It has no ci.yml counterpart today —
+# Actions is disabled (see the "CI" section of docs/development.md) — so this
+# is the gate that actually runs, same as every other job in this script.
+#
+# The comparison base is, in order: $DCO_BASE_REF if set, else the merge-base
+# with origin/main, else the merge-base with local main. If none of those
+# resolve (e.g. a shallow clone with no origin and no local main — this
+# should not happen in ordinary use, but a job that goes silently green on a
+# tree it never actually checked would be worse than one that fails loudly),
+# the job fails rather than silently passing on zero commits checked.
+job_dco() {
+    local base="${DCO_BASE_REF:-}"
+    if [ -z "$base" ]; then
+        base="$(git merge-base HEAD origin/main 2>/dev/null)" || base=""
+    fi
+    if [ -z "$base" ]; then
+        base="$(git merge-base HEAD main 2>/dev/null)" || base=""
+    fi
+    if [ -z "$base" ]; then
+        echo "!! dco: could not resolve a base ref (tried \$DCO_BASE_REF, origin/main, main)" >&2
+        echo "!! dco: set DCO_BASE_REF explicitly to the branch this PR targets" >&2
+        return 1
+    fi
+
+    local range="$base..HEAD"
+    local commits
+    commits="$(git rev-list "$range" --)"
+    if [ -z "$commits" ]; then
+        echo "dco: no commits in $range (HEAD is at or behind $base) — nothing to check"
+        return 0
+    fi
+
+    local rc=0
+    local c
+    while IFS= read -r c; do
+        [ -z "$c" ] && continue
+        if git log -1 --format=%B "$c" | grep -qE '^Signed-off-by: .+ <.+>$'; then
+            echo "dco: $(git log -1 --format='%h %s' "$c") -- OK"
+        else
+            echo "dco: $(git log -1 --format='%h %s' "$c") -- MISSING Signed-off-by trailer"
+            rc=1
+        fi
+    done <<< "$commits"
+
+    if [ "$rc" -ne 0 ]; then
+        echo "!! dco: one or more commits in $range are missing a DCO sign-off." >&2
+        echo "!! dco: run 'git commit --amend -s' (or rebase with '-s') to add it." >&2
+    fi
+    return "$rc"
+}
+
+# job_reproducible (T-3806): builds the .deb twice from a clean, detached
+# git worktree at HEAD and asserts byte-identical sha256sums. Delegates to
+# scripts/verify-reproducible.sh, which owns worktree creation/cleanup so it
+# can also be run standalone. Not run inside this repo's own dirty working
+# tree — see that script's header for why (this file's own dirty-tree
+# precondition above already guarantees a clean HEAD to build the worktree
+# from, but the reproducibility build itself always uses an isolated
+# worktree regardless, per T-3806's card: other agents editing this tree
+# concurrently must not be measured as "non-reproducible").
+job_reproducible() {
+    scripts/verify-reproducible.sh
+}
+
 # --- dispatch --------------------------------------------------------------
 
 for j in "${JOBS[@]}"; do
@@ -211,6 +286,8 @@ for j in "${JOBS[@]}"; do
         package)          run_job package          job_package ;;
         packaging-matrix) run_job packaging-matrix job_packaging_matrix ;;
         cluster-ssh)      run_job cluster-ssh      job_cluster_ssh ;;
+        dco)              run_job dco              job_dco ;;
+        reproducible)     run_job reproducible     job_reproducible ;;
     esac
 done
 

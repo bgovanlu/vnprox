@@ -1,7 +1,6 @@
-# This file only has an effect once GitHub Issues is enabled on a public
-# github.com/bgovanlu/vnprox — not yet true as of this writing (see
-# docs/support.md). The links below assume that repository path, matching
-# go.mod's module path and the one existing reference to it in docs/api.md.
+# github.com/bgovanlu/vnprox is public as of 2026-08-18 (T-3302) and GitHub
+# Issues is enabled, so this file is live, not aspirational. The links below
+# assume that repository path, matching go.mod's module path.
 blank_issues_enabled: true
 contact_links:
   - name: Support path and known maturity gaps

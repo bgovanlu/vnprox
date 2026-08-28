@@ -5,13 +5,15 @@ technical detail (repo layout, coding standards, CI, the mock PVE server).
 
 ## Before you file anything or open a PR
 
-**Where to file a bug or propose a change is currently unsettled** — see `docs/support.md`. As of
-this writing the canonical repository, `github.com/bgovanlu/vnprox`, is **private**: it exists and
-is actively pushed to, but an anonymous request returns 404, so there is no public issue tracker
-and no public clone URL. This document describes the process as it's meant to work, with that
-stated plainly rather than pretended away. If you're reading this from inside a working copy
-someone gave you directly, ask them where they want contributions routed; this file may predate
-that answer.
+**As of 2026-08-18 (T-3302), `github.com/bgovanlu/vnprox` is public.** This paragraph used to say
+the opposite — that the repo was private and an anonymous request returned 404 — and that was
+worth correcting explicitly rather than quietly, since it's exactly the kind of stale claim this
+project has been burned by before (see `CLAUDE.md`'s note on documents outliving their accuracy).
+File bugs and feature requests as [GitHub Issues](https://github.com/bgovanlu/vnprox/issues) (see
+`.github/ISSUE_TEMPLATE/`); open pull requests the ordinary GitHub way. `docs/support.md` has the
+full "where to file" breakdown, including the community-forum channel once it exists.
+
+By contributing, you agree to this project's [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## How this project actually gets built, and what that means for you
 
@@ -67,11 +69,32 @@ and is the actual gate today — see `docs/development.md` §CI.
   (see `docs/development.md`'s note on the `check`/`fuzz` jobs' known flakiness), say so in the PR
   description rather than leaving a reviewer to guess.
 
+### Developer Certificate of Origin (DCO)
+
+Every commit in a PR needs a `Signed-off-by:` trailer certifying you wrote it or otherwise have the
+right to submit it under this project's license (the standard [DCO 1.1](https://developercertificate.org/)
+text — the same mechanism the Linux kernel, Docker, and a large share of the CNCF use instead of a
+separate CLA). Add it with:
+
+```
+git commit -s -m "area: imperative summary"
+```
+
+If you forgot on a commit you've already made: `git commit --amend -s` for the last commit, or
+`git rebase --exec 'git commit --amend --no-edit -s' -i <base>` for a range. `scripts/ci-local.sh
+dco` checks every commit ahead of the branch's base ref for the trailer — run it locally before
+opening a PR; it's also where this check will run in CI once Actions is funded again (it has no
+`ci.yml` job yet because Actions doesn't run today — see `docs/development.md`'s CI section).
+
+This is a **sign-off**, not a cryptographic signature — GPG/SSH-signed commits (`git commit -S`)
+are welcome but are a separate, optional thing from the DCO trailer above.
+
 ## Reporting a security issue
 
-Do not open a public issue for a security vulnerability. `docs/security.md` documents the threat
-model and mitigations in depth but, checked while writing this, does not yet name a dedicated
-disclosure contact or process — that's a gap, not an oversight to route around silently. Until one
-exists, treat this the same as `docs/support.md`'s general "where to file" note: there is no
-confirmed public channel yet. If you've found something serious, hold it rather than posting
-details publicly, and escalate through whatever channel gave you access to this repository.
+Do not open a public issue for a security vulnerability. [`SECURITY.md`](SECURITY.md) at the repo
+root names the real channel — GitHub's private vulnerability
+reporting (confirmed enabled on this repository) — and `docs/security-disclosure-process.md`
+documents the embargo/advisory workflow from report to public disclosure. `docs/security.md`
+documents the threat model and mitigations in depth; this paragraph used to say no disclosure
+contact existed yet, which was true when T-3302 first wrote it (2026-08-18) and has been wrong
+since the same day — corrected here rather than left to contradict `SECURITY.md` silently.
