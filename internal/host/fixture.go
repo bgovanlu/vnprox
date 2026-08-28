@@ -63,6 +63,9 @@ type pvemockReader interface {
 	// IPv6RA returns node's fixture-declared per-interface IPv6 RA/DHCPv6
 	// observation (T-1404).
 	IPv6RA(ctx context.Context, node string) ([]pvemock.IPv6RAObservation, error)
+	// MDB returns node's fixture-declared bridge MDB state, rendered as
+	// `bridge -d -j mdb show`'s own JSON shape (T-3902).
+	MDB(ctx context.Context, node string) ([]byte, error)
 }
 
 // FixtureReader adapts a *pvemock.FixtureHostReader (T-004's YAML
@@ -257,6 +260,17 @@ func (f *FixtureReader) IPv6RA(ctx context.Context, node string) ([]IPv6RAObserv
 	return out, nil
 }
 
+// MDB implements Reader by delegating directly (T-3902): node's
+// fixture-declared bridge MDB state, already rendered by pvemock into the
+// same JSON shape ParseMDB parses from a real `bridge -d -j mdb show`.
+func (f *FixtureReader) MDB(ctx context.Context, node string) ([]byte, error) {
+	b, err := f.r.MDB(ctx, node)
+	if err != nil {
+		return nil, wrapFixtureErr(err)
+	}
+	return b, nil
+}
+
 func convertFixtureNatAddr(a *pvemock.NatAddr) *NatAddr {
 	if a == nil {
 		return nil
@@ -317,7 +331,7 @@ func convertFixtureLink(l pvemock.LinkState, parsed *File) LinkState {
 	case "bond":
 		ls.Bond = fixtureBondDetail(ls.Members, ls.LinkUp, opts)
 	case "bridge":
-		ls.Bridge = fixtureBridgeDetail(opts, l.FDB)
+		ls.Bridge = fixtureBridgeDetail(opts, l.FDB, l.STP, l.MulticastSnooping, l.MulticastQuerier, l.MulticastRouterMode)
 	case "vlan":
 		ls.VlanID, ls.VlanParent = fixtureVlanInfo(l.Name, opts)
 	case "physical":
@@ -387,21 +401,84 @@ func fixtureBondDetail(members []string, up bool, opts *Entry) *BondDetail {
 	return bd
 }
 
-func fixtureBridgeDetail(opts *Entry, fdb []pvemock.FDBEntry) *BridgeDetail {
-	bd := &BridgeDetail{FDB: convertFixtureFDB(fdb)}
+// fixtureBridgeDetail builds a bridge's BridgeDetail from its rendered
+// interfaces(5) options plus fixture-declared-directly fields: FDB (T-306),
+// live STP/RSTP protocol state (T-3901), and, as of T-3902, multicast
+// snooping/querier/router-mode state — all the same kind of exception this
+// file's doc comment already carves out for FDB: naturally expressible as
+// declared fixture data ("this bridge has snooping on, no querier,
+// learn-mode router"; "this bridge is root, port eth0 is forwarding") rather
+// than something recoverable from rendered ifupdown2(5) text the way
+// VlanAware/STP (the declared on/off bit) are.
+//
+// stp's per-port Role is filled in here via deriveBridgePortRole — the same
+// pure function netlink_linux.go's real sysfs read uses — rather than being
+// a fixture-declarable field (see pvemock.BridgeSTPSpec's doc comment): one
+// role-derivation implementation for both Real and FixtureReader.
+func fixtureBridgeDetail(opts *Entry, fdb []pvemock.FDBEntry, stp *pvemock.BridgeSTP, snooping, querier bool, routerMode int) *BridgeDetail {
+	bd := &BridgeDetail{
+		FDB:                 convertFixtureFDB(fdb),
+		STPState:            convertFixtureSTP(stp),
+		MulticastSnooping:   snooping,
+		MulticastQuerier:    querier,
+		MulticastRouterMode: routerMode,
+	}
+	if bd.STPState != nil {
+		bd.STP = bd.STPState.StpState != 0
+	}
 	if opts == nil {
 		return bd
 	}
 	if v, ok := opts.Get("bridge-vlan-aware"); ok {
 		bd.VlanAware = v == "yes" || v == "true" || v == "1"
 	}
-	if v, ok := opts.Get("bridge-stp"); ok {
+	if v, ok := opts.Get("bridge-stp"); ok && bd.STPState == nil {
+		// Declared bridge-stp on/off is only consulted when the fixture
+		// didn't also declare live STP state directly — a fixture
+		// declaring STP root/port state implies STP is administratively
+		// on, and that (bd.STP set above from stp.StpState) should win
+		// over a possibly-stale/contradictory bridge-stp option.
 		bd.STP = v == "on" || v == "yes"
 	}
 	if v, ok := opts.Get("bridge-vids"); ok {
 		bd.VLANs = parseVidRangesText(v)
 	}
 	return bd
+}
+
+// convertFixtureSTP converts pvemock's fixture-declared STP state (T-3901)
+// to this package's own BridgeSTP, deriving each port's Role via
+// deriveBridgePortRole (stp.go) — see fixtureBridgeDetail's doc comment.
+// nil in, nil out, matching convertFixtureFDB's "not declared" convention.
+func convertFixtureSTP(stp *pvemock.BridgeSTP) *BridgeSTP {
+	if stp == nil {
+		return nil
+	}
+	out := &BridgeSTP{
+		RootID:       stp.RootID,
+		BridgeID:     stp.BridgeID,
+		StpState:     stp.StpState,
+		Priority:     stp.Priority,
+		RootPort:     stp.RootPort,
+		RootPathCost: stp.RootPathCost,
+	}
+	out.IsRoot = out.RootID != "" && out.RootID == out.BridgeID
+	for _, p := range stp.Ports {
+		state := BridgePortSTPState(p.State)
+		port := BridgePortSTP{
+			Port:             p.Port,
+			State:            state,
+			DesignatedRoot:   p.DesignatedRoot,
+			DesignatedBridge: p.DesignatedBridge,
+			DesignatedCost:   p.DesignatedCost,
+			PathCost:         p.PathCost,
+			Priority:         p.Priority,
+			PortNo:           p.PortNo,
+		}
+		port.Role = deriveBridgePortRole(state, port.PortNo, out.IsRoot, out.RootPort)
+		out.Ports = append(out.Ports, port)
+	}
+	return out
 }
 
 // convertFixtureFDB converts pvemock's fixture-declared FDB entries

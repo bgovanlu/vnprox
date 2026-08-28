@@ -8,6 +8,7 @@ import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps, type Ed
 import clsx from "clsx";
 import type { EntityStatus, FindingBadge, SimVerdict } from "../api/types";
 import { findingChipText, hasOpenFinding, parseFindingBadge } from "./findingBadges";
+import { isStpBlockingEdge, stpBadgeLabel } from "./stpOverlay";
 import { trafficEdgeStyle } from "./trafficMode";
 
 export interface EntityEdgeData extends Record<string, unknown> {
@@ -51,6 +52,16 @@ const SIM_STROKE: Record<SimVerdict, string> = {
   indeterminate: "#8b5cf6",
 };
 
+// T-3901: the loop-breaking blocked port — "the first question in any L2
+// loop hunt" — gets its own distinct stroke (a burnt orange, not reused
+// from STATUS_STROKE/SIM_STROKE's red/amber/emerald/violet vocabulary, so
+// it never reads as "down" or "deny") and a short, tight dash pattern
+// visually distinct from the "open finding"/"unknown status" dashing below
+// (which is a longer, looser dash) — the two should not be confused: one
+// means "STP intentionally cut this to prevent a loop", the other "vnprox
+// isn't sure what's going on here".
+const STP_BLOCKING_STROKE = "#c2410c"; // orange-700
+
 export function EntityEdge({
   id,
   sourceX,
@@ -78,15 +89,21 @@ export function EntityEdge({
   const trafficMode = data?.trafficMode ?? false;
   const traffic = trafficEdgeStyle(data?.utilizationPct);
   const simVerdict = data?.simVerdict;
+  // T-3901: this bridge-membership edge is the port STP is currently
+  // blocking to prevent a loop.
+  const stpBlocking = isStpBlockingEdge(badges);
   // T-3501: the legacy bare "drift" token is dropped from the printed label
   // (it stays on the wire, and still counts for the dashing decision above,
   // via hasOpenFinding — but is never itself displayed text any more) and a
-  // "finding:<source>:<severity>" token renders as its source name.
+  // "finding:<source>:<severity>" token renders as its source name. T-3901:
+  // "stp-root"/"stp-role="/"stp-state=" tokens render as their humanized
+  // form (stpBadgeLabel) rather than the raw wire token.
   const labelParts = badges
     .filter((b) => b !== "drift")
     .map((b) => {
       const parsed = parseFindingBadge(b);
-      return parsed ? findingChipText(parsed) : b;
+      if (parsed) return findingChipText(parsed);
+      return stpBadgeLabel(b) ?? b;
     });
 
   return (
@@ -96,8 +113,19 @@ export function EntityEdge({
         path={edgePath}
         markerEnd={markerEnd}
         style={{
-          stroke: simVerdict ? SIM_STROKE[simVerdict] : trafficMode ? traffic.stroke : STATUS_STROKE[status],
-          strokeWidth: simVerdict ? 3.5 : trafficMode ? traffic.strokeWidth : highlighted ? 2.5 : 1.5,
+          // A path-simulator overlay (T-504) wins over everything (a
+          // deliberate, rarer operator action); the STP-blocking stroke
+          // (T-3901) wins over ordinary traffic/status coloring next — a
+          // port STP has cut off to prevent a loop is worth seeing
+          // regardless of which paint mode the map is otherwise in.
+          stroke: simVerdict
+            ? SIM_STROKE[simVerdict]
+            : stpBlocking
+              ? STP_BLOCKING_STROKE
+              : trafficMode
+                ? traffic.stroke
+                : STATUS_STROKE[status],
+          strokeWidth: simVerdict ? 3.5 : stpBlocking ? 2.5 : trafficMode ? traffic.strokeWidth : highlighted ? 2.5 : 1.5,
           // An open finding = dashed outline (docs/features/topology.md
           // §2), additive to the existing "unknown"-status dashing — either
           // condition dashes the edge, independent of its status-driven
@@ -106,9 +134,17 @@ export function EntityEdge({
           // the pre-T-3501 bare "drift" check exactly — see
           // findingBadges.ts's doc comment for why the legacy token still
           // counts (wgEdgeStatus.ts's client-synthesized WG endpoint-drift
-          // edge badge has no richer form yet).
-          strokeDasharray:
-            !simVerdict && !trafficMode && (status === "unknown" || hasOpenFinding(badges)) ? "4 3" : undefined,
+          // edge badge has no richer form yet). STP-blocking (T-3901) gets
+          // its own short, tight dash — visually distinct from the finding/
+          // unknown-status dash so "STP intentionally cut this" is never
+          // mistaken for "vnprox isn't sure what's going on here".
+          strokeDasharray: simVerdict
+            ? undefined
+            : stpBlocking
+              ? "2 3"
+              : !trafficMode && (status === "unknown" || hasOpenFinding(badges))
+                ? "4 3"
+                : undefined,
           opacity: dimmed && !highlighted ? 0.15 : 1,
         }}
       />

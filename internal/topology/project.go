@@ -533,6 +533,15 @@ func badgesOf(snap inventory.Snapshot, e inventory.Entity) []string {
 			sort.Strings(ranges)
 			badges = append(badges, "vlans="+strings.Join(ranges, ","))
 		}
+		// stp-root (T-3901): only when STP is administratively on — every
+		// bridge trivially reports RootID==BridgeID (IsRoot) when STP is
+		// off, since there's no protocol running to elect a real root (see
+		// planning/reports/evidence/pve-9.2.4-bridge-stp-2026-08-27.txt).
+		// Gating on StpState != 0 keeps that from painting every ordinary,
+		// STP-disabled PVE bridge as "root".
+		if v.STPState != nil && v.STPState.StpState != 0 && v.STPState.IsRoot {
+			badges = append(badges, "stp-root")
+		}
 	case *inventory.VlanIface:
 		// An OVS Int Port (VlanIface.Virt == "ovs" — it carries no
 		// dedicated inventory.Kind of its own, see that field's doc
@@ -612,6 +621,9 @@ func buildEdges(snap inventory.Snapshot, byRef map[inventory.Ref]inventory.Entit
 		if e.Kind == inventory.EdgeEnslavedBy {
 			badges = append(badges, slaveRoleBadges(byRef[e.To], e.From)...)
 		}
+		if e.Kind == inventory.EdgePortOf {
+			badges = append(badges, stpPortBadges(byRef[e.To], e.From)...)
+		}
 		out = append(out, Edge{
 			From:   fromID,
 			To:     toID,
@@ -642,6 +654,40 @@ func slaveRoleBadges(bondEnt inventory.Entity, slaveRef inventory.Ref) []string 
 		}
 		if sd.MIIStatus != "" && !strings.EqualFold(sd.MIIStatus, "up") {
 			badges = append(badges, "mii-down")
+		}
+		return badges
+	}
+	return nil
+}
+
+// stpPortBadges returns "stp-state=<state>"/"stp-role=<role>" for the
+// bridge port named by portRef inside bridgeEnt (T-3901), mirroring
+// slaveRoleBadges' identical bond-edge precedent for EdgePortOf (bridge
+// membership) edges instead of EdgeEnslavedBy (bond membership) ones.
+//
+// Nil (no badges at all) when the owning bridge has no live STP state, or
+// has STP administratively off: root_id/bridge_id/port state are still
+// populated by the kernel even with stp_state=0 (every bridge trivially
+// reports itself root then — see
+// planning/reports/evidence/pve-9.2.4-bridge-stp-2026-08-27.txt), so a
+// "root"/"blocking" role badge would be meaningless noise on the common
+// case of an ordinary, STP-disabled PVE bridge. Mirrors badgesOf's
+// identical StpState != 0 gate for the bridge node's own "stp-root" badge.
+func stpPortBadges(bridgeEnt inventory.Entity, portRef inventory.Ref) []string {
+	br, ok := bridgeEnt.(*inventory.Bridge)
+	if !ok || br.STPState == nil || br.STPState.StpState == 0 {
+		return nil
+	}
+	for _, p := range br.STPState.Ports {
+		if p.Port != portRef.ID {
+			continue
+		}
+		var badges []string
+		if p.State != "" {
+			badges = append(badges, "stp-state="+p.State)
+		}
+		if p.Role != "" {
+			badges = append(badges, "stp-role="+p.Role)
 		}
 		return badges
 	}

@@ -53,6 +53,35 @@ func (r *Real) CorosyncStatus(_ context.Context, _ string) ([]byte, error) {
 	return nil, fmt.Errorf("host: CorosyncStatus: %w", ErrUnsupportedPlatform)
 }
 
+// RouteTableV4/RouteTableV6/RouteRulesV4/RouteRulesV6/FRRRIBV4/FRRRIBV6
+// (T-3903's route explorer, internal/route.Fetcher) are not part of the
+// Reader interface (see netlink_linux.go's doc comment on the same
+// methods) but keep this stub structurally complete for internal/route's
+// own seam on non-Linux dev machines.
+func (r *Real) RouteTableV4(_ context.Context, _ string) ([]byte, error) {
+	return nil, fmt.Errorf("host: RouteTableV4: %w", ErrUnsupportedPlatform)
+}
+
+func (r *Real) RouteTableV6(_ context.Context, _ string) ([]byte, error) {
+	return nil, fmt.Errorf("host: RouteTableV6: %w", ErrUnsupportedPlatform)
+}
+
+func (r *Real) RouteRulesV4(_ context.Context, _ string) ([]byte, error) {
+	return nil, fmt.Errorf("host: RouteRulesV4: %w", ErrUnsupportedPlatform)
+}
+
+func (r *Real) RouteRulesV6(_ context.Context, _ string) ([]byte, error) {
+	return nil, fmt.Errorf("host: RouteRulesV6: %w", ErrUnsupportedPlatform)
+}
+
+func (r *Real) FRRRIBV4(_ context.Context, _ string) ([]byte, error) {
+	return nil, fmt.Errorf("host: FRRRIBV4: %w", ErrUnsupportedPlatform)
+}
+
+func (r *Real) FRRRIBV6(_ context.Context, _ string) ([]byte, error) {
+	return nil, fmt.Errorf("host: FRRRIBV6: %w", ErrUnsupportedPlatform)
+}
+
 var _ OVSReader = (*Real)(nil)
 
 func (r *Real) OVSStatus(_ context.Context, _ string) ([]OVSBridgeStatus, error) {
@@ -77,4 +106,8 @@ func (r *Real) Conntrack(_ context.Context, _ string) ([]ConntrackEntry, error) 
 
 func (r *Real) IPv6RA(_ context.Context, _ string) ([]IPv6RAObservation, error) {
 	return nil, fmt.Errorf("host: IPv6RA: %w", ErrUnsupportedPlatform)
+}
+
+func (r *Real) MDB(_ context.Context, _ string) ([]byte, error) {
+	return nil, fmt.Errorf("host: MDB: %w", ErrUnsupportedPlatform)
 }

@@ -194,6 +194,42 @@ func TestReal_FRRBGPSummary_Installed(t *testing.T) {
 	}
 }
 
+// TestReal_MDB_Unavailable exercises the ErrMDBUnavailable path (T-3902):
+// when MDBCommand names a binary that doesn't exist, Real.MDB must return
+// an error wrapping ErrMDBUnavailable rather than a generic exec failure.
+func TestReal_MDB_Unavailable(t *testing.T) {
+	r := NewReal()
+	r.MDBCommand = []string{"vnprox-definitely-not-a-real-binary-xyz"}
+	_, err := r.MDB(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected an error for a nonexistent bridge command")
+	}
+	if !errors.Is(err, ErrMDBUnavailable) {
+		t.Errorf("error = %v, want wrapped ErrMDBUnavailable", err)
+	}
+}
+
+// TestReal_MDB_Installed is a best-effort integration test: if the `bridge`
+// binary (iproute2) is actually installed on this sandbox, exercise the
+// real exec path end to end and confirm ParseMDB accepts its output
+// without error — matching TestReal_FRRBGPSummary_Installed's own
+// skip-if-absent convention. iproute2 ships with virtually every Debian/PVE
+// install, so unlike vtysh this is expected to run (not skip) on most dev
+// sandboxes and CI runners.
+func TestReal_MDB_Installed(t *testing.T) {
+	r := NewReal()
+	if _, err := exec.LookPath(r.MDBCommand[0]); err != nil {
+		t.Skipf("bridge (%s) not installed on this sandbox — skipping MDB integration test", r.MDBCommand[0])
+	}
+	raw, err := r.MDB(context.Background(), "")
+	if err != nil {
+		t.Fatalf("MDB: %v", err)
+	}
+	if _, err := ParseMDB(raw); err != nil {
+		t.Fatalf("ParseMDB(real bridge -d -j mdb show output): %v", err)
+	}
+}
+
 // TestReal_BondDetail_NoLiveBonds exercises the /proc/net/bonding path
 // against this sandbox, skipping cleanly (rather than failing) when the
 // bonding driver isn't loaded/no bonds exist here — which is the common

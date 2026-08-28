@@ -145,6 +145,23 @@ type Reader interface {
 	// flushed/mutated by vnprox.
 	Conntrack(ctx context.Context, node string) ([]ConntrackEntry, error)
 
+	// MDB returns node's raw `bridge -d -j mdb show` output (T-3902's
+	// multicast/MDB browser — sibling to FDB/FlattenFDB in fdb.go, but
+	// fetched differently: github.com/vishvananda/netlink v1.3.1 has no
+	// MDB dump support at all (confirmed absent from that library — see
+	// mdb.go's doc comment), so unlike FDB (embedded in Links()'
+	// BridgeDetail via netlink) this follows the fetch/parse split
+	// FRRBGPSummary/FRREVPNVNI already established: Real execs `bridge -d
+	// -j mdb show` (netlink_linux.go); ParseMDB (mdb.go) parses the result
+	// independently of I/O. Returns an error wrapping ErrMDBUnavailable
+	// when the `bridge` binary itself cannot be found — uncommon (iproute2
+	// ships on every Debian/PVE install) but handled the same defensive
+	// way every other exec-based reader in this package is. An empty MDB
+	// table is not an error condition: planning/reports/evidence/
+	// pve-9.2.4-bridge-mdb-2026-08-27.txt shows most bridges on a real PVE
+	// 9.2.4 host carry none.
+	MDB(ctx context.Context, node string) ([]byte, error)
+
 	// IPv6RA returns node's own bounded, host-local observation of IPv6
 	// Router Advertisements and DHCPv6 activity on each of its bridge/VLAN
 	// interfaces (T-1404, docs/features/sdn.md §6's "IPv6 SLAAC management
@@ -329,13 +346,45 @@ type BondSlave struct {
 }
 
 // BridgeDetail is bridge-specific state: whether it is VLAN-aware, its
-// global VLAN table, per-port VLAN membership, and its FDB.
+// global VLAN table, per-port VLAN membership, its FDB, its IGMP/MLD
+// snooping configuration, and its live STP/RSTP protocol state.
+//
+// STPState (T-3901) is this bridge's live root-bridge/per-port role+state
+// read, nil when sysfs's /sys/class/net/<bridge>/bridge directory could not
+// be read at all (see stp.go's readBridgeSTP) — distinct from STP/STPSet
+// below, which is the administratively-*declared* on/off bit. Real
+// populates both from the same sysfs read (stp_state != 0 sets STP/STPSet
+// true), closing a pre-T-3901 gap where Real never actually set STP/STPSet
+// at all: github.com/vishvananda/netlink v1.3.1's Bridge struct carries no
+// STP attribute, so despite ingest.go's FromNetlinkLinks doc comment
+// already claiming "the kernel reported the running vlan_filtering/stp
+// state", only vlan_filtering ever actually was — see
+// planning/reports/evidence/pve-9.2.4-bridge-stp-2026-08-27.txt point 1.
+//
+// MulticastSnooping/MulticastQuerier/MulticastRouterMode (T-3902) mirror
+// the sysfs fields observed on a real PVE 9.2.4 host
+// (/sys/class/net/<bridge>/bridge/multicast_{snooping,querier,router} —
+// planning/reports/evidence/pve-9.2.4-bridge-mdb-2026-08-27.txt §5, which
+// also confirms netlink's IFLA_BR_MCAST_* linkinfo attributes carry the
+// identical values under a "mcast_*" key prefix, §7). MulticastSnooping
+// comes straight from github.com/vishvananda/netlink v1.3.1's own
+// Bridge.MulticastSnooping field (already fetched for every bridge link);
+// MulticastQuerier and MulticastRouterMode have no counterpart in that
+// library version, so Real reads them from sysfs directly (netlink_linux.go).
+// MulticastRouterMode is the kernel's raw multicast_router value: 0
+// (never), 1 (learn/auto-detect via snooping — the only value observed on
+// pvecube), 2 (permanently enabled) — 0/2 are UNVERIFIED against real
+// output per the evidence file, not fabricated defaults.
 type BridgeDetail struct {
-	PortVLANs map[string][]PortVlan
-	VLANs     []VidRange
-	FDB       []FDBEntry
-	VlanAware bool
-	STP       bool
+	PortVLANs           map[string][]PortVlan
+	STPState            *BridgeSTP
+	VLANs               []VidRange
+	FDB                 []FDBEntry
+	MulticastRouterMode int
+	VlanAware           bool
+	STP                 bool
+	MulticastSnooping   bool
+	MulticastQuerier    bool
 }
 
 // VidRange is an inclusive VLAN ID range, e.g. {Low: 2, High: 4094}. A

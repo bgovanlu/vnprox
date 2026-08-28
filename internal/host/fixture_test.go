@@ -237,3 +237,180 @@ func TestFixtureReader_MediaPort(t *testing.T) {
 		t.Errorf("eno1.MediaPort = %q, want %q", got, want)
 	}
 }
+
+// TestFixtureReader_MulticastMDB exercises T-3902's fixture-declared bridge
+// multicast state end to end: BridgeDetail's Snooping/Querier/RouterMode
+// fields (recovered via Links(), the FDB-shaped "fixture-declared directly"
+// exception fixtureBridgeDetail's doc comment describes) and MDB() (raw
+// `bridge -d -j mdb show` bytes, parsed with the real ParseMDB). Two
+// bridges: one with declared entries and multicast config, one with
+// snooping/querier/router left at their zero value and no MDB rows at
+// all — the "empty MDB table" case the evidence transcript documents as the
+// common real-world state (planning/reports/evidence/
+// pve-9.2.4-bridge-mdb-2026-08-27.txt), which real users will hit most.
+func TestFixtureReader_MulticastMDB(t *testing.T) {
+	f := &pvemock.Fixture{
+		Nodes: map[string]*pvemock.NodeSpec{
+			"n1": {
+				Network: []pvemock.NetIface{
+					{Iface: "vmbr0", Type: "bridge", Method: "manual"},
+					{Iface: "vmbr1", Type: "bridge", Method: "manual"},
+				},
+				Links: map[string]pvemock.LinkInfo{
+					"vmbr0": {
+						Mac: "bc:24:11:00:00:01", LinkUp: true,
+						MulticastSnooping: true, MulticastQuerier: false, MulticastRouter: 1,
+						MDB: []pvemock.MDBEntrySpec{
+							{Group: "ff02::fb", Port: "eno1", State: "temp", Protocol: "kernel"},
+						},
+					},
+					// vmbr1: declared but with no multicast config and no MDB
+					// rows at all — the observed-on-pvecube common case.
+					"vmbr1": {Mac: "bc:24:11:00:00:02", LinkUp: true},
+				},
+			},
+		},
+	}
+	srv := pvemock.NewServer(f)
+	r := NewFixtureReader(pvemock.NewFixtureHostReader(srv))
+	ctx := context.Background()
+
+	links, err := r.Links(ctx, "n1")
+	if err != nil {
+		t.Fatalf("Links: %v", err)
+	}
+	byName := make(map[string]LinkState, len(links))
+	for _, l := range links {
+		byName[l.Name] = l
+	}
+
+	vmbr0 := byName["vmbr0"]
+	if vmbr0.Bridge == nil {
+		t.Fatalf("vmbr0.Bridge is nil")
+	}
+	if !vmbr0.Bridge.MulticastSnooping {
+		t.Errorf("vmbr0.Bridge.MulticastSnooping = false, want true")
+	}
+	if vmbr0.Bridge.MulticastQuerier {
+		t.Errorf("vmbr0.Bridge.MulticastQuerier = true, want false")
+	}
+	if vmbr0.Bridge.MulticastRouterMode != 1 {
+		t.Errorf("vmbr0.Bridge.MulticastRouterMode = %d, want 1", vmbr0.Bridge.MulticastRouterMode)
+	}
+
+	vmbr1 := byName["vmbr1"]
+	if vmbr1.Bridge == nil {
+		t.Fatalf("vmbr1.Bridge is nil")
+	}
+	if vmbr1.Bridge.MulticastSnooping || vmbr1.Bridge.MulticastQuerier || vmbr1.Bridge.MulticastRouterMode != 0 {
+		t.Errorf("vmbr1.Bridge multicast state = %+v, want all zero (not declared)", *vmbr1.Bridge)
+	}
+
+	raw, err := r.MDB(ctx, "n1")
+	if err != nil {
+		t.Fatalf("MDB: %v", err)
+	}
+	rows, err := ParseMDB(raw)
+	if err != nil {
+		t.Fatalf("ParseMDB(fixture-rendered MDB output): %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("ParseMDB rows = %+v, want exactly 1 (vmbr1 declares none)", rows)
+	}
+	want := MDBRow{Bridge: "vmbr0", Group: "ff02::fb", Port: "eno1", State: "temp", Protocol: "kernel"}
+	if rows[0] != want {
+		t.Errorf("row = %+v, want %+v", rows[0], want)
+	}
+}
+
+// TestFixtureReader_STP exercises T-3901's fixture-declared STP path
+// end-to-end (LinkInfo.STP -> pvemock.LinkState.STP -> host.BridgeSTP),
+// mirroring TestFixtureReader_MulticastMDB's pattern. Two bridges: vmbr0 is
+// a standalone, STP-off root (pvecube's actual observed shape — see
+// planning/reports/evidence/pve-9.2.4-bridge-stp-2026-08-27.txt) and vmbr1
+// is a constructed non-root bridge with a blocking port, to prove role
+// derivation (root/designated/blocking) flows correctly through the
+// fixture path exactly like it does through Real's sysfs read (both call
+// the same deriveBridgePortRole).
+func TestFixtureReader_STP(t *testing.T) {
+	f := &pvemock.Fixture{
+		Nodes: map[string]*pvemock.NodeSpec{
+			"n1": {
+				Network: []pvemock.NetIface{
+					{Iface: "vmbr0", Type: "bridge", Method: "manual"},
+					{Iface: "vmbr1", Type: "bridge", Method: "manual"},
+				},
+				Links: map[string]pvemock.LinkInfo{
+					"vmbr0": {
+						Mac: "a8:b8:e0:00:0e:e8", LinkUp: true,
+						STP: &pvemock.BridgeSTPSpec{
+							RootID: "8000.a8b8e0000ee8", BridgeID: "8000.a8b8e0000ee8",
+							StpState: 0, RootPort: 0,
+							Ports: []pvemock.BridgePortSTPSpec{
+								{Port: "enp1s0", State: "forwarding", PortNo: 1},
+							},
+						},
+					},
+					"vmbr1": {
+						Mac: "bc:24:11:00:00:02", LinkUp: true,
+						STP: &pvemock.BridgeSTPSpec{
+							RootID: "8000.aaaaaaaaaaaa", BridgeID: "8000.bbbbbbbbbbbb",
+							StpState: 1, RootPort: 1,
+							Ports: []pvemock.BridgePortSTPSpec{
+								{Port: "eth0", State: "forwarding", PortNo: 1},
+								{Port: "eth1", State: "blocking", PortNo: 2},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	srv := pvemock.NewServer(f)
+	r := NewFixtureReader(pvemock.NewFixtureHostReader(srv))
+	ctx := context.Background()
+
+	links, err := r.Links(ctx, "n1")
+	if err != nil {
+		t.Fatalf("Links: %v", err)
+	}
+	byName := make(map[string]LinkState, len(links))
+	for _, l := range links {
+		byName[l.Name] = l
+	}
+
+	vmbr0 := byName["vmbr0"]
+	if vmbr0.Bridge == nil || vmbr0.Bridge.STPState == nil {
+		t.Fatalf("vmbr0.Bridge.STPState is nil")
+	}
+	if vmbr0.Bridge.STP {
+		t.Errorf("vmbr0.Bridge.STP = true, want false (StpState 0)")
+	}
+	if !vmbr0.Bridge.STPState.IsRoot {
+		t.Errorf("vmbr0.Bridge.STPState.IsRoot = false, want true")
+	}
+	if len(vmbr0.Bridge.STPState.Ports) != 1 || vmbr0.Bridge.STPState.Ports[0].Role != RoleDesignated {
+		t.Errorf("vmbr0 port roles = %+v, want [designated]", vmbr0.Bridge.STPState.Ports)
+	}
+
+	vmbr1 := byName["vmbr1"]
+	if vmbr1.Bridge == nil || vmbr1.Bridge.STPState == nil {
+		t.Fatalf("vmbr1.Bridge.STPState is nil")
+	}
+	if !vmbr1.Bridge.STP {
+		t.Errorf("vmbr1.Bridge.STP = false, want true (StpState 1)")
+	}
+	if vmbr1.Bridge.STPState.IsRoot {
+		t.Errorf("vmbr1.Bridge.STPState.IsRoot = true, want false")
+	}
+	roles := map[string]BridgePortRole{}
+	for _, p := range vmbr1.Bridge.STPState.Ports {
+		roles[p.Port] = p.Role
+	}
+	if roles["eth0"] != RoleRoot {
+		t.Errorf("eth0 role = %q, want root", roles["eth0"])
+	}
+	if roles["eth1"] != RoleBlocking {
+		t.Errorf("eth1 role = %q, want blocking", roles["eth1"])
+	}
+}

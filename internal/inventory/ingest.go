@@ -135,10 +135,16 @@ func FromNetlinkLinks(node string, links []host.LinkState) []Entity {
 				// vlan_filtering/stp state, so both flagged bools are
 				// genuinely reported (even when false). Without detail we
 				// leave them "not reported" rather than implying false.
+				// (T-3901: STP now really is read from a live sysfs source
+				// — internal/host/stp.go — closing a gap where Real never
+				// actually populated it despite this comment's longstanding
+				// claim; see planning/reports/evidence/pve-9.2.4-bridge-stp-
+				// 2026-08-27.txt point 1.)
 				br.VlanAware, br.VlanAwareSet = l.Bridge.VlanAware, true
 				br.STP, br.STPSet = l.Bridge.STP, true
 				br.Vids = convertVids(l.Bridge.VLANs)
 				br.FDB = convertFDB(l.Bridge.FDB)
+				br.STPState = convertBridgeSTP(l.Bridge.STPState)
 			}
 			ent = br
 		case "vlan":
@@ -189,6 +195,44 @@ func convertFDB(fdb []host.FDBEntry) []FDBEntry {
 		out[i] = FDBEntry{
 			Mac: e.Mac, Port: e.Port, Vlan: e.Vlan,
 			Master: e.Master, Permanent: e.Permanent, Stale: e.Stale,
+		}
+	}
+	return out
+}
+
+// convertBridgeSTP converts host.BridgeSTP (T-3901's netlink/sysfs STP
+// reader, internal/host.BridgeDetail.STPState) to this package's own
+// BridgeSTP, nil for a nil input so a bridge with no STP state read at all
+// (see that field's doc comment) carries a nil pointer rather than an
+// allocated-but-zero one, matching every other optional Bridge field's
+// zero-value convention.
+func convertBridgeSTP(stp *host.BridgeSTP) *BridgeSTP {
+	if stp == nil {
+		return nil
+	}
+	out := &BridgeSTP{
+		RootID:       stp.RootID,
+		BridgeID:     stp.BridgeID,
+		StpState:     stp.StpState,
+		Priority:     stp.Priority,
+		RootPort:     stp.RootPort,
+		RootPathCost: stp.RootPathCost,
+		IsRoot:       stp.IsRoot,
+	}
+	if len(stp.Ports) > 0 {
+		out.Ports = make([]BridgePortSTP, len(stp.Ports))
+		for i, p := range stp.Ports {
+			out.Ports[i] = BridgePortSTP{
+				Port:             p.Port,
+				DesignatedRoot:   p.DesignatedRoot,
+				DesignatedBridge: p.DesignatedBridge,
+				State:            string(p.State),
+				Role:             string(p.Role),
+				PortNo:           p.PortNo,
+				PathCost:         p.PathCost,
+				Priority:         p.Priority,
+				DesignatedCost:   p.DesignatedCost,
+			}
 		}
 	}
 	return out

@@ -20,7 +20,13 @@ func TestIngestNetlink(t *testing.T) {
 	links := []host.LinkState{
 		{Kind: "physical", Name: "eno1", Mac: "aa:bb:cc:dd:ee:01", Driver: "ixgbe", SpeedMbps: 10000, Duplex: "full", MTU: 1500, LinkUp: true},
 		{Kind: "bond", Name: "bond0", Members: []string{"eno1", "eno2"}, MTU: 1500, Bond: &host.BondDetail{Mode: "802.3ad", ActiveSlave: "eno1", MIIStatus: "up", Slaves: []host.BondSlave{{Name: "eno1", Active: true, MIIStatus: "up"}}}},
-		{Kind: "bridge", Name: "vmbr0", Members: []string{"bond0"}, MTU: 1500, Bridge: &host.BridgeDetail{VlanAware: true, STP: false, VLANs: []host.VidRange{{Low: 2, High: 4094}}}},
+		{Kind: "bridge", Name: "vmbr0", Members: []string{"bond0"}, MTU: 1500, Bridge: &host.BridgeDetail{
+			VlanAware: true, STP: true, VLANs: []host.VidRange{{Low: 2, High: 4094}},
+			STPState: &host.BridgeSTP{
+				RootID: "8000.aabbccddeeff", BridgeID: "8000.aabbccddeeff", StpState: 1, IsRoot: true,
+				Ports: []host.BridgePortSTP{{Port: "bond0", State: host.PortStateForwarding, Role: host.RoleDesignated, PortNo: 1}},
+			},
+		}},
 		{Kind: "vlan", Name: "vmbr0.100", VlanParent: "vmbr0", VlanID: 100, MTU: 1500},
 		{Kind: "veth", Name: "veth99"}, // skipped
 	}
@@ -45,6 +51,18 @@ func TestIngestNetlink(t *testing.T) {
 	br := mustGet[*Bridge](t, g.Snapshot(), Ref{Kind: KindBridge, Node: "pve1", ID: "vmbr0"})
 	if !br.VlanAware || len(br.Vids) != 1 || br.Vids[0] != (VidRange{Low: 2, High: 4094}) {
 		t.Errorf("bridge runtime detail not mapped: %+v", br)
+	}
+	// T-3901: STP now really is read from a live sysfs source and flows
+	// through to the resolved Bridge (see BridgeDetail.STPState's doc
+	// comment for the pre-T-3901 gap this closes).
+	if !br.STP || !br.STPSet {
+		t.Errorf("bridge STP/STPSet not mapped: STP=%v STPSet=%v", br.STP, br.STPSet)
+	}
+	if br.STPState == nil || !br.STPState.IsRoot || br.STPState.RootID != "8000.aabbccddeeff" {
+		t.Fatalf("bridge STPState not mapped: %+v", br.STPState)
+	}
+	if len(br.STPState.Ports) != 1 || br.STPState.Ports[0].Role != "designated" {
+		t.Errorf("bridge STPState.Ports not mapped: %+v", br.STPState.Ports)
 	}
 }
 

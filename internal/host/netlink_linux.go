@@ -31,6 +31,8 @@ import (
 // via lldpd's lldpctl. It always reports its own node's state — routing a
 // read to a cluster peer is the caller's responsibility (see the Reader
 // doc comment in reader.go).
+//
+//nolint:govet // fieldalignment: config struct, one field per external command/path; grouped and documented by what each configures, not packed by size.
 type Real struct {
 	InterfacesPath        string
 	InterfacesPendingPath string
@@ -96,6 +98,29 @@ type Real struct {
 	// status; defaults to `corosync-cfgtool -s` (T-803, docs/features/
 	// monitoring.md §5). Overridable for tests.
 	CorosyncStatusCommand []string
+	// MDBCommand is the argv used to fetch bridge multicast-forwarding-
+	// database state as JSON; defaults to `bridge -d -j mdb show` (T-3902,
+	// per planning/reports/evidence/pve-9.2.4-bridge-mdb-2026-08-27.txt —
+	// the `-d` detail flag is what adds the "protocol" field this
+	// package's parser reads). Overridable for tests.
+	MDBCommand []string
+	// RouteTableV4Command/RouteTableV6Command are the argv used to fetch
+	// the kernel FIB (every routing table) as JSON — T-3903's route
+	// explorer; default `ip -j route show table all` / `ip -j -6 route
+	// show table all`. RouteRulesV4Command/RouteRulesV6Command fetch
+	// policy-routing rules the same way (`ip -j rule show` / `ip -j -6
+	// rule show`). See RouteTableV4's doc comment below for why these
+	// shell out to `ip -j` rather than reading netlink directly.
+	// Overridable for tests.
+	RouteTableV4Command []string
+	RouteTableV6Command []string
+	RouteRulesV4Command []string
+	RouteRulesV6Command []string
+	// FRRRIBV4Command/FRRRIBV6Command are the argv used to fetch FRR's RIB
+	// as JSON (T-3903); default `vtysh -c "show ip route json"` / `vtysh
+	// -c "show ipv6 route json"`. Overridable for tests.
+	FRRRIBV4Command []string
+	FRRRIBV6Command []string
 	// RDisc6TimeoutMs bounds each per-interface rdisc6 solicit-and-wait
 	// call; defaults to RDisc6DefaultTimeoutMs. Overridable for tests.
 	RDisc6TimeoutMs int
@@ -111,6 +136,7 @@ func NewReal() *Real {
 		BGPSummaryCommand:     []string{"vtysh", "-c", "show bgp summary json"},
 		EVPNVNICommand:        []string{"vtysh", "-c", "show evpn vni json"},
 		CorosyncStatusCommand: []string{"corosync-cfgtool", "-s"},
+		MDBCommand:            []string{"bridge", "-d", "-j", "mdb", "show"},
 		OVSVSCtlPath:          "ovs-vsctl",
 		NsenterPath:           "nsenter",
 		IPPath:                "ip",
@@ -120,6 +146,12 @@ func NewReal() *Real {
 		// ConntrackPath is deliberately left empty — see its doc comment
 		// on Real: the default read path is netlink, not a text-format
 		// procfs path (T-3711).
+		RouteTableV4Command: []string{"ip", "-j", "route", "show", "table", "all"},
+		RouteTableV6Command: []string{"ip", "-j", "-6", "route", "show", "table", "all"},
+		RouteRulesV4Command: []string{"ip", "-j", "rule", "show"},
+		RouteRulesV6Command: []string{"ip", "-j", "-6", "rule", "show"},
+		FRRRIBV4Command:     []string{"vtysh", "-c", "show ip route json"},
+		FRRRIBV6Command:     []string{"vtysh", "-c", "show ipv6 route json"},
 	}
 }
 
@@ -224,6 +256,70 @@ func (r *Real) runFRRCommand(ctx context.Context, argv []string) ([]byte, error)
 	return out, nil
 }
 
+// RouteTableV4/RouteTableV6 fetch the kernel FIB — every routing table,
+// v4/v6 respectively (T-3903's route explorer, internal/route). Not part
+// of the Reader interface: internal/route.Fetcher (a small, separately
+// declared seam — see internal/route/service.go's doc comment) is the
+// only thing that calls these, structurally satisfied by *Real without
+// this package's own Reader interface or any of its other implementers
+// needing to change. Like FRR/LLDP, there is no reason to believe a
+// netlink-native read would be meaningfully cheaper or more correct here
+// than shelling out to `ip -j`: iproute2's own JSON output is already the
+// tolerant, versioned wire format this task's evidence transcript
+// (planning/reports/evidence/pve-9.2.4-routing-2026-08-28.txt) verified
+// against a real PVE 9.2.4 host, and reusing it avoids re-deriving
+// route-type/scope/table-name decoding netlink itself leaves as raw
+// integers requiring the exact same /etc/iproute2/rt_tables,rt_scopes,
+// rt_protos lookup tables `ip` already carries.
+func (r *Real) RouteTableV4(ctx context.Context, _ string) ([]byte, error) {
+	return r.runIPCommand(ctx, r.RouteTableV4Command)
+}
+
+func (r *Real) RouteTableV6(ctx context.Context, _ string) ([]byte, error) {
+	return r.runIPCommand(ctx, r.RouteTableV6Command)
+}
+
+// RouteRulesV4/RouteRulesV6 fetch policy-routing rules — see
+// RouteTableV4's doc comment for why this shells out to `ip -j` rather
+// than reading netlink directly.
+func (r *Real) RouteRulesV4(ctx context.Context, _ string) ([]byte, error) {
+	return r.runIPCommand(ctx, r.RouteRulesV4Command)
+}
+
+func (r *Real) RouteRulesV6(ctx context.Context, _ string) ([]byte, error) {
+	return r.runIPCommand(ctx, r.RouteRulesV6Command)
+}
+
+// runIPCommand runs a fixed-argv `ip` invocation (never shell-
+// interpolated, mirroring runFRRCommand's own convention). Unlike FRR,
+// `ip` is part of the base OS on every PVE node this daemon runs on
+// (iproute2 is a hard Debian dependency), so there is no documented
+// graceful-degradation sentinel here the way ErrFRRUnavailable exists for
+// vtysh — a failure to run `ip` at all is treated as an ordinary error.
+func (r *Real) runIPCommand(ctx context.Context, argv []string) ([]byte, error) {
+	if len(argv) == 0 {
+		return nil, fmt.Errorf("host: route: no command configured")
+	}
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // fixed, config-supplied argv, not user input
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("host: running %v: %w", argv, err)
+	}
+	return out, nil
+}
+
+// FRRRIBV4/FRRRIBV6 fetch FRR's RIB as JSON (T-3903's route explorer).
+// Same ErrFRRUnavailable exec.ErrNotFound-detection convention as
+// FRRBGPSummary/FRREVPNVNI (runFRRCommand) — a node with no SDN EVPN zone
+// configured runs no FRR at all, which is the common case, not a fault.
+func (r *Real) FRRRIBV4(ctx context.Context, _ string) ([]byte, error) {
+	return r.runFRRCommand(ctx, r.FRRRIBV4Command)
+}
+
+func (r *Real) FRRRIBV6(ctx context.Context, _ string) ([]byte, error) {
+	return r.runFRRCommand(ctx, r.FRRRIBV6Command)
+}
+
 // CorosyncStatus implements Reader (T-803) by shelling out to
 // corosync-cfgtool in status mode. Like FRR/LLDP, there is no netlink/procfs
 // source for corosync's own live ring health — it is strictly corosync's own
@@ -242,6 +338,30 @@ func (r *Real) CorosyncStatus(ctx context.Context, _ string) ([]byte, error) {
 		var execErr *exec.Error
 		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
 			return nil, fmt.Errorf("host: %w: %v", ErrCorosyncUnavailable, err)
+		}
+		return nil, fmt.Errorf("host: running %v: %w", argv, err)
+	}
+	return out, nil
+}
+
+// MDB implements Reader (T-3902) by shelling out to iproute2's `bridge` in
+// detail+JSON mode. Like FRR/corosync/LLDP, there is no netlink dump for
+// bridge MDB state in github.com/vishvananda/netlink v1.3.1 (see mdb.go's
+// doc comment) — it is strictly a `bridge` CLI concern — so this is
+// necessarily exec-based, and distinguishes "the bridge binary is not
+// installed at all" (ErrMDBUnavailable) from any other failure exactly
+// like runFRRCommand's exec.ErrNotFound detection.
+func (r *Real) MDB(ctx context.Context, _ string) ([]byte, error) {
+	argv := r.MDBCommand
+	if len(argv) == 0 {
+		argv = []string{"bridge", "-d", "-j", "mdb", "show"}
+	}
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // fixed, config-supplied argv, not user input
+	out, err := cmd.Output()
+	if err != nil {
+		var execErr *exec.Error
+		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+			return nil, fmt.Errorf("host: %w: %v", ErrMDBUnavailable, err)
 		}
 		return nil, fmt.Errorf("host: running %v: %w", argv, err)
 	}
@@ -590,7 +710,7 @@ func buildLinkState(
 	switch v := l.(type) {
 	case *netlink.Bridge:
 		ls.Kind = "bridge"
-		ls.Bridge = buildBridgeDetail(attrs.Index, v, links, byIndex, vlanTable, fdb)
+		ls.Bridge = buildBridgeDetail(attrs.Index, attrs.Name, v, links, byIndex, vlanTable, fdb)
 		ls.Members = membersOf(attrs.Index, links)
 	case *netlink.Bond:
 		ls.Kind = "bond"
@@ -701,9 +821,11 @@ func membersOf(masterIndex int, links []netlink.Link) []string {
 }
 
 // buildBridgeDetail assembles VLAN-awareness, the bridge's self VLAN
-// table, per-port VLAN membership, and FDB entries for one bridge link.
+// table, per-port VLAN membership, FDB entries, and live STP/RSTP protocol
+// state for one bridge link.
 func buildBridgeDetail(
 	bridgeIndex int,
+	name string,
 	b *netlink.Bridge,
 	links []netlink.Link,
 	byIndex map[int]netlink.Link,
@@ -714,6 +836,10 @@ func buildBridgeDetail(
 	if b.VlanFiltering != nil {
 		bd.VlanAware = *b.VlanFiltering
 	}
+	if b.MulticastSnooping != nil {
+		bd.MulticastSnooping = *b.MulticastSnooping
+	}
+	bd.MulticastQuerier, bd.MulticastRouterMode = readBridgeMulticastSysfs(b.Attrs().Name)
 
 	if vlanTable != nil {
 		if self, ok := vlanTable[int32(bridgeIndex)]; ok {
@@ -756,7 +882,42 @@ func buildBridgeDetail(
 		})
 	}
 
+	// STP/RSTP live protocol state (T-3901): no netlink attribute exposes
+	// this (see stp.go's doc comment), so it's a sysfs read, same "best
+	// effort, never fails the whole bridge read" convention
+	// readBridgeMulticastSysfs below establishes. STP/STPSet's declared
+	// on/off bit is set from the same read — see BridgeDetail.STPState's
+	// doc comment for why Real never actually populated it before T-3901.
+	if stp, err := readBridgeSTP(name); err == nil {
+		bd.STPState = stp
+		bd.STP = stp.StpState != 0
+	}
+
 	return bd
+}
+
+// readBridgeMulticastSysfs reads a bridge's multicast_querier and
+// multicast_router sysfs files (T-3902) — the two IGMP/MLD-snooping
+// attributes github.com/vishvananda/netlink v1.3.1's Bridge type does not
+// expose (unlike MulticastSnooping, which buildBridgeDetail reads straight
+// off the already-fetched netlink link attrs). Confirmed to agree exactly
+// with netlink's own mcast_querier/mcast_router linkinfo fields on a real
+// PVE 9.2.4 host — planning/reports/evidence/pve-9.2.4-bridge-mdb-2026-08-27.txt
+// §5/§7. A missing/unreadable file (bridge torn down mid-read, or a kernel
+// without bridge multicast support compiled in) leaves both at their zero
+// value rather than failing the whole Links() read.
+func readBridgeMulticastSysfs(name string) (querier bool, routerMode int) {
+	if data, err := os.ReadFile(filepath.Join(sysClassNetDir, name, "bridge", "multicast_querier")); err == nil {
+		if v, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
+			querier = v != 0
+		}
+	}
+	if data, err := os.ReadFile(filepath.Join(sysClassNetDir, name, "bridge", "multicast_router")); err == nil {
+		if v, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
+			routerMode = v
+		}
+	}
+	return querier, routerMode
 }
 
 // vlanSpan is one contiguous VLAN span from a bridge VLAN table dump,

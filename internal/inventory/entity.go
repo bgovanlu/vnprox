@@ -323,6 +323,18 @@ const (
 type Bridge struct {
 	Ref
 	rawSrc
+	// STPState (T-3901) is this bridge's live STP/RSTP protocol state —
+	// root bridge ID, this bridge's own ID, and per-port role/state.
+	// Host-netlink-only and, like FDB above, deliberately excluded from
+	// fieldMap: it is live runtime protocol state (port state flips as
+	// traffic/timers move, independent of any declared config change), so
+	// folding it into the pick/fieldMap merge machinery would spam
+	// topology.delta on ordinary STP activity instead of only on real
+	// topology changes. nil when host-netlink reported no STP state at all
+	// for this bridge (see internal/host.BridgeDetail.STPState's doc
+	// comment for when that happens). See resolveBridge for the copy-
+	// straight-through convention this follows.
+	STPState          *BridgeSTP
 	Gateway           string
 	Name              string
 	Virt              BridgeVirt
@@ -371,6 +383,46 @@ type FDBEntry struct {
 	Stale     bool
 }
 
+// BridgeSTP is one bridge's live STP/RSTP protocol state (T-3901), mirroring
+// host.BridgeSTP's field set (kept as this package's own type for the same
+// reason FDBEntry above is — entity.go stays free of an internal/host
+// import; see ingest.go's FromNetlinkLinks for the conversion).
+//
+// IsRoot is RootID == BridgeID, which — see
+// planning/reports/evidence/pve-9.2.4-bridge-stp-2026-08-27.txt — is also
+// (misleadingly) true for every bridge when StpState is 0: with STP
+// administratively off there is no protocol electing a root, so the
+// kernel simply leaves each bridge reporting itself. Any rendering of
+// IsRoot/a port's Role must gate on StpState != 0 first — see
+// internal/topology/project.go's badgesOf/stpPortBadges.
+type BridgeSTP struct {
+	RootID       string
+	BridgeID     string
+	Ports        []BridgePortSTP
+	StpState     int
+	Priority     int
+	RootPort     int
+	RootPathCost int
+	IsRoot       bool
+}
+
+// BridgePortSTP is one bridge port's live STP role/state (mirrors
+// host.BridgePortSTP's field set). Role is the classic 802.1D
+// root/designated/blocking/disabled role internal/host derives — the
+// Linux kernel's built-in bridge STP exposes no native role attribute; see
+// host.deriveBridgePortRole's doc comment.
+type BridgePortSTP struct {
+	Port             string
+	DesignatedRoot   string
+	DesignatedBridge string
+	State            string
+	Role             string
+	PortNo           int
+	PathCost         int
+	Priority         int
+	DesignatedCost   int
+}
+
 func (b *Bridge) GetRef() Ref { return b.Ref }
 func (b *Bridge) clone() Entity {
 	cp := *b
@@ -380,6 +432,11 @@ func (b *Bridge) clone() Entity {
 	cp.Vids = append([]VidRange(nil), b.Vids...)
 	cp.Addresses = append([]string(nil), b.Addresses...)
 	cp.FDB = append([]FDBEntry(nil), b.FDB...)
+	if b.STPState != nil {
+		st := *b.STPState
+		st.Ports = append([]BridgePortSTP(nil), b.STPState.Ports...)
+		cp.STPState = &st
+	}
 	return &cp
 }
 func (b *Bridge) fieldMap() map[string]string {

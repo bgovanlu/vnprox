@@ -26,6 +26,7 @@ import {
 } from "./findingBadges";
 import { PortJack } from "./PortBody";
 import { jackKindForEntity, speedMarking } from "./portMedia";
+import { STP_ROOT_BADGE, stpBadgeLabel } from "./stpOverlay";
 
 /** This node's role along a path-simulator overlay (T-504): "path" is any
  * hop on the traced route, "blocking" is the enforcement-point endpoint a
@@ -345,6 +346,23 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
                   className={clsx("rounded px-1 py-0.5 text-[10px] font-medium", findingBadgeClass(parsed.severity))}
                 >
                   {findingChipText(parsed)}
+                </span>
+              );
+            }
+            // T-3901: the elected root bridge of an STP-enabled L2 domain —
+            // "the first question in any L2 loop hunt" gets its own
+            // distinct (indigo) treatment, the same "answer the question at
+            // a glance" rationale MGMT_BADGE_CLASS/QOS_SHAPED_BADGE's
+            // colors already document, using a color neither of those (nor
+            // status/finding-severity) already claims.
+            if (b === STP_ROOT_BADGE) {
+              return (
+                <span
+                  key={b}
+                  title="This bridge is the elected STP root of its L2 domain."
+                  className="rounded bg-indigo-200 px-1 py-0.5 text-[10px] font-medium text-indigo-900 dark:bg-indigo-900 dark:text-indigo-100"
+                >
+                  {stpBadgeLabel(b)}
                 </span>
               );
             }

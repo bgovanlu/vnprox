@@ -141,12 +141,18 @@ func resolveBridge(ref Ref, parts map[Source]*Bridge) resolved {
 	stp, stpOK := pick(prov, "stp", ruleFor(ref.Kind, "stp"), parts, func(b *Bridge) boolOpt { return boolOpt{b.STP, b.STPSet} }, boolOptSet, boolOptKey)
 	out.STP, out.STPSet = stp.v, stpOK
 	out.Pending, _ = pick(prov, "pending", ruleFor(ref.Kind, "pending"), parts, func(b *Bridge) string { return b.Pending }, nonEmptyStr, keyStr)
-	// FDB (T-306) is host-netlink-only and deliberately not part of
-	// ownershipRules/fieldMap (see Bridge's doc comment): copy it straight
-	// through from that source's partial rather than going through pick, so
-	// it carries no provenance entry and never registers as a delta.
+	// FDB (T-306) and STPState (T-3901) are host-netlink-only and
+	// deliberately not part of ownershipRules/fieldMap (see Bridge's doc
+	// comment): copy them straight through from that source's partial
+	// rather than going through pick, so neither carries a provenance
+	// entry or registers as a delta on ordinary traffic/protocol churn.
 	if p, ok := parts[SourceHostNetlink]; ok {
 		out.FDB = append([]FDBEntry(nil), p.FDB...)
+		if p.STPState != nil {
+			st := *p.STPState
+			st.Ports = append([]BridgePortSTP(nil), p.STPState.Ports...)
+			out.STPState = &st
+		}
 	}
 	return resolved{entity: out, prov: *prov}
 }
