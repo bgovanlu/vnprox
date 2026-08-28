@@ -71,7 +71,7 @@ same 1400x900:
 | | before | after |
 |---|---|---|
 | notices | 347px / 39% | **35px / 4%** |
-| the map | 235px / 26% | **570px / 63%** |
+| the map | 235px / 26% | **59%** |
 
 The visible canvas now shows two nodes with their detail chips, the edge between them, the zoom
 controls and the minimap, rather than one node clipped by the fold.
@@ -82,10 +82,19 @@ crowded one would be a bad trade. The collapsed row still names every condition 
 hides detail, never existence — and takes its own tone from the most severe notice present, so it
 cannot make a critical condition look routine.
 
-Deliverable 4's gate is in `visual.spec.ts`: it reads the canvas's rendered bounding box and
-fails below 50% of viewport height. Measured from the box rather than from CSS on purpose — what
-pushed the map down was three siblings above it, none of which appears anywhere in the canvas's
-own styles.
+Deliverable 4's gate is in `visual.spec.ts`: it reads the map container's rendered bounding box
+and fails below 50% of viewport height. **59% is the gate's own measurement**, and it supersedes
+the 63% I first read off the screenshot by eye — the container's box is the authoritative number
+and the pixel estimate was optimistic.
+
+Measured from the box rather than from CSS on purpose: what pushed the map down was three
+siblings above it, none of which appears anywhere in the map container's own styles.
+
+The gate is verified in both directions. Raised to 0.9 it fails with `map is 59% of the
+viewport`; at 0.5 it passes. Its first version selected `topology-canvas-v2` and **timed out
+three times instead of failing**, because that element only exists behind the opt-in v2 renderer
+flag — see T-4305. It now selects the renderer-agnostic `topology-map` wrapper and asserts
+visibility first, so a wrong selector fails in seconds and names itself.
 
 ## Deliverables
 

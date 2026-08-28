@@ -316,13 +316,21 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
       // because the thing that pushed the map down was three siblings above
       // it, none of which appears anywhere in the canvas's own styles. A
       // number, so it cannot regress back into an opinion.
-      const canvasBox = await page.getByTestId("topology-canvas-v2").boundingBox();
+      // `topology-map` is the shared wrapper around whichever renderer is
+      // mounted. The first version of this asked for `topology-canvas-v2`,
+      // which only exists behind the opt-in v2 flag — on the default page it
+      // was never going to appear, and boundingBox() waited out the full
+      // three-minute timeout instead of failing. Assert visibility first so a
+      // wrong selector fails in seconds and says so.
+      const mapLocator = page.getByTestId("topology-map");
+      await expect(mapLocator).toBeVisible({ timeout: 10_000 });
+      const canvasBox = await mapLocator.boundingBox();
       const viewport = page.viewportSize();
-      expect(canvasBox, "topology canvas must be laid out").not.toBeNull();
+      expect(canvasBox, "topology map container must be laid out").not.toBeNull();
       expect(viewport, "visual suite runs at a fixed viewport").not.toBeNull();
       if (canvasBox !== null && viewport !== null) {
         const share = canvasBox.height / viewport.height;
-        expect(share, `canvas is ${String(Math.round(share * 100))}% of the viewport`).toBeGreaterThan(0.5);
+        expect(share, `map is ${String(Math.round(share * 100))}% of the viewport`).toBeGreaterThan(0.5);
       }
 
       const updating = testInfo.config.updateSnapshots !== "none";

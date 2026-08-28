@@ -1481,6 +1481,13 @@ function TopologyPageContent() {
 
       <div
         ref={entityContainerRef}
+        // T-4304's layout gate measures THIS element, not the <canvas>.
+        // Renderer-agnostic on purpose: `topology-canvas-v2` only exists when
+        // a user has opted into the v2 renderer (store.ts's localStorage
+        // flag defaults to v1), so a gate hung off it silently measured
+        // nothing on the default page — it timed out three times rather than
+        // failing, which is the worse of the two ways to be wrong.
+        data-testid="topology-map"
         // `min-h-[22rem]`, not `min-h-0`, and the difference is the whole
         // point. This container is the only `flex-1` child of a fixed-height
         // (`h-full`) column whose other children are banners that grow with
