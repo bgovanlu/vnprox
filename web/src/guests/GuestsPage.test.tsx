@@ -11,6 +11,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { GuestNicRow } from "./guestNics";
 import type { MeResponse, TopologyResponse } from "../api/types";
@@ -50,9 +51,11 @@ function renderPage(): void {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
-      <ToastProvider>
-        <GuestsPage />
-      </ToastProvider>
+      <MemoryRouter>
+        <ToastProvider>
+          <GuestsPage />
+        </ToastProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }

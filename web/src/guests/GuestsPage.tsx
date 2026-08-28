@@ -7,6 +7,7 @@
 // applies directly (docs/api.md: "Ops use the user's ticket via PVE API...",
 // but always behind the changeset apply/confirm flow, never a direct call).
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useSession } from "../api/useSession";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
@@ -20,6 +21,7 @@ import { refId } from "../changesets/opSummary";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { HelpAnchor } from "../help/HelpAnchor";
 import { useTopologyQuery } from "../topology/queries";
+import { guestRefFromNicRef } from "../guest/guestEgo";
 import { filterGuestNicRows, targetLabel, type GuestNicFilter } from "./guestNics";
 import { useAllGuestNicsQuery } from "./queries";
 
@@ -213,6 +215,7 @@ export function GuestsPage() {
                 <TableHead>VLAN</TableHead>
                 <TableHead>Link</TableHead>
                 <TableHead></TableHead>
+                <TableHead></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -246,6 +249,17 @@ export function GuestsPage() {
                           </Button>
                         </span>
                       </Tooltip>
+                    </TableCell>
+                    <TableCell>
+                      {/* T-3906: this guest's whole network story — NICs,
+                          path evaluation, firewall verdict, flows,
+                          findings — on one screen. */}
+                      <Link
+                        to={`/guest?ref=${encodeURIComponent(guestRefFromNicRef(row.ref))}`}
+                        className="text-accent-600 underline hover:no-underline dark:text-accent-400"
+                      >
+                        Guest view
+                      </Link>
                     </TableCell>
                   </TableRow>
                 );
