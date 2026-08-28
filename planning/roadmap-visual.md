@@ -338,7 +338,7 @@ worth a round-trip before implementation starts.
 | Phase | Items | Status |
 |---|---|---|
 | 42 — Design language | T-4201–T-4210 | **in progress** — see below |
-| 43 — Canvas rendering | T-4301–T-4310 | not started |
+| 43 — Canvas rendering | T-4301–T-4310 | not started — but T-4301 is now filed and gates the rest |
 | 44 — Canvas interaction | T-4401–T-4410 | not started |
 | 45 — Telemetry visible | T-4501–T-4510 | not started |
 | 46 — Addressing & segmentation | T-4601–T-4610 | not started |
@@ -398,6 +398,25 @@ Worth noticing *why* it happened: T-4208's card asked for eight primitives and s
 about density, so eight primitives is what it got. The seam was three months old and invisible
 from inside that task. A component-library card should name the seams a new component is
 expected to read, or the library grows a second way of doing everything already solved.
+
+**Phase 42's largest finding is about Phase 43.** Counting hardcoded hex literals after the
+design language landed: **155 in `web/src`, and nearly every one is in `src/topology/`** — 35 in
+`canvasDraw.ts`, 32 in `TopologyCanvasV2.tsx`, 10 in `export.ts`, ~20 across the four semantic
+overlays. Phase 42 re-pointed every Tailwind *utility*; the canvas draws with `ctx.fillStyle`, so
+none of it arrived. Nothing in the app reads a CSS custom property at runtime — `getPropertyValue`
+appears three times in `web/src` and all three are comments explaining that jsdom can't resolve
+them.
+
+So the product's palette, status scale, surface ladder and motion system are all invisible to the
+one screen the product exists for. It is already drifting: `Minimap.tsx` paints its background
+`#0f172a` while `--color-surface-page` is `#0f172b`, chosen independently one digit apart, with
+nothing able to reconcile them. And the per-theme conditional the token layer exists to delete is
+alive there in a form no `dark:` grep will find — `ctx.strokeStyle = dark ? "#3b82f6" : "#2563eb"`.
+The same blue also still ships as the PWA `theme-color` in `index.html` and the web manifest, so
+on a phone the OS chrome is a colour the product abandoned at T-4201.
+
+Filed as **T-4301**, ahead of any drawing work, because every other Phase 43 card would otherwise
+hand-pick its colours again.
 
 **The lesson worth carrying into Phase 43,** because it will recur on the canvas: on this phase's
 palette work the *measurement disagreed with the screen twice*. The amber that satisfied the
