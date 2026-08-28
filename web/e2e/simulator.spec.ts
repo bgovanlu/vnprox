@@ -24,7 +24,7 @@
 import { availableParallelism } from "node:os";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { switchToGraphView } from "./helpers";
+import { switchToGraphView, waitForLayoutSettled } from "./helpers";
 import { coresFactor } from "../perf/budgets";
 import { isolateFile } from "./isolate";
 import { mockURL } from "./shards";
@@ -63,18 +63,14 @@ async function logIn(page: Page): Promise<void> {
 /** Switches to the Graph view (67fff26 landed Switch as the default — see
  * helpers.ts; the main map's node-context-menu "Trace path" actions this
  * file drives are only wired up in Graph view, not Switch) and waits for
- * the async elkjs layout to have spread the nodes out (see
- * topology.spec.ts's identical wait) — only needed before interacting
- * with the *main* topology map (right-click); the simulator's own result
- * panel and its embedded map's "missing link" marker render independently
- * of layout settling, so those assertions don't need this. */
+ * the async elkjs layout to have SETTLED (see helpers.ts's
+ * waitForLayoutSettled — T-3713) — only needed before interacting with the
+ * *main* topology map (right-click); the simulator's own result panel and
+ * its embedded map's "missing link" marker render independently of layout
+ * settling, so those assertions don't need this. */
 async function waitForLayout(page: Page): Promise<void> {
   await switchToGraphView(page);
-  await page.waitForFunction(() => {
-    const nodes = Array.from(document.querySelectorAll(".react-flow__node"));
-    const transforms = new Set(nodes.map((n) => (n instanceof HTMLElement ? n.style.transform : "")));
-    return nodes.length >= 4 && transforms.size > 1;
-  });
+  await waitForLayoutSettled(page, { minNodes: 4 });
 }
 
 /** Types into one endpoint picker's guest-NIC search box and clicks the

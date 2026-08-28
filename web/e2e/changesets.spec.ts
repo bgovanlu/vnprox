@@ -38,7 +38,7 @@
 //   - "Create bond from two NICs via drag" *succeeding*: needs a fixture
 //     with unenslaved NICs; three-node-vlan deliberately has none.
 import { expect, test, type Page } from "@playwright/test";
-import { switchToGraphView } from "./helpers";
+import { switchToGraphView, waitForLayoutSettled } from "./helpers";
 import { isolateFile } from "./isolate";
 import { mockURL } from "./shards";
 
@@ -103,17 +103,13 @@ async function logIn(page: Page, username = "root", password = "vnprox-mock", re
 }
 
 /** Switches to the Graph view (67fff26 landed Switch as the default — see
- * helpers.ts) and waits for the async elkjs layout to have spread the
- * nodes out (see topology.spec.ts's identical wait). Every call site below
- * uses this purely as a "the page has settled" readiness signal, not
+ * helpers.ts) and waits for the async elkjs layout to have SETTLED (see
+ * helpers.ts's waitForLayoutSettled doc comment; T-3713). Every call site
+ * below uses this purely as a "the page has settled" readiness signal, not
  * because the rest of that test drives the canvas directly. */
 async function waitForLayout(page: Page): Promise<void> {
   await switchToGraphView(page);
-  await page.waitForFunction(() => {
-    const nodes = Array.from(document.querySelectorAll(".react-flow__node"));
-    const transforms = new Set(nodes.map((n) => (n instanceof HTMLElement ? n.style.transform : "")));
-    return nodes.length >= 10 && transforms.size > nodes.length / 2;
-  });
+  await waitForLayoutSettled(page, { minNodes: 10, minDivergedFraction: 0.5 });
 }
 
 test("T-207 walkthrough: bridge editor, reload survival, bulk guests, review tabs, apply outcomes", async ({ page }) => {

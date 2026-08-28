@@ -18,7 +18,7 @@
 // exercising the (already covered elsewhere) apply/confirm machinery a
 // second time per task.
 import { expect, test, type Page } from "@playwright/test";
-import { switchToGraphView } from "./helpers";
+import { switchToGraphView, waitForLayoutSettled } from "./helpers";
 
 async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -54,11 +54,9 @@ async function waitForLayout(page: Page): Promise<void> {
   // 67fff26 landed Switch, not Graph, as /topology's default view (see
   // helpers.ts) — .react-flow__node only exists once Graph is selected.
   await switchToGraphView(page);
-  await page.waitForFunction(() => {
-    const nodes = Array.from(document.querySelectorAll(".react-flow__node"));
-    const transforms = new Set(nodes.map((n) => (n instanceof HTMLElement ? n.style.transform : "")));
-    return nodes.length >= 4 && transforms.size > 1;
-  });
+  // T-3713: waits for layout to have SETTLED, not merely started — see
+  // helpers.ts's waitForLayoutSettled doc comment.
+  await waitForLayoutSettled(page, { minNodes: 4 });
 }
 
 // --- "Create a LACP bond from two NICs" (New -> Bond form) -----------------

@@ -16,7 +16,7 @@
 //       shaped exactly like a real two-node group; AC3 above exercises the
 //       real backend end to end for the single-point case.
 import { expect, test, type Page } from "@playwright/test";
-import { switchToGraphView } from "./helpers";
+import { switchToGraphView, waitForLayoutSettled } from "./helpers";
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");
@@ -27,16 +27,12 @@ async function logIn(page: Page): Promise<void> {
   await page.waitForURL("**/topology");
 }
 
-/** switchToGraphView + wait for elkjs to have spread nodes out — the map's
- * right-click menu is only wired up in Graph view (see helpers.ts and
- * simulator.spec.ts's identical wait, which this mirrors). */
+/** switchToGraphView + wait for elkjs's layout to have SETTLED — the map's
+ * right-click menu is only wired up in Graph view (see helpers.ts's
+ * waitForLayoutSettled doc comment; T-3713). */
 async function waitForLayout(page: Page): Promise<void> {
   await switchToGraphView(page);
-  await page.waitForFunction(() => {
-    const nodes = Array.from(document.querySelectorAll(".react-flow__node"));
-    const transforms = new Set(nodes.map((n) => (n instanceof HTMLElement ? n.style.transform : "")));
-    return nodes.length >= 4 && transforms.size > 1;
-  });
+  await waitForLayoutSettled(page, { minNodes: 4 });
 }
 
 /** Right-clicks a map node and picks a context-menu action, retrying the

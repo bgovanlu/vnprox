@@ -45,7 +45,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import * as os from "node:os";
 import * as path from "node:path";
-import { switchToGraphView } from "./helpers";
+import { switchToGraphView, waitForLayoutSettled } from "./helpers";
 
 const AUDITOR_STORAGE_STATE = path.join(os.tmpdir(), `vnprox-e2e-auditor-storage-state-${String(process.pid)}.json`);
 
@@ -120,19 +120,15 @@ async function assertNoEnabledMutatingControls(page: Page, routeLabel: string): 
 }
 
 /** Switches to the Graph view (67fff26 landed Switch as the default — see
- * helpers.ts) and waits for the async elkjs layout to have spread the
- * nodes out — same wait topology.spec.ts/changesets.spec.ts use; a bare
+ * helpers.ts) and waits for the async elkjs layout to have SETTLED (see
+ * helpers.ts's waitForLayoutSettled doc comment; T-3713) — a bare
  * `.react-flow__node` selector match happens before elkjs has positioned
  * anything, so `:visible`-style waits on it are unreliable. Used purely as
  * a "the page has settled" readiness signal for this crawl's <main> button
  * scan, not because the scan cares which view is showing. */
 async function waitForTopologyLayout(page: Page): Promise<void> {
   await switchToGraphView(page);
-  await page.waitForFunction(() => {
-    const nodes = Array.from(document.querySelectorAll(".react-flow__node"));
-    const transforms = new Set(nodes.map((n) => (n instanceof HTMLElement ? n.style.transform : "")));
-    return nodes.length >= 10 && transforms.size > nodes.length / 2;
-  });
+  await waitForLayoutSettled(page, { minNodes: 10, minDivergedFraction: 0.5 });
 }
 
 const ROUTES: { path: string; label: string; ready: (page: Page) => Promise<unknown> }[] = [

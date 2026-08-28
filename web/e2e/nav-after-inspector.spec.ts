@@ -31,6 +31,7 @@
 //     regression into a silent skip, which is the same failure wearing a
 //     different hat.
 import { expect, test, type Page } from "@playwright/test";
+import { waitForLayoutSettled } from "./helpers";
 
 async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -111,18 +112,14 @@ test("nav-rail still navigates after the inspector is opened and dismissed", asy
 });
 
 /** Switches to the Graph view and waits for the async elkjs layout to have
- * actually spread the nodes out — the same readiness signal topology.spec.ts
- * uses. Mounting React Flow is the real precondition for this bug, so a spec
- * that clicks "Graph" and navigates immediately could pass without ever
- * having reproduced it. */
+ * SETTLED — the same readiness signal topology.spec.ts uses (helpers.ts's
+ * waitForLayoutSettled — T-3713). Mounting React Flow is the real
+ * precondition for this bug, so a spec that clicks "Graph" and navigates
+ * immediately could pass without ever having reproduced it. */
 async function waitForGraphLayout(page: Page): Promise<void> {
   await page.getByRole("radio", { name: "Graph" }).click();
   await expect(page.locator(".react-flow")).toBeVisible();
-  await page.waitForFunction(() => {
-    const nodes = Array.from(document.querySelectorAll(".react-flow__node"));
-    const transforms = new Set(nodes.map((n) => (n instanceof HTMLElement ? n.style.transform : "")));
-    return nodes.length >= 10 && transforms.size > nodes.length / 2;
-  });
+  await waitForLayoutSettled(page, { minNodes: 10, minDivergedFraction: 0.5 });
 }
 
 test("nav-rail still navigates once the Graph view is mounted, with no inspector involved", async ({ page }) => {

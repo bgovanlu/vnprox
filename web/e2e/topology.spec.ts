@@ -15,7 +15,7 @@
 // a different machine, and treat the committed baseline as this repo's
 // reference environment, not a universal truth.
 import { expect, test, type Page } from "@playwright/test";
-import { switchToGraphView } from "./helpers";
+import { switchToGraphView, waitForLayoutSettled } from "./helpers";
 
 // T-605: a fresh-DB first login (every run here, per the shared webServer
 // command's own doc comment) shows the onboarding walkthrough banner
@@ -176,14 +176,11 @@ test("all four layer bands render on /topology against the real backend", async 
 
   // React Flow's `fitView` prop fits the viewport on mount — before the
   // async elkjs layout has positioned the nodes (they briefly stack at the
-  // origin) — so wait for the layout to have spread the nodes out, then
-  // refit explicitly, or the screenshot captures a mostly-empty corner of
-  // the canvas.
-  await page.waitForFunction(() => {
-    const nodes = Array.from(document.querySelectorAll(".react-flow__node"));
-    const transforms = new Set(nodes.map((n) => (n instanceof HTMLElement ? n.style.transform : "")));
-    return nodes.length >= 10 && transforms.size > nodes.length / 2;
-  });
+  // origin) — so wait for the layout to have SETTLED (helpers.ts's
+  // waitForLayoutSettled — T-3713), then refit explicitly, or the
+  // screenshot captures a mostly-empty corner of the canvas, or one
+  // mid-animation.
+  await waitForLayoutSettled(page, { minNodes: 10, minDivergedFraction: 0.5 });
   await page.getByRole("button", { name: "fit view" }).click();
   // Let the viewport transition settle before pixel-comparing. (T-605:
   // bumped from 800ms — under the load of this repo's now-larger e2e

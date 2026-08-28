@@ -21,6 +21,8 @@ import { expect, test, type Page } from "@playwright/test";
 import * as os from "node:os";
 import * as path from "node:path";
 
+import { waitForLayoutSettled } from "./helpers";
+
 const DEMO_URL = "https://127.0.0.1:24007";
 
 test.use({ baseURL: DEMO_URL });
@@ -66,14 +68,10 @@ test.describe("T-2801 demo mode", () => {
     await page.goto("/topology");
     await page.getByRole("radio", { name: "Graph" }).click();
     // elkjs lays the graph out asynchronously; a bare node-count check can
-    // pass against a pile of nodes stacked at the origin. Wait for them to
-    // have been spread out, exactly as topology.spec.ts and
-    // readonly-crawl.spec.ts do.
-    await page.waitForFunction(() => {
-      const nodes = Array.from(document.querySelectorAll(".react-flow__node"));
-      const transforms = new Set(nodes.map((n) => (n instanceof HTMLElement ? n.style.transform : "")));
-      return nodes.length >= 10 && transforms.size > nodes.length / 2;
-    });
+    // pass against a pile of nodes stacked at the origin. Wait for layout
+    // to have SETTLED, exactly as topology.spec.ts and readonly-crawl.spec.ts
+    // do (helpers.ts's waitForLayoutSettled — T-3713).
+    await waitForLayoutSettled(page, { minNodes: 10, minDivergedFraction: 0.5 });
 
     // All three synthetic nodes, not just the one the daemon calls local.
     // A demo daemon has no peers (peer fan-out would dial the fixture's own
