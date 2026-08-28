@@ -45,6 +45,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/presence"
 	"github.com/bgovanlu/vnprox/internal/push"
 	"github.com/bgovanlu/vnprox/internal/reconcile"
+	"github.com/bgovanlu/vnprox/internal/route"
 	"github.com/bgovanlu/vnprox/internal/sdn"
 	"github.com/bgovanlu/vnprox/internal/store"
 	"github.com/bgovanlu/vnprox/internal/tenant"
@@ -1358,8 +1359,14 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		replicationSink = ha.NewReceiveSink(haMgr)
 	}
 	peerSrv := peer.NewServer(peer.ServerOptions{
-		Secrets:   peerSecrets,
-		Reader:    realHost,
+		Secrets: peerSecrets,
+		Reader:  realHost,
+		// T-3903: realHost's six route-explorer fetch methods
+		// (internal/host/route.go) already satisfy peer.RouteReader
+		// structurally — no separate adapter needed, the same
+		// "small interface, real type satisfies it" pattern LLDPInstaller
+		// below reuses realHost for too.
+		Route:     realHost,
 		Writer:    nodeAgent,
 		Audit:     auditPeerAdapter{auditRepo},
 		Snapshots: snapshotPeerAdapter{changeSvc},
@@ -1400,6 +1407,9 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// peerConntrack backs GET /conntrack's cluster fan-out (T-1305), the
 	// same peerClient every other cluster-wide read route above uses.
 	var peerConntrack api.PeerConntrackSource
+	// peerMDB backs GET /mdb's cluster fan-out (T-3902), the same
+	// peerClient every other cluster-wide read route above uses.
+	var peerMDB api.PeerMDBSource
 	if peerClient != nil {
 		peerAudit = peerClient
 		peerSnapshots = peerClient
@@ -1408,6 +1418,7 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		peerFlows = peerClient
 		guestInteriorPeers = peerClient
 		peerConntrack = peerClient
+		peerMDB = peerClient
 	}
 
 	// T-404: GET /sdn/evpn/status fans FRR/BGP state across the cluster
@@ -1433,6 +1444,23 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		Peers:     evpnPeers,
 		LocalNode: localNode,
 		SDN:       evpnSDN,
+	})
+
+	// T-3903: the route explorer's cluster-aware Service, same
+	// realHost/peerClient/localNode dependencies and typed-nil-safety
+	// reasoning as evpnSvc/ipv6Svc above. realHost satisfies
+	// route.Fetcher directly (internal/host/route.go); peerClient
+	// satisfies route.PeerSource directly (internal/peer/client.go's
+	// RouteTableV4/V6, RouteRulesV4/V6, FRRRIBV4/V6).
+	var routePeers route.PeerSource
+	if peerClient != nil {
+		routePeers = peerClient
+	}
+	routeSvc := route.NewService(route.Config{
+		Host:      realHost,
+		Peers:     routePeers,
+		LocalNode: localNode,
+		Logger:    logger,
 	})
 
 	// T-1404: GET /ipv6/segments fans IPv6 RA/DHCPv6 observations across
@@ -1640,6 +1668,7 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		IPAMExternal:      ipamExternalSvc,
 		IPAMExternalAudit: auditRepo,
 		EVPN:              evpnSvc,
+		Route:             routeSvc,
 		IPv6:              ipv6Svc,
 		DHCP:              dhcpAPISvc,
 		PVEGateways:       pveGatewayProvider{authSvc},
@@ -1722,6 +1751,8 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		Conntrack:           realHost,
 		PeerConntrack:       peerConntrack,
 		ConntrackGuests:     conntrackGuests,
+		MDB:                 realHost,
+		PeerMDB:             peerMDB,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see
@@ -1735,6 +1766,10 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		// unparsable by this build.
 		Compliance: setupCompliance(findingsEngine, findingAcks, findingEventRepo, postureRead, changeSvc, version, logger),
 		Plugins:    pluginRegistry,
+		// T-3911: the composable dashboard's plugin-tile seam. pluginRegistry
+		// already satisfies DashboardTileService (its DashboardTiles method),
+		// the same registry every other plugin-facing route above reuses.
+		DashboardTiles: pluginRegistry,
 		// T-1705: Blueprint & plugin hub. HubClient nil (no [hub] registry_url)
 		// skips the routes; PluginInstaller reuses pluginRegistry above so a hub
 		// plugin install goes through T-1702's capability-scoped registry.

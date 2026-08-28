@@ -1,27 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Home dashboard (T-904, docs/features/monitoring.md §1/§3/§5,
-// docs/features/topology.md §3): a network-at-a-glance landing page built
-// entirely on routes that already exist (findings, changesets,
-// protected-interfaces/status, metrics/live, audit) — zero new backend
-// surface, read-only throughout (no tile's query code issues a mutating
-// request; see this task's own report for the grep confirming it). Every
-// tile deep-links to its owning page/surface (AC3), and every tile has an
-// explicit "all clear"/empty state rather than ever rendering blank
-// (AC4) — see DashboardTile.tsx's shared shell for that contract.
-//
-// ServiceClassTile (T-1504) extends this set: per-serviceClass bytes/sec
-// breakdown over GET /flows' retained window (migration/backup/Ceph/
-// corosync attribution) — same "existing route, client-side computation"
-// convention every other tile here follows.
+// docs/features/topology.md §3; T-3911 made it composable). A
+// network-at-a-glance landing page: seven built-in tiles
+// (findings/drift/changesets/mgmt-redundancy/top-talkers/service-class/
+// audit, each built entirely on routes that already existed pre-T-3911 —
+// zero new backend surface for any of them) plus whatever `dashboardTile`
+// plugins are installed, composed through one per-user, add/remove/
+// reorder-able grid (DashboardGrid.tsx) rather than the fixed layout this
+// page used to hardcode. Every tile still deep-links to its owning
+// page/surface (AC3) and still has an explicit "all clear"/empty state
+// rather than ever rendering blank (AC4) — see DashboardTile.tsx's shared
+// shell for that contract, which every tile kind (built-in, plugin,
+// unavailable-placeholder) now renders through identically.
 import { PageHeader } from "../components/PageHeader";
-import { FindingsSeverityTile } from "./FindingsSeverityTile";
-import { DriftStatusTile } from "./DriftStatusTile";
-import { PendingChangesetsTile } from "./PendingChangesetsTile";
-import { MgmtRedundancyTile } from "./MgmtRedundancyTile";
-import { TopTalkersTile } from "./TopTalkersTile";
-import { ServiceClassTile } from "./ServiceClassTile";
-import { RecentAuditTile } from "./RecentAuditTile";
+import { DashboardGrid } from "./DashboardGrid";
 
 export function DashboardPage() {
   return (
@@ -29,18 +22,11 @@ export function DashboardPage() {
       <PageHeader
         title="Home"
         description="Network at a glance: open findings, drift, pending changesets, management-path redundancy, the busiest
-          bridge's top talkers, service-network traffic, and recent audit activity. Every tile is read-only —
-          click through to act."
+          bridge's top talkers, service-network traffic, recent audit activity, and any dashboard tiles your
+          installed plugins contribute. Every tile is read-only — click through to act. Add, remove, and
+          reorder tiles with the controls above and beside each one."
       />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <FindingsSeverityTile />
-        <DriftStatusTile />
-        <PendingChangesetsTile />
-        <MgmtRedundancyTile />
-        <TopTalkersTile />
-        <ServiceClassTile />
-        <RecentAuditTile />
-      </div>
+      <DashboardGrid />
     </div>
   );
 }

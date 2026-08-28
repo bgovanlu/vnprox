@@ -2,8 +2,9 @@
 
 // T-3402: replaces NavRail.test.tsx (retired alongside NavRail.tsx). Keeps
 // AC1's "Home entry highlights when active" case (NavRail.test.tsx's own
-// origin, T-904) and adds this task's own acceptance criteria: all 21
-// routes render exactly once, active-route auto-expand, collapse state
+// origin, T-904) and adds this task's own acceptance criteria: every
+// routed nav entry (22 as of T-3903's "Route explorer" addition) renders
+// exactly once, active-route auto-expand, collapse state
 // round-tripping through localStorage (the store's own persistence is
 // covered in isolation by sidebarGroupsStore.test.ts; this file covers the
 // store <-> rendered-UI wiring), the findings badge, and the narrow-
@@ -29,7 +30,7 @@ vi.mock("../api/findings", () => ({
  * file checks the rendered sidebar against, independent of Sidebar.tsx's
  * own internal shape. */
 const FLAT_LABELS = ["Home", "Topology", "Guests", "Management"];
-const NETWORK_LABELS = ["SDN", "Firewall", "IPAM", "Ports", "Edge", "Flows", "Conntrack"];
+const NETWORK_LABELS = ["SDN", "Firewall", "IPAM", "Ports", "Edge", "Route explorer", "Flows", "Conntrack"];
 const OPERATE_LABELS = ["History", "Incidents", "Audit", "Analysis", "Tools"];
 const AUTOMATE_LABELS = ["Config as code", "Governance", "Blueprints", "Hub"];
 const ALL_LABELS = [...FLAT_LABELS, ...NETWORK_LABELS, ...OPERATE_LABELS, ...AUTOMATE_LABELS, "Settings"];
@@ -73,12 +74,12 @@ afterEach(() => {
 });
 
 describe("Sidebar — route inventory", () => {
-  it("renders all 21 routes exactly once, at full (non-narrow) width", () => {
+  it("renders every routed nav entry exactly once, at full (non-narrow) width", () => {
     renderAt("/");
     for (const label of ALL_LABELS) {
       expect(screen.getAllByRole("link", { name: label })).toHaveLength(1);
     }
-    expect(screen.getAllByRole("link")).toHaveLength(21);
+    expect(screen.getAllByRole("link")).toHaveLength(ALL_LABELS.length);
   });
 
   it("groups the routes exactly as the card specifies", () => {

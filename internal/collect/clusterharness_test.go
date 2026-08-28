@@ -140,6 +140,13 @@ func (r nodeRestrictedReader) Conntrack(ctx context.Context, node string) ([]hos
 	return r.inner.Conntrack(ctx, node)
 }
 
+func (r nodeRestrictedReader) MDB(ctx context.Context, node string) ([]byte, error) {
+	if node != r.node {
+		return nil, host.ErrNotFound
+	}
+	return r.inner.MDB(ctx, node)
+}
+
 func (r nodeRestrictedReader) IPv6RA(ctx context.Context, node string) ([]host.IPv6RAObservation, error) {
 	if node != r.node {
 		return nil, host.ErrNotFound

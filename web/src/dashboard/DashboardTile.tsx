@@ -32,9 +32,13 @@ export interface DashboardTileProps {
    * Not every "owning page" is a router route — the pending-changesets
    * tile opens the global changeset drawer instead (see
    * PendingChangesetsTile.tsx's doc comment) — so this is a plain
-   * callback, not a `to` href. */
-  onOpen: () => void;
-  openLabel: string;
+   * callback, not a `to` href. Every built-in tile passes both this and
+   * `openLabel`; both are optional (T-3911) only because a plugin-provided
+   * tile's `Link` field (docs/plugins/dashboard-tile.md) is itself
+   * optional — a tile with genuinely nothing to deep-link to renders with
+   * no open button at all, never a button wired to nothing. */
+  onOpen?: () => void;
+  openLabel?: string;
   children?: ReactNode;
 }
 
@@ -62,13 +66,15 @@ export function DashboardTile({
           </h2>
           {description ? <p className="text-xs text-slate-500 dark:text-slate-400">{description}</p> : null}
         </div>
-        <button
-          type="button"
-          onClick={onOpen}
-          className="shrink-0 text-xs font-medium text-accent-600 underline hover:no-underline dark:text-accent-400"
-        >
-          {openLabel}
-        </button>
+        {onOpen && openLabel ? (
+          <button
+            type="button"
+            onClick={onOpen}
+            className="shrink-0 text-xs font-medium text-accent-600 underline hover:no-underline dark:text-accent-400"
+          >
+            {openLabel}
+          </button>
+        ) : null}
       </div>
       <div className="min-h-[3rem]">
         {isLoading ? (

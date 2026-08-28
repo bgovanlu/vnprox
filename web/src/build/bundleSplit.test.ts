@@ -128,7 +128,22 @@ describe("production bundle: Monaco code-split (T-208 AC4)", () => {
         // case this ceiling exists to catch — checked and confirmed
         // intentional rather than stray. Measured: 4_111_142, i.e. 0.27%
         // over the old ceiling.
-        expect(mainSize).toBeLessThan(4_200_000);
+        //
+        // Phase 39's first batch raised it again, from 4_200_000 to
+        // 4_300_000. Unlike T-3106's raise, `git diff web/package.json` IS
+        // empty this time — no new runtime dependency, so this is the benign
+        // half of what this ceiling exists to distinguish. The growth is four
+        // cards' worth of first-party page code, all eagerly imported because
+        // `web/src/App.tsx` code-splits no page (there is not one `lazy(` in
+        // it; Monaco is the sole split, asserted below): T-3903's route
+        // explorer page and next-hop graph, T-3911's composable dashboard
+        // grid and tile registry, T-3902's multicast/MDB browser, T-3901's
+        // STP overlay, plus their help topics and API types. Measured:
+        // 4_200_548 — 0.013% over the old ceiling, i.e. 548 bytes, which is
+        // what a hair's-breadth overshoot rather than a regression looks
+        // like. If a future raise finds package.json non-empty again, check
+        // the new dependency is intended before moving this number.
+        expect(mainSize).toBeLessThan(4_300_000);
 
         // The load-bearing check: Monaco's own distinctive runtime marker
         // must appear in the Monaco chunk and must NOT appear in the main

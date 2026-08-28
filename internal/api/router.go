@@ -133,6 +133,7 @@ type Options struct {
 	IngressSecretCipher   SecretCipher
 	IngressDiscoverers    ingress.IngressDiscoverer
 	EVPN                  EVPNService
+	Route                 RouteService
 	DHCP                  DHCPService
 	IPv6                  IPv6Service
 	Metrics               MetricsService
@@ -184,13 +185,23 @@ type Options struct {
 	Conntrack            ConntrackLocalSource
 	PeerConntrack        PeerConntrackSource
 	ConntrackGuests      ConntrackGuestResolver
-	TenantStore          TenantAdminStore
-	DocExport            DocExportService
-	Capacity             CapacityService
-	Posture              PostureService
+	// MDB/PeerMDB (T-3902) back GET /mdb: the bridge multicast/MDB
+	// browser's live cluster fan-out, the same local/peer seam shape
+	// Conntrack/PeerConntrack use above.
+	MDB         MDBLocalSource
+	PeerMDB     PeerMDBSource
+	TenantStore TenantAdminStore
+	DocExport   DocExportService
+	Capacity    CapacityService
+	Posture     PostureService
 	// Compliance (T-2706) backs the read-only compliance profile/report surface
-	Compliance        ComplianceService
-	Plugins           PluginService
+	Compliance ComplianceService
+	Plugins    PluginService
+	// DashboardTiles (T-3911) backs GET /dashboard/tiles: every enabled
+	// dashboardTile plugin's current tiles, for the home dashboard's
+	// composable tile grid. Nil leaves the route unmounted; the frontend's
+	// own built-in-only default layout still renders.
+	DashboardTiles    DashboardTileService
 	HubClient         HubClient
 	HubVetting        HubVetting
 	PluginInstaller   PluginInstaller
@@ -405,6 +416,7 @@ func NewRouter(opts Options) http.Handler {
 		mountEdgeRoutes(r, opts.EdgeInterfaces, opts.SDN, opts.EdgeGraph, opts.EdgeIPAM, opts.Auth)
 		mountIngressRoutes(r, opts.IngressTargets, opts.IngressSecretCipher, opts.IngressDiscoverers, opts.EdgeInterfaces, opts.EdgeGraph, opts.EdgeIPAM, opts.TokenAudit, opts.Auth)
 		mountEVPNRoutes(r, opts.EVPN, opts.Auth)
+		mountRouteRoutes(r, opts.Route, opts.Auth)
 		mountIPv6Routes(r, opts.IPv6, opts.Auth)
 		mountDHCPRoutes(r, opts.DHCP, opts.Auth)
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
@@ -426,6 +438,7 @@ func NewRouter(opts Options) http.Handler {
 		mountWanRoutes(r, opts.Wan, opts.Findings, opts.LocalNode, opts.WanAudit, opts.Auth)
 		mountCaptureRoutes(r, opts.Captures, opts.Auth)
 		mountConntrackRoutes(r, opts.Conntrack, opts.PeerConntrack, opts.ConntrackGuests, opts.LocalNode, opts.Auth)
+		mountMDBRoutes(r, opts.MDB, opts.PeerMDB, opts.LocalNode, opts.Auth)
 		mountDiagnoseRoutes(r, opts, opts.Auth)
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows, opts.FlowClassifier, scopeMW)
 		mountTenantRoutes(r, opts.TenantStore, opts.Tenant, opts.Changesets, opts.TenantNotifier, opts.Auth)
@@ -434,6 +447,7 @@ func NewRouter(opts Options) http.Handler {
 		mountPostureRoutes(r, opts.Posture, opts.Auth)
 		mountComplianceRoutes(r, opts.Compliance, opts.Auth)
 		mountPluginRoutes(r, opts.Plugins, opts.Auth)
+		mountDashboardRoutes(r, opts.DashboardTiles, opts.Auth)
 		mountHubRoutes(r, opts.HubClient, opts.HubVetting, opts.Blueprints, opts.BlueprintTrust, opts.PluginInstaller, opts.BlueprintSignersAudit, opts.Auth, opts.HubTrustUnsigned)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 		mountCollectorRefreshRoutes(r, opts.CollectorRefresher, opts.CollectorAudit, opts.Auth, nil)

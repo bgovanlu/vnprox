@@ -963,6 +963,134 @@ Every filter param is optional and ANDed together, mirroring `GET /flows`'/`GET 
 
 A live (polling-refreshed, no dedicated WS event — a point-in-time kernel read has no natural delta shape to push) table with the same filter-control shape `web/src/flows/FlowExplorer.tsx` established, showing state/timeout/NAT-translation columns. Reachable from the map's right-click menu (on a bridge/bond/guest-NIC/SDN-VNet entity — node-scoped via that entity's own node, since a flow conversation's resolved endpoints are never conntrack-matchable IPs or guest refs, `GET /flows`' own documented "never guessed" gap) and from the Flow Explorer's guest-pair drill-down panel (`topology/FlowPairPanel.tsx`'s "View live connections" link, alongside its existing "View in Flow Explorer" link — also node-scoped, for the same reason).
 
+## Multicast / MDB
+
+Added by T-3902 (`internal/api/mdb.go`): a **live**, per-node bridge multicast-forwarding-database (MDB) read, cluster-fanned-out and filtered — the sibling of `GET /conntrack`'s live fan-out shape, not `GET /fdb`'s inventory-backed one. Unlike FDB (embedded in `Links()`' `BridgeDetail` via netlink and served off the collected inventory graph), there is no MDB dump anywhere in `github.com/vishvananda/netlink` v1.3.1 and nothing in `internal/collect` ingests MDB state into inventory, so this route re-reads every node's live `bridge -d -j mdb show` output fresh on every request, exactly like `GET /conntrack` does for the live conntrack table. Read-only: no mutation route exists for an MDB entry anywhere in this API surface (no add/delete, no changeset op) — `internal/host/mdb.go`'s `ParseMDB` is a pure parser with no corresponding write path.
+
+**Evidence-grounded, not documentation-modeled**: the wire shape and every field/value this section documents is grounded in `planning/reports/evidence/pve-9.2.4-bridge-mdb-2026-08-27.txt`, captured read-only against a real PVE 9.2.4 host. That host's MDB table was **not** empty (four real entries, all IPv6 mDNS `ff02::fb`, `state=temp`, `protocol=kernel`) — useful grounding, but narrow: no `permanent` entry, no IPv4 group, no VLAN-tagged row, and no populated `router` map were observed. Most individual bridges on that same host (`vmbr1`, `vmbr3`, `vmbr99`) had **no** MDB rows at all — the empty-table response shape below is exercised directly, not guessed, since it is the state most bridges are actually in.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/mdb?node=&group=` | live, cluster-wide bridge MDB read |
+
+Requires the `netRead` capability, the same gate every other live-network-observability read route (`GET /conntrack`, `GET /flows`, `GET /firewall/log`) uses.
+
+**Response**: `{entries: [MDBEntry], bridges: [MDBBridge], partial?, failedNodes?}`. `partial`/`failedNodes` name any node (local or peer) whose live MDB read or Links read failed this request; every other node's contribution is still returned — a single unreachable node degrades only its own entries/bridges, never the whole response, mirroring `GET /conntrack`'s `partial`/`failedNodes` contract exactly. Unlike `GET /conntrack`, there is no `unavailableNodes` split: the `bridge` binary being missing is treated as an ordinary read failure (folded into `failedNodes`), not a distinct/expected degraded state the way "no FRR installed" is for the FRR routes — iproute2 ships on every Debian/PVE install, so its absence is an anomaly worth investigating, not a documented common case.
+
+**`MDBEntry`**: `{node, bridge, group, port?, state?, protocol?, vlan?}`. `node`/`bridge` are which node/bridge this entry was observed on. `group` is the multicast group address (IPv4 `224.0.0.0/4` or IPv6 `ff00::/8` — the evidence host's only observed entries were IPv6 mDNS). `state` is the entry's origin as `bridge` itself reports it — `"temp"` (dynamically learned via IGMP/MLD snooping, ages out) or `"permanent"` (statically added; never observed on the evidence host, taken from `bridge`'s own documented vocabulary). `protocol` is the originating protocol (`"kernel"` for snooping-learned entries — the only value observed; a PIM/mrouted-injected static entry would show something else, unverified against real output). `vlan` is present only for a VLAN-tagged entry (the evidence host's bridges are not VLAN-filtering, so this field's exact JSON key on real output remains unverified — the parser tolerates either `vid` or `vlan`, documented as a defensive guess in `internal/host/mdb.go`, not a confirmed fact).
+
+**`MDBBridge`**: `{node, bridge, snooping, querier, routerMode}` — one bridge's IGMP/MLD-snooping configuration, sourced from the same `Links()` read every other bridge-detail route already uses (`BridgeDetail.MulticastSnooping`/`MulticastQuerier`/`MulticastRouterMode`, T-3902). `snooping`/`querier` are booleans; `routerMode` is the kernel's raw `multicast_router` sysfs value (`0`=never, `1`=learn/auto-detect via snooping — the only value observed on the evidence host, `2`=permanently enabled — `0`/`2` are unverified against real output). A bridge present in `entries` but absent from `bridges` (or vice versa) is possible and not an error — the two lists come from independent reads (`bridge -d -j mdb show` vs. `Links()`).
+
+Every filter param is optional and ANDed together, mirroring `GET /conntrack`'s convention. `node` matches the entry's/bridge's own `node` field exactly. `group` substring-matches case-insensitively against `group`.
+
+`GET /mdb` fans out to every reachable cluster peer via `GET /api/peer/host/mdb` (below) plus the existing `GET /api/peer/host/links` and merges, following the `GET /conntrack` `partial`/`failedNodes` convention.
+
+### Multicast/MDB browser (`web/src/tools/MulticastMdbBrowser.tsx`, T-3902)
+
+A cluster-wide table sibling to the MAC/FDB browser (`web/src/tools/MacFdbBrowser.tsx`), listing every reachable node's MDB entries the same way FDB entries are listed (Node/Bridge/Group/Port/VLAN/State columns) with an optional group search box, plus a per-bridge snooping/querier/router-mode summary. Lives on the Tools page (`ToolsPage.tsx`) next to the MAC/FDB browser. Read-only — no add/delete affordance anywhere in the UI, matching this section's API-level contract.
+
+## Route explorer
+
+Added by T-3903 (`internal/api/route.go`, `internal/route`): a node's kernel FIB (every routing table, v4
+and v6), policy-routing rules, and — when the node runs FRR — its RIB, plus a "which path would this
+address take" lookup. **This is not `POST /simulate/path`** (the Simulate section above): `internal/sim`'s
+`l3Path` explicitly declines to evaluate routing once a flow leaves vnprox's own inventory model — two
+endpoints that don't both resolve to on-fabric subnets — emitting a `FeatureExternalRouting` caveat
+because "routing decisions... depend on host/upstream routing tables not carried in the inventory
+snapshot... honestly not evaluated rather than guessed" (`internal/sim/l3.go`). `GET /route/lookup` is
+exactly that declined capability: it reads a node's *actual* kernel/FRR routing state directly, for any
+destination, on-fabric or not — the two surfaces answer different questions and are cross-linked in code
+comments, not merged. Read-only throughout: no route in this section stages, validates, or applies
+anything.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/route/nodes` | every node a Snapshot/Lookup call can currently target |
+| GET | `/route/snapshot?node=` | one node's full FIB + policy rules + FRR RIB |
+| GET | `/route/lookup?node=&dst=&iface=` | which path traffic to `dst` would take from `node` |
+
+Requires the `netRead` capability, the same gate every other live-network-observability read route
+(`GET /conntrack`, `GET /mdb`, `GET /flows`) uses.
+
+**Evidence-grounded, not documentation-modeled**: the wire shape this section documents (and
+`internal/route`'s parsers) is grounded in `planning/reports/evidence/pve-9.2.4-routing-2026-08-28.txt`,
+captured read-only against a real PVE 9.2.4 host (`ip -j route show table all`, `ip -j -6 route show
+table all`, `ip -j rule show`, `ip -j -6 rule show`, `vtysh -c "show ip route json"`, `vtysh -c "show
+ipv6 route json"`). That host ran FRR 10.6.1 with no SDN zones/VRFs configured, so its RIB mirrored the
+kernel FIB exactly (no BGP-learned routes observed this run) — `internal/route`'s FRR RIB parser stays
+tolerant of both the plain and `vrf all`-wrapped shapes FRR is documented to produce (see the evidence
+file's own notes) even though only the plain, default-VRF shape was exercised against a live host.
+
+**`GET /route/nodes` response**: `{nodes: [string]}` — the local node (if the PVE poller has identified
+it yet) plus every currently-reachable peer, sorted. Never errors; an unreachable peer is simply absent
+from the list (the same silent-degrade posture `internal/neighbor`/`internal/evpn` already take for peer
+discovery failures elsewhere in this API).
+
+**`GET /route/snapshot` response**: `{node, fib: [FIBRoute], rules: [PolicyRule], rib?: [RIBRoute],
+frrUnavailable}`. `node` defaults to the local node when `?node=` is omitted. `404 not_found` when `node`
+names neither the local node nor a currently-known peer; `503 pve_unreachable` when the kernel FIB/rule
+read itself fails (there is no documented "the kernel has no routing table" degraded case, unlike FRR).
+
+- `FIBRoute`: `{afi, table, type, dst, gateway?, dev, protocol?, scope?, prefSrc?, pref?, metric?}`.
+  `afi` is `"ipv4"`\|`"ipv6"`. `table` is `"main"`, `"local"`, `"default"`, or a named/numbered custom
+  policy-routing table. `type` is `"unicast"` (the default), `"local"`, `"broadcast"`, `"anycast"`,
+  `"multicast"`, `"blackhole"`, `"unreachable"`, `"prohibit"`, or `"throw"`. `dst` is always a normalized
+  CIDR — iproute2's `"default"` keyword becomes `"0.0.0.0/0"`/`"::/0"`, and a bare host address (every
+  `"local"`-table entry) is given the family's full prefix length (`/32`/`/128`). `pref` (IPv6's RFC 4191
+  route preference) is present only on `afi: "ipv6"` entries.
+- `PolicyRule`: `{afi, src, table, priority}`. `src` is almost always `"all"` — the stock rule set every
+  node in the evidence transcript carries (no VRF-lite/policy routing observed on either lab node).
+- `RIBRoute` (present only when `frrUnavailable` is `false`): `{afi, vrf, prefix, protocol, uptime?,
+  nexthops: [RIBNextHop], distance?, metric?, selected?, installed?}`. `vrf` is `"default"` for every
+  node this project has observed (no VRF-lite zones deployed); `protocol` is FRR's own vocabulary
+  (`"connected"`, `"local"`, `"kernel"`, `"static"`, `"bgp"`, ...), distinct from `FIBRoute.protocol`'s
+  kernel vocabulary. `selected`/`installed` distinguish "the route FRR chose" from a candidate it knows
+  about but didn't install (FRR can hold more than one candidate route per prefix).
+  `RIBNextHop`: `{ip?, interface, directlyConnected?, active, fib, weight?}`.
+- `frrUnavailable` mirrors `internal/host.ErrFRRUnavailable`: `true` means the node runs no FRR at all (no
+  SDN EVPN zone configured — the common case for most nodes), not a fetch failure; `rib` is omitted
+  (never an empty array) in that case, the same "absent, not empty" convention `GET /sdn/evpn/status`'s
+  own FRR-absent case already uses.
+
+**`GET /route/lookup` response**: `{dst, reachable, matchedRoute?, matchedRule?, trace?, ambiguous?,
+rulesSkipped?}`. `dst` (required, `400 validation_failed` if missing or not a valid IP address) is a bare
+address, not a CIDR — "where would a packet **to** this address go," matching how `ip route get` itself is
+invoked. `iface` (optional) restricts candidate routes to that device before ranking, the
+`GET /route/lookup`-level equivalent of `ip route get <dst> dev <iface>` — needed whenever more than one
+route could equally match (most commonly an IPv6 link-local destination, on-link via every interface at
+once with no gateway to disambiguate).
+
+- Evaluation mirrors the kernel's own policy-routing algorithm: rules are tried in ascending `priority`
+  order, and the first rule whose table contains a matching route wins (longest-prefix-match within that
+  table, ties broken by lowest metric). A source-address-scoped rule (`src` other than `"all"`) is not
+  evaluated — `GET /route/lookup` answers "which path does a destination take," not "...from this
+  specific source" — and is named in `rulesSkipped` instead of being silently treated as always-matching.
+- `reachable: false` with `ambiguous: [string]` (candidate device names) means more than one equally-
+  specific route matched and no `iface` hint was given to disambiguate — the same situation `ip route
+  get` itself resolves by requiring an explicit `dev` (verified against the evidence transcript's
+  `ip -j -6 route get fe80::1 dev vmbr0` probe).
+- `trace: [string]` is a human-readable, ordered account of how the lookup reached its answer (which rule
+  matched, which table it searched, what it found there) — the route-explorer UI's "why" panel renders
+  this directly.
+- `404 not_found` / `503 pve_unreachable` follow the same convention as `GET /route/snapshot` above.
+
+`GET /route/snapshot`/`GET /route/lookup` read the local node directly (`internal/host.Real`'s
+`RouteTableV4/V6`, `RouteRulesV4/V6`, `FRRRIBV4/V6` — new local-host reads, not part of `host.Reader`
+itself since nothing else in the daemon needs them, but exec-based like `FRRBGPSummary`/`FRREVPNVNI`) or
+fan out to a peer via `GET /api/peer/host/route/{fib,rules}-{v4,v6}` and `GET /api/peer/host/route/frr-
+rib-{v4,v6}` (HMAC-authenticated, never exposed in the SPA — see the Peer API section above). The FRR
+routes use the same `{available, content}` envelope as `GET /api/peer/host/frr/{bgp-summary,evpn-vni}`;
+the FIB/rules routes use a plain `{content}` envelope, since `ip` is a hard OS dependency with no
+documented "not installed" condition to distinguish.
+
+### Route explorer page (`web/src/routeexplorer/RouteExplorerPage.tsx`, T-3903)
+
+A per-node routing view: a node picker (`GET /route/nodes`), a next-hop graph built from the selected
+node's `GET /route/snapshot` FIB (destination networks/hosts grouped by outgoing device, with the default
+route's gateway drawn as its own node), and a "which path would this address take" lookup form
+(`GET /route/lookup`) that highlights the matched route in both the table and the graph, or explains an
+ambiguous/unreachable result. Read-only — no add/delete-route affordance anywhere on this page.
+
 ## Diagnosis (T-1307)
 
 Added by T-1307 (`internal/diagnose`, `internal/api/diagnose.go`): a "Diagnose" action on any guest/edge that composes this phase's already-shipped surfaces — the path simulator (T-503), the live path probe (T-802/T-806), the guest interior inspector (T-1304), the conntrack explorer (T-1305), and packet capture (T-1301) — into one ordered ladder and one readable verdict. **Advisory only**: the ladder never auto-remediates; a verdict's `suggestedFixRef`, when present, always names an *existing* fixable finding's own `POST /findings/{id}/fix` link (the Findings section above) — this route never computes a fix itself. **This is scaffolding**: the response shape below is the stable, machine-consumable contract Phase 17's T-1701 MCP AI operator drives — treat field names/the `status` vocabulary as a versioned contract, not an internal detail.
@@ -1225,7 +1353,7 @@ Added by T-907 (Phase 9's only card permitted to touch the backend — docs/road
 
 ### Saved layouts / named views (`internal/api/layouts.go`, `internal/store/layouts.go`)
 
-The `GET/PUT /layouts/{name}` routes existed since T-107 (undocumented until this task — retroactively documented here per docs/development.md's definition-of-done #4) as the mechanism the topology page's auto-persisted canvas positions/filters (reserved name `"topology"`) and the onboarding walkthrough's progress (reserved name `"onboarding"`) both already used. T-907 adds `GET /layouts` (list) and `DELETE /layouts/{name}`, and reuses the exact same per-user `(username, name)` mechanism for **named saved views** — no new table, no forked mechanism (see docs/data-model.md §2's note on why `layouts` was reused for views but not for annotations).
+The `GET/PUT /layouts/{name}` routes existed since T-107 (undocumented until this task — retroactively documented here per docs/development.md's definition-of-done #4) as the mechanism the topology page's auto-persisted canvas positions/filters (reserved name `"topology"`) and the onboarding walkthrough's progress (reserved name `"onboarding"`) both already used. T-907 adds `GET /layouts` (list) and `DELETE /layouts/{name}`, and reuses the exact same per-user `(username, name)` mechanism for **named saved views** — no new table, no forked mechanism (see docs/data-model.md §2's note on why `layouts` was reused for views but not for annotations). T-3911 adds a third reserved name, `"dashboard"`: the home dashboard's tile grid (add/remove/reorder), stored as the opaque payload documented in the Dashboard tiles section below — same mechanism again, no fourth persistence idiom.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -1251,6 +1379,21 @@ The `GET/PUT /layouts/{name}` routes existed since T-107 (undocumented until thi
 `layers` is the active-layer subset (docs/features/topology.md §2's layer ids); `vlanFilter` (omitted when unset) is the active VLAN dim filter; `zoom`/`viewport` are the v2 canvas's pan/zoom transform (`web/src/topology/canvasScene.ts`'s `Viewport`, split into a bare `zoom` scalar plus an `{x, y}` pan offset here for readability — same transform, different field grouping); `selection` (omitted when nothing is selected) is the selected entity's Ref; `view` is `"graph"` or `"switch"` (`store.ts`'s `TopologyViewMode`). The `"kind": "view"` tag is what lets the frontend's saved-views picker filter `GET /layouts`' items down to actual named views, excluding the reserved `"topology"`/`"onboarding"` auto-layout blobs (whose shape has no `kind` field at all) — a purely client-side distinction; the backend treats every name identically.
 
 **Shareable URLs.** A saved view's state additionally round-trips through the topology page's own URL query string, independent of any server-side row — flat per-field params (not an opaque blob), the same "state lives in the URL" convention `web/src/simulator/urlState.ts` already established for the path simulator's shareable links (see the `sim_divergence` finding's `docsLink` note above): `/topology?svLayers=phys,l2&svVlan=100&svZoom=1.4&svX=-120&svY=40&svSel=bridge:pve1:vmbr0&svView=graph`. `svLayers` is comma-separated layer ids; `svVlan`/`svSel` are omitted when unset (mirroring `layout`'s optional `vlanFilter`/`selection` above); `svZoom`/`svX`/`svY` are the canvas pan/zoom transform; `svView` is `graph`\|`switch`. This is what makes a saved view's "Share link" work for a viewer with no `layouts` row of their own — opening the link applies the URL's state directly (`web/src/topology/savedViews.ts`'s `decodeViewFromSearch`) without ever calling `GET /layouts/{name}`; saving the view under a name (so it also appears in the viewer's own `GET /layouts` list) is a separate, optional action. No new route: this is pure client-side URL state.
+
+**Dashboard tile layout shape (T-3911).** The reserved `"dashboard"` layout's `layout` is:
+
+```json
+{
+  "kind": "dashboard-tiles",
+  "tiles": [
+    {"id": "builtin:findings", "kind": "builtin"},
+    {"id": "builtin:drift", "kind": "builtin"},
+    {"id": "plugin:sample-tile", "kind": "plugin"}
+  ]
+}
+```
+
+`tiles` is the ordered, visible tile list — array position is display order, and a tile absent from the array is hidden (removed) without being deleted from either catalog. `kind: "builtin"` entries reference one of the fixed built-in tile ids (`web/src/dashboard/tileRegistry.ts`); `kind: "plugin"` entries reference a `plugin.Tile.ID` from `GET /dashboard/tiles`' current response. A user who has never saved this layout (`404 not_found` on `GET /layouts/dashboard`) gets the frontend's built-in default order — every built-in tile, no plugin tiles — computed client-side, never written until the user actually customises the grid. A `kind: "plugin"` entry whose id is no longer present in `GET /dashboard/tiles` (the plugin was disabled, uninstalled, or its provider started erroring) renders as an explicit "tile unavailable" placeholder in its saved slot rather than being silently dropped or crashing the grid — the layout itself is untouched until the user removes it.
 
 ### Annotations (`internal/api/annotations.go`, `internal/store/annotations.go`)
 
@@ -1548,6 +1691,18 @@ Installing a plugin (loading code / spawning a subprocess) is a config-time / Hu
 
 **`Plugin`** (JSON): `{id, name, version, apiVersion, transport, extensionPoints, capabilities, installedBy, installedAt, enabled}`. `apiVersion` is the frozen SDK interface version the plugin was built against (`"v1"`); `transport` is `"in-process"` or `"grpc"` (an out-of-process supervised subprocess); `extensionPoints` is a subset of `switchDriver`/`flowIngestor`/`findingProducer`/`ingressDiscoverer`/`dashboardTile`; `capabilities` is the declared capability scope (a subset of the `caps.go` vocabulary) — the **ceiling** on which seams the plugin may touch and which change-engine op classes it may stage. The internal launch `endpoint` is deliberately omitted from the response.
 
+### Dashboard tiles (T-3911)
+
+Added by T-3911 (`internal/api/dashboard.go`), the first-party surface that composes the `dashboardTile` extension point (`plugin.DashboardTileProvider`, `docs/plugins/dashboard-tile.md`). The home dashboard's tile grid (`web/src/dashboard/DashboardPage.tsx`) fetches this route to place plugin tiles alongside its seven built-in tiles.
+
+| Method | Path | Cap | Purpose |
+|---|---|---|---|
+| GET | `/dashboard/tiles` | `netRead` | every enabled `dashboardTile` plugin's current tiles: `{items: [DashboardTile]}` |
+
+**`DashboardTile`** (JSON): `{id, title, value, detail?, link?, severity?}` — a decoupled mirror of `plugin.Tile`'s exact wire shape (`internal/plugin/interfaces.go`). `severity` is `"info"`\|`"warn"`\|`"critical"`, advisory only (tile coloring), never omitted-vs-neutral ambiguity beyond the empty string. A provider whose `Tiles(ctx)` call returns an error is dropped by `plugin.Registry.DashboardTiles` before this route ever sees it — that provider's tiles are simply absent from `items`, and the rest of the response is unaffected (T-904/T-1702's degrade-one-provider contract). A disabled or uninstalled plugin's tiles are likewise absent, never a stale echo. This route is unmounted (all reads on other routes proceed normally) if no plugin registry is wired; the frontend's own built-in-only default layout renders regardless.
+
+**Per-user placement.** Which tiles appear, and in what order, is stored client-side using the existing per-user `layouts` mechanism (`GET/PUT /layouts/{name}`, the Saved layouts / named views section above) under the reserved name `"dashboard"` — no new table, no new persistence route. See that section's "Dashboard tile layout shape" for the exact payload.
+
 ### Hub (T-1705)
 
 The Hub install path (`POST /hub/install` with `type: "plugin"`) is how a plugin is installed from the public registry. It verifies the downloaded manifest's Ed25519 signature against the same trust store blueprint bundles use, then registers it through this exact plugin registry (`Registry.Install`, which independently re-validates the capability scope) — the Hub adds no bypass around the scope check. See the **Hub (T-1705)** section below for the routes and the trust gate.
@@ -1751,7 +1906,9 @@ One field is expected to differ from the checked-in goldens when run this way, a
 
 ## Peer API (`/api/peer/*`, internal only)
 
-HMAC-authenticated (cluster secret) endpoints between daemons: `GET /api/peer/host/interfaces`, `/api/peer/host/lldp`, `/api/peer/host/stats`, `/api/peer/host/services`, `/api/peer/host/links`, `/api/peer/host/fdb`, `/api/peer/host/neighbors`, `/api/peer/host/conntrack`, `/api/peer/host/ipv6-ra`, `/api/peer/host/frr/bgp-summary`, `/api/peer/host/frr/evpn-vni`, `/api/peer/host/dhcp-leases`, `/api/peer/host/container-interior`, `/api/peer/host/container-ping`, `GET /api/peer/firewall/log`, `GET /api/peer/flows`, `POST /api/peer/host/stage-interfaces`, `POST /api/peer/host/ifreload`, `POST /api/peer/host/restore`, `POST /api/peer/host/discard-staged`, `POST /api/peer/host/lldp/install`, `GET /api/peer/health`, `GET /api/peer/version`, `GET /api/peer/audit`, `GET /api/peer/snapshots`, `POST /api/peer/timer/arm`, `POST /api/peer/timer/cancel`, `GET /api/peer/timer/status`, `POST /api/peer/capture/start`, `POST /api/peer/capture/stop`, `GET /api/peer/capture/status`, `GET /api/peer/capture/download`, `POST /api/peer/ha/replicate`. Never exposed in the SPA; rejected without valid HMAC + timestamp (±30s replay window). **Nonce (T-3703):** every request now carries a random 128-bit nonce (`X-Vnprox-Peer-Nonce`, hex-encoded) and a *second*, additive signature bound to it (`X-Vnprox-Peer-Nonce-Signature`, HMAC over method+path+body-hash+timestamp+nonce). The original `X-Vnprox-Peer-Signature` is unchanged and still mandatory on every request — a plain HMAC over method/path/body-hash/timestamp exactly as before. This is deliberately two signatures rather than one nonce-aware signature: this project has root access to only one of its two live peers (`pve001` cannot be upgraded — no credentials for it exist at all), so the un-nonce'd signature has to keep verifying, byte-for-byte, against code that doesn't know the other two headers exist. A verifier from T-3703 onward prefers the nonce-bound signature when present and valid, keying the replay cache on the nonce instead of the signature — the signature alone collides between two *legitimately identical* requests issued inside the same second (`ts` is unix-seconds), which a poller does routinely; the nonce doesn't. Anything without a validly nonce-bound signature (an older peer, or one with the two extra headers stripped) falls back to the original signature and its signature-keyed replay check. That fallback is not purely unchanged from before T-3703, though: accepting a request via the nonce path also records its plain signature (not only its nonce), so a captured nonce'd request replayed later with the nonce headers stripped is refused by the legacy check too — the "strip the new headers and replay" gap is fully closed, not merely narrowed. An explicit, off-by-default switch (`ServerOptions.RequireNonce`) refuses the legacy fallback outright instead, for when every peer is known to send a nonce. See `internal/peer/middleware.go`'s `authMiddleware` doc comment for the full compatibility reasoning. Protocol version 2 (T-304 added `discard-staged` and the `timer/*` routes below — a peer still advertising protocol 1 cannot serve them, so a coordinator refuses to route multi-node steps to it per the version-skew rule in `docs/architecture.md` §5); T-404's two `frr/*` routes, T-406's `host/dhcp-leases` route, T-505's `firewall/log` route, T-602's `host/services` route, T-805's `host/neighbors` route, T-1002's `flows` route, T-1304's two `host/container-*` routes, T-1301's three `capture/*` routes, T-1302's `capture/download` route, T-1404's `host/ipv6-ra` route, and T-1704's `ha/replicate` route below are additive at the same protocol version 2, following the precedent T-303's `links` and T-306's `fdb` routes already set (new observability routes do not themselves force a version bump — only routes the write/coordination path depends on do, per those tasks' own reports).
+HMAC-authenticated (cluster secret) endpoints between daemons: `GET /api/peer/host/interfaces`, `/api/peer/host/lldp`, `/api/peer/host/stats`, `/api/peer/host/services`, `/api/peer/host/links`, `/api/peer/host/fdb`, `/api/peer/host/neighbors`, `/api/peer/host/conntrack`, `/api/peer/host/ipv6-ra`, `/api/peer/host/frr/bgp-summary`, `/api/peer/host/frr/evpn-vni`, `/api/peer/host/dhcp-leases`, `/api/peer/host/mdb`, `/api/peer/host/route/fib-v4`,
+`/api/peer/host/route/fib-v6`, `/api/peer/host/route/rules-v4`, `/api/peer/host/route/rules-v6`,
+`/api/peer/host/route/frr-rib-v4`, `/api/peer/host/route/frr-rib-v6`, `/api/peer/host/container-interior`, `/api/peer/host/container-ping`, `GET /api/peer/firewall/log`, `GET /api/peer/flows`, `POST /api/peer/host/stage-interfaces`, `POST /api/peer/host/ifreload`, `POST /api/peer/host/restore`, `POST /api/peer/host/discard-staged`, `POST /api/peer/host/lldp/install`, `GET /api/peer/health`, `GET /api/peer/version`, `GET /api/peer/audit`, `GET /api/peer/snapshots`, `POST /api/peer/timer/arm`, `POST /api/peer/timer/cancel`, `GET /api/peer/timer/status`, `POST /api/peer/capture/start`, `POST /api/peer/capture/stop`, `GET /api/peer/capture/status`, `GET /api/peer/capture/download`, `POST /api/peer/ha/replicate`. Never exposed in the SPA; rejected without valid HMAC + timestamp (±30s replay window). **Nonce (T-3703):** every request now carries a random 128-bit nonce (`X-Vnprox-Peer-Nonce`, hex-encoded) and a *second*, additive signature bound to it (`X-Vnprox-Peer-Nonce-Signature`, HMAC over method+path+body-hash+timestamp+nonce). The original `X-Vnprox-Peer-Signature` is unchanged and still mandatory on every request — a plain HMAC over method/path/body-hash/timestamp exactly as before. This is deliberately two signatures rather than one nonce-aware signature: this project has root access to only one of its two live peers (`pve001` cannot be upgraded — no credentials for it exist at all), so the un-nonce'd signature has to keep verifying, byte-for-byte, against code that doesn't know the other two headers exist. A verifier from T-3703 onward prefers the nonce-bound signature when present and valid, keying the replay cache on the nonce instead of the signature — the signature alone collides between two *legitimately identical* requests issued inside the same second (`ts` is unix-seconds), which a poller does routinely; the nonce doesn't. Anything without a validly nonce-bound signature (an older peer, or one with the two extra headers stripped) falls back to the original signature and its signature-keyed replay check. That fallback is not purely unchanged from before T-3703, though: accepting a request via the nonce path also records its plain signature (not only its nonce), so a captured nonce'd request replayed later with the nonce headers stripped is refused by the legacy check too — the "strip the new headers and replay" gap is fully closed, not merely narrowed. An explicit, off-by-default switch (`ServerOptions.RequireNonce`) refuses the legacy fallback outright instead, for when every peer is known to send a nonce. See `internal/peer/middleware.go`'s `authMiddleware` doc comment for the full compatibility reasoning. Protocol version 2 (T-304 added `discard-staged` and the `timer/*` routes below — a peer still advertising protocol 1 cannot serve them, so a coordinator refuses to route multi-node steps to it per the version-skew rule in `docs/architecture.md` §5); T-404's two `frr/*` routes, T-406's `host/dhcp-leases` route, T-505's `firewall/log` route, T-602's `host/services` route, T-805's `host/neighbors` route, T-1002's `flows` route, T-1304's two `host/container-*` routes, T-1301's three `capture/*` routes, T-1302's `capture/download` route, T-1404's `host/ipv6-ra` route, T-3902's `host/mdb` route, T-3903's six `host/route/*` routes, and T-1704's `ha/replicate` route below are additive at the same protocol version 2, following the precedent T-303's `links` and T-306's `fdb` routes already set (new observability routes do not themselves force a version bump — only routes the write/coordination path depends on do, per those tasks' own reports).
 
 **Receiving-side host-write validation + audit (T-2902, additive at protocol version 2).** The four `/api/peer/host/*` write routes and `lldp/install` now (a) accept three optional attribution fields in their bodies — `actor`, `originNode`, `originIP`, the coordinating daemon's account of who asked — and (b) on the receiving node, run that node's own change-engine safety validation before the host writer is touched (`stage-interfaces` always; `restore` unless the content matches a snapshot the receiving node itself recorded — the provenance exemption that keeps distributed rollback working) and append a local audit row for every write, refusal, and failure. A refusal is `400 safety_refused` with the blocking findings in the message. A pre-T-2902 coordinator that sends no attribution still works; the receiving audit row records the absence. See `docs/security.md`'s Safety interlocks section.
 

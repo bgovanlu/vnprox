@@ -13,8 +13,11 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../api/client";
+import { ToastProvider } from "../components/Toast";
 import type {
   Changeset,
+  DashboardTile,
   FlowsPage,
   LiveMetric,
   ProtectedInterfacesStatusResponse,
@@ -24,6 +27,39 @@ import type {
 import type { AuditListResponse } from "../api/audit";
 import { useChangesetDrawerStore } from "../changesets/store";
 import { DashboardPage } from "./DashboardPage";
+
+// T-3911: the dashboard grid persists its tile layout through the
+// pre-existing per-user `layouts` mechanism (reserved name "dashboard")
+// and fetches plugin tiles from GET /dashboard/tiles — both go through
+// apiFetch directly (dashboardLayoutQueries.ts, api/dashboardTiles.ts,
+// api/layouts.ts's saveLayout), so this file mocks the shared client
+// module itself (CertificatesPage.test.tsx's precedent) rather than a
+// higher-level api/* module, keeping ApiError/API_BASE real via
+// importOriginal. Every AC2-4 test below never customises the layout, so
+// the default here always answers "no saved layout yet" (a 404, exactly
+// like a fresh user) and an empty plugin-tile list — the grid falls back
+// to its built-in default order, byte-identical to the pre-T-3911 static
+// grid these tests were originally written against.
+const apiFetch = vi.hoisted(() => vi.fn());
+vi.mock("../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/client")>();
+  return { ...actual, apiFetch };
+});
+
+let mockDashboardTiles: DashboardTile[] = [];
+
+function defaultApiFetchImpl(path: string, options?: { method?: string; json?: unknown }): Promise<unknown> {
+  if (path === "/dashboard/tiles") {
+    return Promise.resolve({ items: mockDashboardTiles });
+  }
+  if (path === "/layouts/dashboard") {
+    if (options?.method === "PUT") {
+      return Promise.resolve({ name: "dashboard", layout: options.json, updatedAt: Date.now() });
+    }
+    return Promise.reject(new ApiError(404, "not_found", "no saved layout with that name"));
+  }
+  return Promise.reject(new Error(`DashboardPage.test.tsx: unexpected apiFetch call: ${path}`));
+}
 
 let mockFindings: StreamFinding[] = [];
 let mockChangesets: Changeset[] = [];
@@ -86,16 +122,18 @@ function renderDashboard() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/"]}>
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/tools" element={<div>Tools page</div>} />
-          <Route path="/topology" element={<div>Topology page</div>} />
-          <Route path="/management" element={<div>Management page</div>} />
-          <Route path="/audit" element={<div>Audit page</div>} />
-          <Route path="/flows" element={<div>Flows page</div>} />
-        </Routes>
-      </MemoryRouter>
+      <ToastProvider>
+        <MemoryRouter initialEntries={["/"]}>
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/tools" element={<div>Tools page</div>} />
+            <Route path="/topology" element={<div>Topology page</div>} />
+            <Route path="/management" element={<div>Management page</div>} />
+            <Route path="/audit" element={<div>Audit page</div>} />
+            <Route path="/flows" element={<div>Flows page</div>} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -197,6 +235,9 @@ function seedSingleNodeCleanFixture(): void {
 
 beforeEach(() => {
   useChangesetDrawerStore.setState({ activeId: undefined, drawerOpen: false, reviewRequested: false, warningsAcknowledged: false });
+  mockDashboardTiles = [];
+  apiFetch.mockReset();
+  apiFetch.mockImplementation(defaultApiFetchImpl);
 });
 
 afterEach(() => {

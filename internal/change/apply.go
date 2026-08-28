@@ -1217,3 +1217,7 @@ func (r nodeAgentReader) Conntrack(context.Context, string) ([]host.ConntrackEnt
 func (r nodeAgentReader) IPv6RA(context.Context, string) ([]host.IPv6RAObservation, error) {
 	return nil, fmt.Errorf("change: nodeAgentReader.IPv6RA not supported")
 }
+
+func (r nodeAgentReader) MDB(context.Context, string) ([]byte, error) {
+	return nil, fmt.Errorf("change: nodeAgentReader.MDB not supported")
+}
