@@ -38,16 +38,27 @@ order, with the dates that force it:
 |---|---|---|
 | `scale.spec.ts` v2-canvas hang (T-2505-followup-01) | quarantine expires; 3 investigation rounds failed, next step is a Playwright trace, not a fourth patch | **2026-09-15** |
 | T-3713 simulator trace-path flake | quarantine expires; root cause known (`waitForLayout` weak settle condition) | **2026-09-22** |
-| Tenant mutation routes not scoped to membership | privilege gap: any `netWrite` holder in one tenant can mutate any other tenant's scopes/members; **uncarded — needs a card and an owner decision** | security |
+| ~~Tenant mutation routes not scoped to membership~~ | **CLOSED — was already fixed.** Re-derived 2026-08-27: commit `4713d72c` scoped all five routes 35 min after the debt sweep filed the finding; the sweep doc was never updated, so it read as open for eight days. Carded retroactively as T-3714. No code change needed. | ✅ done |
 | T-3712 duplicate peer-neighbor polls | 401-per-cycle noise; masks real replay alarms | hygiene |
 | T-3101-followup-01 `sdn.apply` surfaces foreign pending changes | owner already decided "surface and confirm" on 2026-08-19; unimplemented; must not be inherited by new SDN work | decided, open |
 | T-3406-followup-02 badge-class consolidation (5 duplicated definitions) | third recurrence of the same defect class | prevention |
-| `AlertRules.tsx` local filter union (12-of-17 sources defect twin) | uncarded debt-sweep finding | hygiene |
+| ~~`AlertRules.tsx` local filter union (12-of-17 sources defect twin)~~ | **CLOSED — already fixed.** Re-derived 2026-08-27: `AlertSourceFilterValue = FindingSource` and `SOURCE_LABELS: Record<FindingSource, string>` make a missing source a compile error, not a silent `undefined`. Test strengthened to derive expectations exhaustively so it stays that way. | ✅ done |
 | `planning/implementation-plan.md` stops at Phase 6 | this roadmap makes the staleness worse unless fixed; fold phases 7–41 into the index | docs |
 
 **Owner decisions already pending, restated:** GitHub Actions billing (owner committed to restore —
 gates T-3808 and T-4108); public DNS for `registry./apt./demo.vnprox.com` (deferred by owner —
 gates the hosted half of T-4008/T-4009 and the Sigstore end-to-end run).
+
+> **Wave 0 audit result (2026-08-27).** Executing this gate found that **three of its eight items
+> were already fixed** and had survived only as uncorrected records: the tenant privilege gap
+> (closed by `4713d72c` thirty-five minutes after the sweep filed it), the AlertRules source union,
+> and — from the Phase 38 grounding pass — the premise that the repo still needed publishing. Each
+> was caught by the "re-derive before you fix" rule; without it, three agents would have spent
+> their run "fixing" working code, and the diffs would have looked like progress. The generalised
+> lesson, now on its third instance after the SDN-fabric fixtures and the five-day-stale
+> `CLAUDE.md` cluster line: **this project's documents outlive their accuracy, and a backlog is a
+> document.** Re-derivation is not diligence theatre here; it is the highest-yield step in the
+> loop. Treat every remaining item in this file as a hypothesis with a date on it.
 
 ---
 

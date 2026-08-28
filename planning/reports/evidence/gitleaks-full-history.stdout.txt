@@ -1,0 +1,563 @@
+
+    ○
+    │╲
+    │ ○
+    ○ ░
+    ░    gitleaks
+
+Finding:     publisher key fingerprint: [1;3;m99cad06bd70901d74b8a244c160f03c73942d5078bddb7a877341d8d689b6889[0m
+Secret:      [1;3;m99cad06bd70901d74b8a244c160f03c73942d5078bddb7a877341d8d689b6889[0m
+RuleID:      generic-api-key
+Entropy:     3.709979
+File:        planning/reports/evidence/hub-registry-verification-2026-08-24.txt
+Line:        95
+Commit:      86786e8121ee55c9d355980eb58ad0df64a3b0c8
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-25T13:05:12Z
+Fingerprint: 86786e8121ee55c9d355980eb58ad0df64a3b0c8:planning/reports/evidence/hub-registry-verification-2026-08-24.txt:generic-api-key:95
+Link:        https://github.com/bgovanlu/vnprox/blob/86786e8121ee55c9d355980eb58ad0df64a3b0c8/planning/reports/evidence/hub-registry-verification-2026-08-24.txt#L95
+
+Finding:     index key fingerprint:     [1;3;m8267ea96d77891fa2272215f1ebb0d4248abb7248f002af5424252216a72e93b[0m
+Secret:      [1;3;m8267ea96d77891fa2272215f1ebb0d4248abb7248f002af5424252216a72e93b[0m
+RuleID:      generic-api-key
+Entropy:     3.684080
+File:        planning/reports/evidence/hub-registry-verification-2026-08-24.txt
+Line:        96
+Commit:      86786e8121ee55c9d355980eb58ad0df64a3b0c8
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-25T13:05:12Z
+Fingerprint: 86786e8121ee55c9d355980eb58ad0df64a3b0c8:planning/reports/evidence/hub-registry-verification-2026-08-24.txt:generic-api-key:96
+Link:        https://github.com/bgovanlu/vnprox/blob/86786e8121ee55c9d355980eb58ad0df64a3b0c8/planning/reports/evidence/hub-registry-verification-2026-08-24.txt#L96
+
+Finding:     VNPROX_RELEASE_KEY_FPR="[1;3;mF57DDE63ABA03B3BEEEB2DB93BD9CC3B118061BD[0m"
+Secret:      [1;3;mF57DDE63ABA03B3BEEEB2DB93BD9CC3B118061BD[0m
+RuleID:      generic-api-key
+Entropy:     3.572574
+File:        packaging/install.sh
+Line:        111
+Commit:      c700e2d98c041e4a32849872c89ad5989ebc25b3
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-18T18:19:21Z
+Fingerprint: c700e2d98c041e4a32849872c89ad5989ebc25b3:packaging/install.sh:generic-api-key:111
+Link:        https://github.com/bgovanlu/vnprox/blob/c700e2d98c041e4a32849872c89ad5989ebc25b3/packaging/install.sh#L111
+
+Finding:     secret: [1;3;m922c0a3e-8f2d-4c11-9a57-0d2f6f3a9201[0m
+Secret:      [1;3;m922c0a3e-8f2d-4c11-9a57-0d2f6f3a9201[0m
+RuleID:      generic-api-key
+Entropy:     3.798145
+File:        testdata/clusters/compat/pve-9.2.yaml
+Line:        22
+Commit:      3081f85a58bd9f1e32003b5cc89c1b3b126c3fa0
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-13T18:13:30Z
+Fingerprint: 3081f85a58bd9f1e32003b5cc89c1b3b126c3fa0:testdata/clusters/compat/pve-9.2.yaml:generic-api-key:22
+Link:        https://github.com/bgovanlu/vnprox/blob/3081f85a58bd9f1e32003b5cc89c1b3b126c3fa0/testdata/clusters/compat/pve-9.2.yaml#L22
+
+Finding:     secret: [1;3;m8a2c0a3e-8f2d-4c11-9a57-0d2f6f3a8201[0m
+Secret:      [1;3;m8a2c0a3e-8f2d-4c11-9a57-0d2f6f3a8201[0m
+RuleID:      generic-api-key
+Entropy:     3.808271
+File:        testdata/clusters/compat/pve-8.2.yaml
+Line:        39
+Commit:      3081f85a58bd9f1e32003b5cc89c1b3b126c3fa0
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-13T18:13:30Z
+Fingerprint: 3081f85a58bd9f1e32003b5cc89c1b3b126c3fa0:testdata/clusters/compat/pve-8.2.yaml:generic-api-key:39
+Link:        https://github.com/bgovanlu/vnprox/blob/3081f85a58bd9f1e32003b5cc89c1b3b126c3fa0/testdata/clusters/compat/pve-8.2.yaml#L39
+
+Finding:     secret: [1;3;m902c0a3e-8f2d-4c11-9a57-0d2f6f3a9001[0m
+Secret:      [1;3;m902c0a3e-8f2d-4c11-9a57-0d2f6f3a9001[0m
+RuleID:      generic-api-key
+Entropy:     3.798145
+File:        testdata/clusters/compat/pve-9.0.yaml
+Line:        18
+Commit:      3081f85a58bd9f1e32003b5cc89c1b3b126c3fa0
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-13T18:13:30Z
+Fingerprint: 3081f85a58bd9f1e32003b5cc89c1b3b126c3fa0:testdata/clusters/compat/pve-9.0.yaml:generic-api-key:18
+Link:        https://github.com/bgovanlu/vnprox/blob/3081f85a58bd9f1e32003b5cc89c1b3b126c3fa0/testdata/clusters/compat/pve-9.0.yaml#L18
+
+Finding:     "auth":   "[1;3;mwSlvzIyeaZgpH9UhKgnv2A[0m"
+Secret:      [1;3;mwSlvzIyeaZgpH9UhKgnv2A[0m
+RuleID:      generic-api-key
+Entropy:     4.277614
+File:        internal/api/push_test.go
+Line:        117
+Commit:      c570b1a15cf725c4eeddad662771b06dd296c5da
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-13T21:51:03Z
+Fingerprint: c570b1a15cf725c4eeddad662771b06dd296c5da:internal/api/push_test.go:generic-api-key:117
+Link:        https://github.com/bgovanlu/vnprox/blob/c570b1a15cf725c4eeddad662771b06dd296c5da/internal/api/push_test.go#L117
+
+Finding:     secret: [1;3;m4f9d21c7-3a80-4b6e-b1d2-95c8e7a40f13[0m
+Secret:      [1;3;m4f9d21c7-3a80-4b6e-b1d2-95c8e7a40f13[0m
+RuleID:      generic-api-key
+Entropy:     4.016876
+File:        internal/demo/dataset/cluster.yaml
+Line:        52
+Commit:      3ef621fa5ce19ac250a1eb39e42351e9abba4069
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-13T00:13:31Z
+Fingerprint: 3ef621fa5ce19ac250a1eb39e42351e9abba4069:internal/demo/dataset/cluster.yaml:generic-api-key:52
+Link:        https://github.com/bgovanlu/vnprox/blob/3ef621fa5ce19ac250a1eb39e42351e9abba4069/internal/demo/dataset/cluster.yaml#L52
+
+Finding:     B8g1Bein9/PjoZ2+[1;3;mEAAAADZ2l0AAAAAAAAAAZzaGE1MTIAAABTAAAAC3NzaC1lZDI1NTE5[0m
+Secret:      [1;3;mEAAAADZ2l0AAAAAAAAAAZzaGE1MTIAAABTAAAAC3NzaC1lZDI1NTE5[0m
+RuleID:      square-access-token
+Entropy:     3.435291
+File:        internal/gitsync/testdata/signed-commit.ed25519.sig
+Line:        3
+Commit:      bf95b64bb30846cb0bf2a6561e850e0ffd183ec4
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-10T19:42:42Z
+Fingerprint: bf95b64bb30846cb0bf2a6561e850e0ffd183ec4:internal/gitsync/testdata/signed-commit.ed25519.sig:square-access-token:3
+Link:        https://github.com/bgovanlu/vnprox/blob/bf95b64bb30846cb0bf2a6561e850e0ffd183ec4/internal/gitsync/testdata/signed-commit.ed25519.sig#L3
+
+Finding:     B8g1Bein9/PjoZ2+[1;3;mEAAAAEZmlsZQAAAAAAAAAGc2hhNTEyAAAAUwAAAAtzc2gtZWQyNTUx[0m
+Secret:      [1;3;mEAAAAEZmlsZQAAAAAAAAAGc2hhNTEyAAAAUwAAAAtzc2gtZWQyNTUx[0m
+RuleID:      square-access-token
+Entropy:     3.537324
+File:        internal/gitsync/testdata/signed-commit.wrongnamespace.sig
+Line:        3
+Commit:      bf95b64bb30846cb0bf2a6561e850e0ffd183ec4
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-10T19:42:42Z
+Fingerprint: bf95b64bb30846cb0bf2a6561e850e0ffd183ec4:internal/gitsync/testdata/signed-commit.wrongnamespace.sig:square-access-token:3
+Link:        https://github.com/bgovanlu/vnprox/blob/bf95b64bb30846cb0bf2a6561e850e0ffd183ec4/internal/gitsync/testdata/signed-commit.wrongnamespace.sig#L3
+
+Finding:     pushToken     = "[1;3;mglpat-VNPROXPUSHMARKER-do-[0mnot-log-me" //nolint...
+Secret:      [1;3;mglpat-VNPROXPUSHMARKER-do-[0m
+RuleID:      gitlab-pat
+Entropy:     4.257756
+File:        internal/gitsync/propose_test.go
+Line:        31
+Commit:      a47b723e1e532b85b73f35e49bc1d273bc4ad99f
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-11T12:37:57Z
+Fingerprint: a47b723e1e532b85b73f35e49bc1d273bc4ad99f:internal/gitsync/propose_test.go:gitlab-pat:31
+Link:        https://github.com/bgovanlu/vnprox/blob/a47b723e1e532b85b73f35e49bc1d273bc4ad99f/internal/gitsync/propose_test.go#L31
+
+Finding:     const fixtureSessionKey = "[1;3;mc2Vzc2lvbi1rZXktZm9yLXRlc3RzLW9ubHktbm90LXJlYWw=[0m"
+Secret:      [1;3;mc2Vzc2lvbi1rZXktZm9yLXRlc3RzLW9ubHktbm90LXJlYWw=[0m
+RuleID:      generic-api-key
+Entropy:     4.657268
+File:        internal/verify/fakes_test.go
+Line:        220
+Commit:      cc2fcfc14f9cd00535099df5549cebc78dfa5426
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-10T16:46:04Z
+Fingerprint: cc2fcfc14f9cd00535099df5549cebc78dfa5426:internal/verify/fakes_test.go:generic-api-key:220
+Link:        https://github.com/bgovanlu/vnprox/blob/cc2fcfc14f9cd00535099df5549cebc78dfa5426/internal/verify/fakes_test.go#L220
+
+Finding:     secret:    "[1;3;mc2VjcmV0c2lnbmF0dXJlYmFzZTY0ZGF0YQ==[0m"
+Secret:      [1;3;mc2VjcmV0c2lnbmF0dXJlYmFzZTY0ZGF0YQ==[0m
+RuleID:      generic-api-key
+Entropy:     4.141604
+File:        internal/pvecassette/write_test.go
+Line:        67
+Commit:      88d59168c7dd0b40b227f2e35aea2529451ff092
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-10T15:10:50Z
+Fingerprint: 88d59168c7dd0b40b227f2e35aea2529451ff092:internal/pvecassette/write_test.go:generic-api-key:67
+Link:        https://github.com/bgovanlu/vnprox/blob/88d59168c7dd0b40b227f2e35aea2529451ff092/internal/pvecassette/write_test.go#L67
+
+Finding:     input:       "PrivateKey = [1;3;mwKxOTUqxTNhVQu5j3n3fUwkSZbBmQwgN2v1jjy5rNXo=[0m"
+Secret:      [1;3;mwKxOTUqxTNhVQu5j3n3fUwkSZbBmQwgN2v1jjy5rNXo=[0m
+RuleID:      generic-api-key
+Entropy:     4.862507
+File:        internal/validation/redact_test.go
+Line:        68
+Commit:      00bf5608b272de55c476d42c4fe3ce09145e95d9
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-04T22:09:35Z
+Fingerprint: 00bf5608b272de55c476d42c4fe3ce09145e95d9:internal/validation/redact_test.go:generic-api-key:68
+Link:        https://github.com/bgovanlu/vnprox/blob/00bf5608b272de55c476d42c4fe3ce09145e95d9/internal/validation/redact_test.go#L68
+
+Finding:     input:       "PresharedKey = [1;3;m4Nx9Yy2q7z1cQvB8mR5tWkLpXsD0aFhU6oIjKgEeC3s=[0m"
+Secret:      [1;3;m4Nx9Yy2q7z1cQvB8mR5tWkLpXsD0aFhU6oIjKgEeC3s=[0m
+RuleID:      generic-api-key
+Entropy:     5.413977
+File:        internal/validation/redact_test.go
+Line:        74
+Commit:      00bf5608b272de55c476d42c4fe3ce09145e95d9
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-04T22:09:35Z
+Fingerprint: 00bf5608b272de55c476d42c4fe3ce09145e95d9:internal/validation/redact_test.go:generic-api-key:74
+Link:        https://github.com/bgovanlu/vnprox/blob/00bf5608b272de55c476d42c4fe3ce09145e95d9/internal/validation/redact_test.go#L74
+
+Finding:     secret: [1;3;m7c2e9a41-5d6b-4f80-9e13-2b6a8c40d715[0m
+Secret:      [1;3;m7c2e9a41-5d6b-4f80-9e13-2b6a8c40d715[0m
+RuleID:      generic-api-key
+Entropy:     4.016876
+File:        testdata/clusters/phys-collapse.yaml
+Line:        45
+Commit:      308d042c7a2924e0bb9d724982116136991c3955
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-30T22:18:13Z
+Fingerprint: 308d042c7a2924e0bb9d724982116136991c3955:testdata/clusters/phys-collapse.yaml:generic-api-key:45
+Link:        https://github.com/bgovanlu/vnprox/blob/308d042c7a2924e0bb9d724982116136991c3955/testdata/clusters/phys-collapse.yaml#L45
+
+Finding:     ...:   `wg0 peer added key=[1;3;myAnECJ2z8Xf4qLkTvB1mNpQrSuVwXyZ0123456789ab=[0m endpoint=203.0.113....
+Secret:      [1;3;myAnECJ2z8Xf4qLkTvB1mNpQrSuVwXyZ0123456789ab=[0m
+RuleID:      generic-api-key
+Entropy:     5.186704
+File:        internal/backup/redact_test.go
+Line:        71
+Commit:      0cce89e7028d2a7ecd67befd908d6aad1ebf813d
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-08-05T01:27:55Z
+Fingerprint: 0cce89e7028d2a7ecd67befd908d6aad1ebf813d:internal/backup/redact_test.go:generic-api-key:71
+Link:        https://github.com/bgovanlu/vnprox/blob/0cce89e7028d2a7ecd67befd908d6aad1ebf813d/internal/backup/redact_test.go#L71
+
+Finding:     secret: [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+Secret:      [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+RuleID:      generic-api-key
+Entropy:     3.940351
+File:        testdata/pbs/backup-paths.yaml
+Line:        26
+Commit:      0b89d761306a3d5a3bda2e9b572fbb6142b6f57d
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-20T21:59:44Z
+Fingerprint: 0b89d761306a3d5a3bda2e9b572fbb6142b6f57d:testdata/pbs/backup-paths.yaml:generic-api-key:26
+Link:        https://github.com/bgovanlu/vnprox/blob/0b89d761306a3d5a3bda2e9b572fbb6142b6f57d/testdata/pbs/backup-paths.yaml#L26
+
+Finding:     secret: [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+Secret:      [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+RuleID:      generic-api-key
+Entropy:     3.940351
+File:        testdata/ceph/mtu-mismatch.yaml
+Line:        24
+Commit:      875134389bbd3cec5811eb494900277085278a9d
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-19T22:34:30Z
+Fingerprint: 875134389bbd3cec5811eb494900277085278a9d:testdata/ceph/mtu-mismatch.yaml:generic-api-key:24
+Link:        https://github.com/bgovanlu/vnprox/blob/875134389bbd3cec5811eb494900277085278a9d/testdata/ceph/mtu-mismatch.yaml#L24
+
+Finding:     secret: [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+Secret:      [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+RuleID:      generic-api-key
+Entropy:     3.940351
+File:        testdata/ceph/corosync-shared-link.yaml
+Line:        30
+Commit:      875134389bbd3cec5811eb494900277085278a9d
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-19T22:34:30Z
+Fingerprint: 875134389bbd3cec5811eb494900277085278a9d:testdata/ceph/corosync-shared-link.yaml:generic-api-key:30
+Link:        https://github.com/bgovanlu/vnprox/blob/875134389bbd3cec5811eb494900277085278a9d/testdata/ceph/corosync-shared-link.yaml#L30
+
+Finding:     secret: [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+Secret:      [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+RuleID:      generic-api-key
+Entropy:     3.940351
+File:        testdata/ceph/clean.yaml
+Line:        23
+Commit:      875134389bbd3cec5811eb494900277085278a9d
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-19T22:34:30Z
+Fingerprint: 875134389bbd3cec5811eb494900277085278a9d:testdata/ceph/clean.yaml:generic-api-key:23
+Link:        https://github.com/bgovanlu/vnprox/blob/875134389bbd3cec5811eb494900277085278a9d/testdata/ceph/clean.yaml#L23
+
+Finding:     secret: [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+Secret:      [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+RuleID:      generic-api-key
+Entropy:     3.940351
+File:        testdata/ceph/single-nic.yaml
+Line:        25
+Commit:      875134389bbd3cec5811eb494900277085278a9d
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-19T22:34:30Z
+Fingerprint: 875134389bbd3cec5811eb494900277085278a9d:testdata/ceph/single-nic.yaml:generic-api-key:25
+Link:        https://github.com/bgovanlu/vnprox/blob/875134389bbd3cec5811eb494900277085278a9d/testdata/ceph/single-nic.yaml#L25
+
+Finding:     secret: [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+Secret:      [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+RuleID:      generic-api-key
+Entropy:     3.940351
+File:        testdata/sriov/pf-vf-topology.yaml
+Line:        24
+Commit:      5bd2ea04a89e4d09842776ec9f60dc84ccbd2fdf
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-19T21:20:15Z
+Fingerprint: 5bd2ea04a89e4d09842776ec9f60dc84ccbd2fdf:testdata/sriov/pf-vf-topology.yaml:generic-api-key:24
+Link:        https://github.com/bgovanlu/vnprox/blob/5bd2ea04a89e4d09842776ec9f60dc84ccbd2fdf/testdata/sriov/pf-vf-topology.yaml#L24
+
+Finding:     secret: [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+Secret:      [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+RuleID:      generic-api-key
+Entropy:     3.940351
+File:        testdata/clusters/edge-nat.yaml
+Line:        44
+Commit:      065db315b4a16856f8efbb3c63ba02ff0c1b5fd0
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-19T12:03:12Z
+Fingerprint: 065db315b4a16856f8efbb3c63ba02ff0c1b5fd0:testdata/clusters/edge-nat.yaml:generic-api-key:44
+Link:        https://github.com/bgovanlu/vnprox/blob/065db315b4a16856f8efbb3c63ba02ff0c1b5fd0/testdata/clusters/edge-nat.yaml#L44
+
+Finding:     secret: [1;3;m9c2e5a1f-3b6d-4e8a-9f2c-1a4b6d8e0f77[0m
+Secret:      [1;3;m9c2e5a1f-3b6d-4e8a-9f2c-1a4b6d8e0f77[0m
+RuleID:      generic-api-key
+Entropy:     3.995907
+File:        testdata/clusters/ipv6-dualstack.yaml
+Line:        43
+Commit:      ff2aa880d5ee0e214c0eccdedc45d881beee785c
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-19T11:50:13Z
+Fingerprint: ff2aa880d5ee0e214c0eccdedc45d881beee785c:testdata/clusters/ipv6-dualstack.yaml:generic-api-key:43
+Link:        https://github.com/bgovanlu/vnprox/blob/ff2aa880d5ee0e214c0eccdedc45d881beee785c/testdata/clusters/ipv6-dualstack.yaml#L43
+
+Finding:     -----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCkRZ5BeodGNB+F
++FcGzfQ0X7ZxOuHE+J3EgGF5EBfINy66acvICXVS0b+jN8yHV1/NP1feQ8BHG+XE
+xfBQSeW+jxgBNtNr1FiedtkVwdNFF9SfYmUufISl63v+oxo3c9jjcBBRks3JsHCd
+g7/tgesFTh++ETVfhIqkcLRW8L3wF1lohEpHIk+9dPZYHeVpjYtAeGACaXHjVx31
+KXLTi/mkDg6dmZ0rxHybP3y9pAQaXUIwCoDTa3Nu3asMeXaMAtiUQBYLw6O8Fu4b
+P9PZMDwn3lFt4K6IwVKn/Sve/7XELvG6AoDR7AsVYyQiksRK8ll0YFu52hLn/pX1
+w3MeWVI/AgMBAAECggEAKQJ8TKpzJPKUQBTMXRWDdqPCXygs/sh2Un0eWGPNHB2y
+m7UXu5uo34Efj3a5p7wHXa0HmaReVyI+zU4A/XpFUbpVatAuHchIS18uOMFHpgMa
+AKRG0EEjuGw+a0Z6oAdayQTL/iFhII3cv2YJvxhk/NERGZkgMvVay0ybqOy27j3v
+dXHSULek7OF17UP8nXiei3Cv7TKlYr7lAyQeUU+Ql8a+dj7EVaf0ts/7mNcX4AfV
+B2r8QS5DP2p7weyLJBhvS84xWFCQ9uygU5Nnt2ch0cSI2bRupA1Edsg2TBP+kDpt
+kPbZDdToqInHNlpSm+cJt2epKT+u4EaszzW44Ss2QQKBgQDY9T8Rq7NG4zQ6Oc5o
+GfCKXfKRI9hC5yh/8VBBqSBTXmAMWnWLnfFdq5JvhG2NS7Hz13/ThKsggsMa4M9L
+573S7MAi3qH3cAZtW3bRp8ARUzemIs6q4yIL3rdzx1ZLqkz3MMyn7e2I1r0Fsne7
+9rvMQ7HsG+cLpXr4yl2WrhJGHwKBgQDB1T9PcXwe/BtbdKreoME51sCmjIlp28XZ
+VQXXYG+IDXR0oEigX3VLvLPyECjzFtZpmVXnpw39Ho3E4PofHZJP3TVLvu5sw0T6
+msTHgR1oMxsyssYnAGRDg+YVaAkh7w6fZuPbWikfmWj9d7uiMpvjIcuT01LVMK8A
+a4bH6VYv4QKBgQCSEwVkw2MQXldCwLrtMlHXB4wTFrw7x2FoSzRLETEXkJpAlwM/
+fpcNB0Cv3szX7lghIj4JTvDdEc2FIknQBHa1NfvjPlx0ubNKG+PzIuvZflsge50E
+R6sbrNd9l3/NsBrj77JLepGMqXBZDqE5J9WnoQiBPQQhvkf+jFnY4tig5wKBgAT0
+OVEDeoOkN+LHgZJ9E1MyHOxkzSJKfq0GUkbl7RPSHDba3eBTcEEGSqcWKKXF4KcE
+R0DLcT0V6dOtWFcxP0sRQUp1T8yx1PJ+wCbFMwY1wC00ioH2rZlYJqpHZWxbmskS
+LSKvFDv9hMRtqfsERh2xAG3/ya8vNlnRZbl4Sj6hAoGBAIJhXmcAC8a8dXDw/YsL
+zgkSVJTXQT3JTklD2wohwVlXKegC2Kf1f9yV262jlpacOuW1gDy8g8wri2YRDo1I
+sMGPk2RC8lRELCEekDUmev5DcTuDupBJhyVAJ9/s9mSMRM3FtktLqFImgS9Fx2yp
+D/JC9gy8jt1NxYIqOQclqKjD
+-----END PRIVATE KEY-----
+Secret:      -----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCkRZ5BeodGNB+F
++FcGzfQ0X7ZxOuHE+J3EgGF5EBfINy66acvICXVS0b+jN8yHV1/NP1feQ8BHG+XE
+xfBQSeW+jxgBNtNr1FiedtkVwdNFF9SfYmUufISl63v+oxo3c9jjcBBRks3JsHCd
+g7/tgesFTh++ETVfhIqkcLRW8L3wF1lohEpHIk+9dPZYHeVpjYtAeGACaXHjVx31
+KXLTi/mkDg6dmZ0rxHybP3y9pAQaXUIwCoDTa3Nu3asMeXaMAtiUQBYLw6O8Fu4b
+P9PZMDwn3lFt4K6IwVKn/Sve/7XELvG6AoDR7AsVYyQiksRK8ll0YFu52hLn/pX1
+w3MeWVI/AgMBAAECggEAKQJ8TKpzJPKUQBTMXRWDdqPCXygs/sh2Un0eWGPNHB2y
+m7UXu5uo34Efj3a5p7wHXa0HmaReVyI+zU4A/XpFUbpVatAuHchIS18uOMFHpgMa
+AKRG0EEjuGw+a0Z6oAdayQTL/iFhII3cv2YJvxhk/NERGZkgMvVay0ybqOy27j3v
+dXHSULek7OF17UP8nXiei3Cv7TKlYr7lAyQeUU+Ql8a+dj7EVaf0ts/7mNcX4AfV
+B2r8QS5DP2p7weyLJBhvS84xWFCQ9uygU5Nnt2ch0cSI2bRupA1Edsg2TBP+kDpt
+kPbZDdToqInHNlpSm+cJt2epKT+u4EaszzW44Ss2QQKBgQDY9T8Rq7NG4zQ6Oc5o
+GfCKXfKRI9hC5yh/8VBBqSBTXmAMWnWLnfFdq5JvhG2NS7Hz13/ThKsggsMa4M9L
+573S7MAi3qH3cAZtW3bRp8ARUzemIs6q4yIL3rdzx1ZLqkz3MMyn7e2I1r0Fsne7
+9rvMQ7HsG+cLpXr4yl2WrhJGHwKBgQDB1T9PcXwe/BtbdKreoME51sCmjIlp28XZ
+VQXXYG+IDXR0oEigX3VLvLPyECjzFtZpmVXnpw39Ho3E4PofHZJP3TVLvu5sw0T6
+msTHgR1oMxsyssYnAGRDg+YVaAkh7w6fZuPbWikfmWj9d7uiMpvjIcuT01LVMK8A
+a4bH6VYv4QKBgQCSEwVkw2MQXldCwLrtMlHXB4wTFrw7x2FoSzRLETEXkJpAlwM/
+fpcNB0Cv3szX7lghIj4JTvDdEc2FIknQBHa1NfvjPlx0ubNKG+PzIuvZflsge50E
+R6sbrNd9l3/NsBrj77JLepGMqXBZDqE5J9WnoQiBPQQhvkf+jFnY4tig5wKBgAT0
+OVEDeoOkN+LHgZJ9E1MyHOxkzSJKfq0GUkbl7RPSHDba3eBTcEEGSqcWKKXF4KcE
+R0DLcT0V6dOtWFcxP0sRQUp1T8yx1PJ+wCbFMwY1wC00ioH2rZlYJqpHZWxbmskS
+LSKvFDv9hMRtqfsERh2xAG3/ya8vNlnRZbl4Sj6hAoGBAIJhXmcAC8a8dXDw/YsL
+zgkSVJTXQT3JTklD2wohwVlXKegC2Kf1f9yV262jlpacOuW1gDy8g8wri2YRDo1I
+sMGPk2RC8lRELCEekDUmev5DcTuDupBJhyVAJ9/s9mSMRM3FtktLqFImgS9Fx2yp
+D/JC9gy8jt1NxYIqOQclqKjD
+-----END PRIVATE KEY-----
+RuleID:      private-key
+Entropy:     6.007715
+Tags:        [decoded:base64 decode-depth:1]
+File:        testdata/k8s/kubeconfig-clientcert.yaml
+Line:        23
+Commit:      03afcbe13680d4ce05571433d029c66873450a07
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-19T21:16:04Z
+Fingerprint: 03afcbe13680d4ce05571433d029c66873450a07:testdata/k8s/kubeconfig-clientcert.yaml:private-key:23
+Link:        https://github.com/bgovanlu/vnprox/blob/03afcbe13680d4ce05571433d029c66873450a07/testdata/k8s/kubeconfig-clientcert.yaml#L23
+
+Finding:     secret: [1;3;m7c2e4b1a-9f3d-4a80-b6e1-2d5c8f7a30b1[0m
+Secret:      [1;3;m7c2e4b1a-9f3d-4a80-b6e1-2d5c8f7a30b1[0m
+RuleID:      generic-api-key
+Entropy:     3.995907
+File:        testdata/clusters/flow-lab.yaml
+Line:        36
+Commit:      b0bd7947d8b777e02d5bdd13640d2b8a7caf698c
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-17T21:01:44Z
+Fingerprint: b0bd7947d8b777e02d5bdd13640d2b8a7caf698c:testdata/clusters/flow-lab.yaml:generic-api-key:36
+Link:        https://github.com/bgovanlu/vnprox/blob/b0bd7947d8b777e02d5bdd13640d2b8a7caf698c/testdata/clusters/flow-lab.yaml#L36
+
+Finding:     const RENDERER_FLAG_KEY = "[1;3;mvnprox.topology.rendererV2[0m"
+Secret:      [1;3;mvnprox.topology.rendererV2[0m
+RuleID:      generic-api-key
+Entropy:     3.671406
+File:        web/src/topology/store.ts
+Line:        30
+Commit:      d6453cd4d75391b44b59422bf2a90f0ade43a612
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-17T17:38:01Z
+Fingerprint: d6453cd4d75391b44b59422bf2a90f0ade43a612:web/src/topology/store.ts:generic-api-key:30
+Link:        https://github.com/bgovanlu/vnprox/blob/d6453cd4d75391b44b59422bf2a90f0ade43a612/web/src/topology/store.ts#L30
+
+Finding:     secret: [1;3;m8a3c5e91-2b6d-4f77-9c10-1e4a7d3f8b02[0m
+Secret:      [1;3;m8a3c5e91-2b6d-4f77-9c10-1e4a7d3f8b02[0m
+RuleID:      generic-api-key
+Entropy:     4.016876
+File:        testdata/clusters/vlan-mgmt.yaml
+Line:        21
+Commit:      59098070411a0d56dd622eec46a69566c22895f9
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-13T01:35:32Z
+Fingerprint: 59098070411a0d56dd622eec46a69566c22895f9:testdata/clusters/vlan-mgmt.yaml:generic-api-key:21
+Link:        https://github.com/bgovanlu/vnprox/blob/59098070411a0d56dd622eec46a69566c22895f9/testdata/clusters/vlan-mgmt.yaml#L21
+
+Finding:     {TokenID: "daemon", Secret: "[1;3;m5c8e2a1f-9b40-4d7e-8a11-cafe0000scal[0m"},
+Secret:      [1;3;m5c8e2a1f-9b40-4d7e-8a11-cafe0000scal[0m
+RuleID:      generic-api-key
+Entropy:     3.840083
+File:        testdata/genscale/main.go
+Line:        71
+Commit:      c39d15cad4074ae28e51afe6d85127fa874ce08f
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-12T02:34:56Z
+Fingerprint: c39d15cad4074ae28e51afe6d85127fa874ce08f:testdata/genscale/main.go:generic-api-key:71
+Link:        https://github.com/bgovanlu/vnprox/blob/c39d15cad4074ae28e51afe6d85127fa874ce08f/testdata/genscale/main.go#L71
+
+Finding:     secret: [1;3;m9c2f7a1e-4b3d-4a90-8e1a-6f0d2c5b8a17[0m
+Secret:      [1;3;m9c2f7a1e-4b3d-4a90-8e1a-6f0d2c5b8a17[0m
+RuleID:      generic-api-key
+Entropy:     3.982289
+File:        testdata/clusters/sim-lab.yaml
+Line:        51
+Commit:      549cfad9198653fea0909413332fccabb9a2fa34
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-11T12:50:01Z
+Fingerprint: 549cfad9198653fea0909413332fccabb9a2fa34:testdata/clusters/sim-lab.yaml:generic-api-key:51
+Link:        https://github.com/bgovanlu/vnprox/blob/549cfad9198653fea0909413332fccabb9a2fa34/testdata/clusters/sim-lab.yaml#L51
+
+Finding:     secret: [1;3;m7a1c3e9f-2b4d-4a6e-9c1d-8f3a6b2e0d55[0m
+Secret:      [1;3;m7a1c3e9f-2b4d-4a6e-9c1d-8f3a6b2e0d55[0m
+RuleID:      generic-api-key
+Entropy:     3.995907
+File:        testdata/clusters/ipam-lab.yaml
+Line:        40
+Commit:      0684bceef516ba41f1e1e90a94d2f5f0e8f11755
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-11T12:22:45Z
+Fingerprint: 0684bceef516ba41f1e1e90a94d2f5f0e8f11755:testdata/clusters/ipam-lab.yaml:generic-api-key:40
+Link:        https://github.com/bgovanlu/vnprox/blob/0684bceef516ba41f1e1e90a94d2f5f0e8f11755/testdata/clusters/ipam-lab.yaml#L40
+
+Finding:     secret: [1;3;m5c8e2a1f-9b40-4d7e-8a11-cafe0000scal[0m
+Secret:      [1;3;m5c8e2a1f-9b40-4d7e-8a11-cafe0000scal[0m
+RuleID:      generic-api-key
+Entropy:     3.840083
+File:        testdata/clusters/scale-lab.yaml
+Line:        5411
+Commit:      c39d15cad4074ae28e51afe6d85127fa874ce08f
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-12T02:34:56Z
+Fingerprint: c39d15cad4074ae28e51afe6d85127fa874ce08f:testdata/clusters/scale-lab.yaml:generic-api-key:5411
+Link:        https://github.com/bgovanlu/vnprox/blob/c39d15cad4074ae28e51afe6d85127fa874ce08f/testdata/clusters/scale-lab.yaml#L5411
+
+Finding:     secret: [1;3;m8a3f5c12-4b90-4d7e-9c21-1f6a7e0b9d33[0m
+Secret:      [1;3;m8a3f5c12-4b90-4d7e-9c21-1f6a7e0b9d33[0m
+RuleID:      generic-api-key
+Entropy:     3.995907
+File:        testdata/clusters/ovs-lab.yaml
+Line:        23
+Commit:      f158c21e934db982b1cf99619d37079c8e879ea7
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-11T04:01:12Z
+Fingerprint: f158c21e934db982b1cf99619d37079c8e879ea7:testdata/clusters/ovs-lab.yaml:generic-api-key:23
+Link:        https://github.com/bgovanlu/vnprox/blob/f158c21e934db982b1cf99619d37079c8e879ea7/testdata/clusters/ovs-lab.yaml#L23
+
+Finding:     secret: [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+Secret:      [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+RuleID:      generic-api-key
+Entropy:     3.940351
+File:        testdata/clusters/firewall-scenarios.yaml
+Line:        41
+Commit:      e77e7d8b124d7cf1bbe74310496d96004884fb3c
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-11T03:55:03Z
+Fingerprint: e77e7d8b124d7cf1bbe74310496d96004884fb3c:testdata/clusters/firewall-scenarios.yaml:generic-api-key:41
+Link:        https://github.com/bgovanlu/vnprox/blob/e77e7d8b124d7cf1bbe74310496d96004884fb3c/testdata/clusters/firewall-scenarios.yaml#L41
+
+Finding:     secret: [1;3;m4f9d21c7-3a80-4b6e-b1d2-95c8e7a40f13[0m
+Secret:      [1;3;m4f9d21c7-3a80-4b6e-b1d2-95c8e7a40f13[0m
+RuleID:      generic-api-key
+Entropy:     4.016876
+File:        testdata/clusters/three-node-vlan.yaml
+Line:        24
+Commit:      d9747257fc4c7e9adfd3011005f76d01e49c7af0
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-10T05:33:34Z
+Fingerprint: d9747257fc4c7e9adfd3011005f76d01e49c7af0:testdata/clusters/three-node-vlan.yaml:generic-api-key:24
+Link:        https://github.com/bgovanlu/vnprox/blob/d9747257fc4c7e9adfd3011005f76d01e49c7af0/testdata/clusters/three-node-vlan.yaml#L24
+
+Finding:     secret: [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+Secret:      [1;3;m6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42[0m
+RuleID:      generic-api-key
+Entropy:     3.940351
+File:        testdata/clusters/single-node.yaml
+Line:        21
+Commit:      d9747257fc4c7e9adfd3011005f76d01e49c7af0
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-10T05:33:34Z
+Fingerprint: d9747257fc4c7e9adfd3011005f76d01e49c7af0:testdata/clusters/single-node.yaml:generic-api-key:21
+Link:        https://github.com/bgovanlu/vnprox/blob/d9747257fc4c7e9adfd3011005f76d01e49c7af0/testdata/clusters/single-node.yaml#L21
+
+Finding:     [1;3;m-----BEGIN PRIVATE KEY-----[0m                                     
+[1;3;mMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDJaNJMguYRWIXK[0m
+[1;3;mKQ9PhZ6...[0m                                                      
+Secret:      [1;3;m-----BEGIN PRIVATE KEY-----[0m                                     
+[1;3;mMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDJaNJMguYRWIXK[0m
+[1;3;mKQ9PhZ6...[0m                                                      
+RuleID:      private-key
+Entropy:     6.026186
+File:        testdata/certs/dev-key.pem
+Line:        1
+Commit:      28621ab49d2406d68fd2782e95c0b4cf220931fc
+Author:      brian
+Email:       brian@dev.zoactive.net
+Date:        2026-07-09T14:20:19Z
+Fingerprint: 28621ab49d2406d68fd2782e95c0b4cf220931fc:testdata/certs/dev-key.pem:private-key:1
+Link:        https://github.com/bgovanlu/vnprox/blob/28621ab49d2406d68fd2782e95c0b4cf220931fc/testdata/certs/dev-key.pem#L1-L28
+
+[90m7:41PM[0m [32mINF[0m [1m679 commits scanned.[0m
+[90m7:41PM[0m [32mINF[0m [1mscanned ~28975664 bytes (28.98 MB) in 4.47s[0m
+[90m7:41PM[0m [33mWRN[0m [1mleaks found: 38[0m

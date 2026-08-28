@@ -1,0 +1,104 @@
+T-3802 public-history exposure scan — methodology and exact commands
+Run: 2026-08-27, against /home/brian/vnprox (origin: https://github.com/bgovanlu/vnprox.git)
+
+TOOL VERSIONS
+  gitleaks 8.30.1        — pre-installed at /home/brian/.local/bin/gitleaks (not a repo dependency)
+  trufflehog 3.97.1      — downloaded as a release binary (linux_amd64) into the session scratchpad
+                            (/tmp/.../scratchpad/gobin/trufflehog) for this scan only; NOT installed
+                            into the repo, GOPATH, go.mod, or PATH permanently. `go install` of the
+                            trufflehog module was attempted first and failed (its go.mod carries
+                            `replace` directives that `go install` refuses for non-main modules), so
+                            the official release tarball was used instead. Both tools are flagged per
+                            CLAUDE.md's dependency-note rule as new, dev-time-only tools: neither
+                            appears in go.mod, go.sum, package.json, or any shipped artifact.
+
+BRANCH COVERAGE SANITY CHECK (run before scanning, to scope what "full history" means)
+  $ git branch -r
+    origin/main
+    origin/sigstore-in-daemon
+    origin/t-2409-e2e-store-isolation
+  $ git rev-list --all | wc -l                                            -> 853
+  $ git rev-list origin/main origin/sigstore-in-daemon \
+      origin/t-2409-e2e-store-isolation | sort -u | wc -l                 -> 853
+  Finding: the ~40 other local branches in this working copy (worktree-agent-*, fix-*, t40x-*,
+  main-latest*, etc.) contribute ZERO commits beyond what origin/main + the two named branches
+  already reach. All 853 commits reachable from --all are already reachable from the three
+  branches that are actually pushed to GitHub. "Full local history" and "full public history" are
+  therefore the same 853-commit set for this repo, today.
+  $ git log origin/main..origin/sigstore-in-daemon --oneline   -> 1 commit (562de983)
+  $ git log origin/main..origin/t-2409-e2e-store-isolation --oneline -> 1 commit (a9559e79)
+  (confirms these two branches are near-identical forks of main, each one commit ahead)
+
+GITLEAKS — full history, all refs
+  $ gitleaks detect --source . --log-opts="--all" -f json \
+      -r planning/reports/evidence/gitleaks-full-history.json -v \
+      > planning/reports/evidence/gitleaks-full-history.stdout.txt 2>&1
+  Result: "679 commits scanned" / "leaks found: 38"
+  Note on the 679 vs 853 count: gitleaks diffs each commit against its parent(s); with default
+  (non -m) git log traversal a merge commit has no isolated diff and contributes nothing new to
+  scan, so 679 non-merge commits (git rev-list --all --no-merges) is the correct "content-bearing"
+  denominator. 679 + 174 merge commits = 853, confirmed via:
+    $ git rev-list --all --no-merges | wc -l   -> 679
+    $ git rev-list --all --merges    | wc -l   -> 174
+  Sanity re-run scoped to just the two named branches (should be a subset, and was):
+    $ gitleaks detect --source . --log-opts="origin/sigstore-in-daemon" ...  -> 38 leaks (same set)
+    $ gitleaks detect --source . --log-opts="origin/t-2409-e2e-store-isolation" ... -> 25 leaks (subset)
+
+TRUFFLEHOG — full history (git source scans all local refs by default)
+  $ trufflehog git file://. --json --no-update \
+      > planning/reports/evidence/trufflehog-full-history.jsonl \
+      2> planning/reports/evidence/trufflehog-full-history.stderr.txt
+  Result: 13916 chunks scanned, 29,903,908 bytes, 0 verified secrets, 7 unverified secrets.
+  trufflehog attempts live verification against the credential's own API for detectors that support
+  it (e.g. the GitLab PAT detector calls GitLab); "0 verified" for all 7 findings is itself evidence,
+  not just an absence of the rule firing — the one finding shaped like a real GitLab token
+  (glpat-VNPROXPUSHMARKER-do-not-log-me, in a test file that names itself as fake) was checked
+  against GitLab's API and rejected as invalid/nonexistent.
+
+TARGETED GREP / git log -S, supplementing the scanners (per task instructions — scanners have no
+rule for a specific homelab password or an internal-doc IP)
+  - LAB_ROOT_PASSWORD: `git log --all -S"LAB_ROOT_PASSWORD" --oneline` -> exactly 1 commit
+    (08e233bf), the same commit that introduced scripts/pve-lab.sh's only edit besides its initial
+    add (107b4e3d). Every occurrence in both versions of the file is either a comment or
+    `LAB_ROOT_PASSWORD="${LAB_ROOT_PASSWORD:-}"` (empty default) / a `die` guard. No literal value
+    was ever committed. Also checked: `git log --all -S"root-password"` (1 commit, same one) and a
+    full `-p` dump of every version of scripts/pve-lab.sh grepped for `LAB_ROOT_PASSWORD=[^"$]`
+    (assignment to something other than empty-string-default or a shell expansion) — zero hits.
+  - Internal IPs: `git log --all -p | grep -oE` against RFC1918 ranges (10.0.0.0/8, 172.16-31.0.0/12,
+    192.168.0.0/16). 192.168.1.9 / 192.168.1.7 (pvecube/pve001) appear in 21 and 20 commits
+    respectively, concentrated in planning/reports/evidence/*.txt (pvesh transcripts), planning docs,
+    and CLAUDE.md itself. ~450 distinct RFC1918 addresses total across history, the overwhelming
+    majority under testdata/clusters/*.yaml and internal/flow/hostsample/testdata/ as SDN/network
+    test fixtures (10.0.0.x ranges, sequential and clearly synthetic).
+  - MAC addresses: 527 distinct matches, all in testdata/*.yaml or Go test files (bond/OVS fixtures);
+    spot-checked OUI prefixes (00:11:22, aa:bb:cc, 08:00:27 = VirtualBox test OUI) — no pattern
+    suggesting a real physical NIC.
+  - Emails: enumerated every `user@host` match across the full `-p` dump; classified in the report.
+  - Private keys / certs: `git log --all --oneline --name-only | grep -iE
+    '\.key$|\.pem$|\.p12$|\.pfx$|id_rsa|id_ed25519|\.ppk$'` -> exactly 2 files ever existed in
+    history: testdata/certs/dev-key.pem and testdata/certs/dev-cert.pem (paired self-signed fixture,
+    CN=vnprox-dev, SAN=localhost/127.0.0.1, valid 2026-2046, generated for test-only HTTPS).
+  - Cassette provenance: `internal/pvemock/testdata/cassettes/` contains only `mock-*` directories;
+    the introducing commit (88d59168) states in its own message "named mock-* because no cassette
+    here came from Proxmox hardware yet," and that record mode "Only the response body is ever
+    passed to the writer: request headers and bodies are never collected, in any form."
+  - Sigstore/cosign key material: `grep -n "BEGIN ENCRYPTED SIGSTORE\|BEGIN COSIGN\|cosign.key\|
+    BEGIN OPENSSH PRIVATE KEY"` over the full `-p` dump -> zero hits.
+
+WHAT THIS METHOD DOES NOT COVER
+  - Neither tool inspects binary blobs beyond gitleaks'/trufflehog's built-in archive/text
+    extraction; no compiled binaries or images were committed in this history (verified separately:
+    no .deb/.tar.gz/.bin artifacts under git-tracked paths), so this gap is believed moot here but
+    was not exhaustively re-proven.
+  - trufflehog's verification step only covers detectors with a known verification endpoint
+    (GitHub, GitLab, AWS, etc.); it does not and cannot verify PVE tickets/tokens against a live PVE
+    API (no such detector exists), nor could it validate the WireGuard-shaped test keys — those were
+    instead confirmed synthetic by reading the test file's own text (explicit `mustNotHave`/`gone`
+    assertions naming them as fixtures for a redaction test).
+  - Both tools scan tracked git history/objects only. Anything ever force-pushed away and garbage-
+    collected from every clone (there is no evidence of this happening) would not be visible to a
+    scan run against this working copy; GitHub's own reflog/object retention was not queried (no
+    API access to GitHub's server-side dangling-object store from this environment), so a purge
+    on GitHub's end, if ever needed, cannot be confirmed clean from local tooling alone.
+  - This is a point-in-time scan of the state as of 2026-08-27. It does not cover commits made after
+    this scan ran.

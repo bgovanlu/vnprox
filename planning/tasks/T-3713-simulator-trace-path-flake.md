@@ -48,6 +48,85 @@ whole 5s budget waiting for stability.
 Durations corroborate it: sibling tests in the same file run in 5–7s; this one took 33.7s, 1.2m and
 1.2m across three runs. It is not a little over budget, it is riding the edge.
 
+## ⚠️ Disproven 2026-08-27 — the cause above is NOT the cause
+
+**The settle-condition hypothesis was implemented, measured, and refuted.** `waitForLayout` was
+replaced with `waitForLayoutSettled` (in `web/e2e/helpers.ts`, applied across all nine calling
+specs): it polls `.react-flow__node` transforms once per animation frame and returns only after
+they are byte-identical across N consecutive frames — a genuine "layout has settled" condition.
+
+**It did not help.** Full `--repeat-each=10 --workers=1` run of `simulator.spec.ts`, the
+trace-path test's ten repeats in order:
+
+```
+✓ 18.9s   ✘ 1.3m   ✓ 1.2m   ✘ 1.2m   ✘ 950ms
+✓ 24.7s   ✓ 40.6s  ✓ 28.4s  ✘ 1.2m   ✓ 45.7s
+        → 6 passed / 4 failed   (40%, vs the 33% documented pre-fix)
+        → whole file: 46 passed / 4 failed in 13.5m; every failure is this one test
+```
+
+Run conditions: 1-min load average 16.95 falling to ~14 on a 32-core host shared with an unrelated
+`turbo test:ci`. Contention inflates durations and is a fair caveat on the absolute numbers — it is
+**not** an explanation for the fix failing to move the rate, and every passing repeat still took
+18.9–45.7s against 5–7s for sibling tests in the same file.
+
+### What the failure actually is
+
+The failing call is **not** the initial layout wait. It is `traceFromContextMenu`
+(`simulator.spec.ts:122-124`), whose right-click → context-menu → menu-item sequence is already
+wrapped in `.toPass({ timeout: 60_000 * slowFactor })`. The whole 60s retry budget is exhausted.
+Playwright's own call log, from a failing repeat, is decisive:
+
+```
+- waiting for element to be visible, enabled and stable
+- element is visible, enabled and stable          ← stability IS satisfied
+- scrolling into view if needed / done scrolling
+- <div class="flex items-center justify-between gap-2">…</div> from
+  <div … class="react-flow__node react-flow__node-entity nopan selectable draggable">…</div>
+  subtree intercepts pointer events               ← occlusion, not motion
+- retrying click action
+- <div class="react-flow__pane draggable">…</div> intercepts pointer events
+- retrying click action
+- element is outside of the viewport              ← viewport, not motion
+```
+
+Three distinct blockers, none of them "the element is still moving":
+
+1. **The node's own subtree intercepts its pointer events** — an inner `div` sits over the
+   accessible-name-bearing element Playwright targets, so the click lands on a child.
+2. **`.react-flow__pane` intercepts pointer events** — the canvas pane overlays the node.
+3. **The element is outside of the viewport** — layout placed it off the visible canvas and
+   `scrolling into view` did not bring it back, which a `fitView` before interaction would.
+
+This also explains the **950ms failure**, which was never consistent with a stability timeout: a
+sub-second failure is the viewport/occlusion branch failing fast, not a budget being exhausted.
+
+### Ranked surviving hypotheses, for whoever takes this next
+
+1. **Hit-target occlusion (most likely).** The right-click target should be the node's own
+   pointer-event-receiving element, not an ancestor whose child intercepts. Fix candidate: target a
+   stable inner selector (or `data-testid`) rather than `getByRole("button", { name })`, or make
+   the node's interactive surface the element that carries the accessible name.
+2. **Viewport.** Call react-flow's `fitView` (or assert the node's bounding box is inside the
+   canvas) before interacting. Note `scrolling into view if needed` cannot fix an off-canvas
+   react-flow node, because the node moves in canvas transform space, not document scroll space.
+3. **Pane z-order/pointer-events.** `.react-flow__pane` intercepting suggests a stacking or
+   `pointer-events` rule that intermittently puts the pane above nodes.
+
+**Do NOT raise the timeout, and do not re-attempt a settling fix.** Both are now empirically
+excluded: the budget is already 60s with a `slowFactor`, and stability is explicitly reported as
+satisfied at the moment of failure.
+
+### Disposition
+
+- `waitForLayoutSettled` is **kept on its own merits** — waiting for settled layout is strictly
+  more correct than waiting for layout to *start*, and the nine specs are better for it. It is
+  explicitly **not** the fix for this card. (Same disposition T-2505-followup-01 gave its
+  rAF-throttling change after that change was disproven as the fix for the `scale.spec.ts` hang.)
+- **The quarantine entry stays**, unchanged, expiring 2026-09-22.
+- Traces were captured and are the fastest way in for the next attempt:
+  `npx playwright show-trace web/test-results/whole-suite/simulator-T-504-AC5-Trace--69bfd--guest--external-IP--guest--repeat8/trace.zip`
+
 ## Deliverables
 
 - Replace the "layout has started" check with one that means "layout has settled" — e.g. transforms

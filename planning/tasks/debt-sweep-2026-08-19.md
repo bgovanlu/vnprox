@@ -103,7 +103,20 @@ entry already establishes the failure is one CDP call that never returns, not a 
 runs 1 and 2 failing and run 3 passing, in that order, is itself a clue worth explaining: whatever
 the trigger is, it did not accumulate monotonically across three back-to-back runs.
 
-## STILL OPEN, and arguably worse than the leak that was fixed
+## ~~STILL OPEN~~ — CLOSED 2026-08-19, 35 minutes after this was written
+
+> **Correction, added 2026-08-27.** The section below was accurate for about half an hour.
+> Commit `4713d72c` ("api: scope tenant mutations too, and lock the scope boundary to fleet
+> admins", 14:56 — this sweep was written at 14:21) closed it: `tenantMutationScope` in
+> `internal/api/tenant.go` now gates all five routes, scope mutations are locked to fleet admins
+> outright, and `TestTenantScoping_NoCrossTenantLeakage` /
+> `TestTenantSelfService_MemberCanManageOwnTenant` cover both directions.
+>
+> **This document was never updated, so a fixed security issue read as open for eight days** and
+> was still being carried as an open item on the 2026-08-27 roadmap's debt gate. Re-derived and
+> written up in `planning/tasks/T-3714-tenant-mutation-scoping.md`. The original text is kept
+> below unedited, because a sweep is a dated record — but a record that outlives its accuracy
+> without saying so is the same failure mode as a fixture nobody re-checked.
 
 **Tenant *mutation* routes are not scoped to membership at all.** `POST`/`DELETE /tenants`, and
 `PUT`/`DELETE` on `.../scopes` and `.../members`, gate only on `netWrite`. A caller holding
