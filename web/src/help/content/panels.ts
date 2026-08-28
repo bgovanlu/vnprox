@@ -1754,6 +1754,30 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
     seeAlso: ["path-simulator", "diagnose-page", "firewall-page", "capture-panel"],
   },
   {
+    id: "bond-hash-distribution",
+    title: "LACP hash distribution",
+    surface: "panel",
+    summary:
+      "Which bond member each flow is predicted to hash onto, beside the rate each member is actually carrying — so a policy that is not spreading traffic the way it was assumed to becomes visible.",
+    docRef: "docs/features/monitoring.md",
+    keywords: ["lacp", "bond", "hash", "xmit_hash_policy", "layer2+3", "layer3+4", "distribution", "imbalance"],
+    sections: [
+      {
+        heading: "Predicted, not measured — and the difference matters",
+        body: "The prediction runs the kernel's own xmit_hash_policy arithmetic over the flows vnprox already has, so it says where traffic *should* land. The actual column comes from per-member counters. Divergence between the two is the useful signal: it means the policy is not distributing the way the configuration implies, which is how a four-member bond quietly carries most of its traffic on one link.",
+      },
+      {
+        heading: "Three policies cannot be predicted from flow data, and say so",
+        body: "layer2, layer2+3 and encap2+3 hash on MAC addresses, and vnprox's flow records do not carry them. Those policies report as unsupported here rather than producing a confident wrong answer. layer3+4 and encap3+4 hash on addresses and ports, which flow data does carry.",
+      },
+      {
+        heading: "Unverified against real hardware, deliberately stated",
+        body: "The hash arithmetic is implemented from the kernel bonding documentation's stated formulas; no bond exists on this project's cluster to check it against, and the exact fold order has changed across kernel versions historically. `planning/reports/needs-hardware-validation.md` records exactly what remains unproven: that this arithmetic matches a running kernel bit-for-bit, and that a real switch agrees with the result.",
+      },
+    ],
+    seeAlso: ["bond-lacp-state", "flows-page", "topology-page"],
+  },
+  {
     id: "bond-lacp-state",
     title: "Live LACP state",
     surface: "panel",

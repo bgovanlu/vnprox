@@ -1,0 +1,69 @@
+== hostname ==
+pvecube
+
+== pveversion ==
+pve-manager/9.2.4/5e5ae681198514d4 (running kernel: 7.0.14-4-pve)
+
+== /proc/net/bonding ==
+total 0
+dr-xr-xr-x  2 root root 0 Aug 28 07:56 .
+dr-xr-xr-x 60 root root 0 Aug 28 07:56 ..
+
+== ip -d link show type bond ==
+(exit code: 0 )
+
+== all links (brief) ==
+lo               UNKNOWN        00:00:00:00:00:00 <LOOPBACK,UP,LOWER_UP> 
+enp1s0           UP             a8:b8:e0:00:0e:e8 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+enp2s0           DOWN           a8:b8:e0:00:0e:e9 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+enp3s0           UP             a8:b8:e0:00:04:47 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+enp4s0           DOWN           a8:b8:e0:00:04:46 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+vmbr0            UP             a8:b8:e0:00:0e:e8 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+vmbr1            DOWN           a8:b8:e0:00:0e:e9 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+vmbr2            UP             a8:b8:e0:00:04:47 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+vmbr3            DOWN           a8:b8:e0:00:04:46 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+veth103i0@if2    UP             fe:cc:f2:d1:ad:7e <BROADCAST,MULTICAST,UP,LOWER_UP> 
+veth104i0@if2    UP             fe:6e:94:10:ab:dd <BROADCAST,MULTICAST,UP,LOWER_UP> 
+fwbr103i0        UP             92:51:5a:6a:c4:dc <BROADCAST,MULTICAST,UP,LOWER_UP> 
+fwbr104i0        UP             86:28:9e:78:7e:91 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+fwpr104p0@fwln104i0 UP             f6:2d:89:a1:7b:d4 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+fwln104i0@fwpr104p0 UP             86:28:9e:78:7e:91 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+fwpr103p0@fwln103i0 UP             a2:b1:1c:1e:51:b9 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+fwln103i0@fwpr103p0 UP             92:51:5a:6a:c4:dc <BROADCAST,MULTICAST,UP,LOWER_UP> 
+vmbr99           UP             d6:94:bf:28:6c:a4 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+tap9101i0        UNKNOWN        d6:94:bf:28:6c:a4 <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+tap9102i0        UNKNOWN        32:03:82:86:9f:08 <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+
+== glob for /sys/class/net/*/bonding ==
+(scan complete)
+enp4s0 eth
+vmbr0 bridge
+enp2s0 eth
+vmbr3 bridge
+vmbr4 bridge
+vmbr1 bridge
+vmbr2 bridge
+enp3s0 eth
+enp6s0 eth
+enp7s0 eth
+enp5s0 eth
+
+== Summary ==
+Neither vnprox-dev node has any bond interface configured at all:
+- pvecube: 4 physical NICs (enp1s0-enp4s0), each bridged 1:1 into its own vmbr
+  (vmbr0-vmbr3, matching enp1s0/enp2s0/enp3s0/enp4s0 respectively by MAC).
+  /proc/net/bonding/ is empty; `ip -d link show type bond` returns nothing;
+  no /sys/class/net/*/bonding directory exists for any interface.
+- pve001 (observed read-only via pvecube's own `pvesh get /nodes/pve001/network`):
+  every interface is type "eth" or "bridge" — no "bond" type interface anywhere
+  in its network config.
+
+Finding: T-4110's predicted-vs-actual comparison (internal/lacphash.Compare,
+web/src/topology/LacpHashSection.tsx) has never had a real bond to run against
+on this cluster — not just the per-flow kernel-hash claim (always hardware-gated
+per CLAUDE.md), but even the coarser "aggregate observed rate distribution"
+half this task can otherwise exercise against internal/metrics has zero real
+data to compare against today. Development and testing were done entirely
+against internal/lacphash's own lab-simulated fixtures (predict_test.go,
+lacpHashPredict.test.ts, LacpHashSection.test.tsx), per this task's explicit
+hardware-flagged framing.

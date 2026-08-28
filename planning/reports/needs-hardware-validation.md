@@ -431,6 +431,48 @@ query against the live store (`planning/reports/evidence/T-3705-pvecube-2026-08-
       regardless). A genuine split-brain/desynced-slave scenario (this task's fixtures simulate
       both) should also be reproduced against a real switch to confirm `lacp_partner_mismatch`
       fires as designed.
+- [ ] **LACP hash visualizer (T-4110) needs real NICs and a physical switch** — this is the exact
+      case CLAUDE.md's "needs real NICs or a physical switch" category names, not a bare "needs
+      hardware" line. `internal/lacphash` implements the kernel bonding driver's five
+      `xmit_hash_policy` algorithms (`layer2`, `layer2+3`, `layer3+4`, `encap2+3`, `encap3+4`) as
+      pure functions, sourced from `Documentation/networking/bonding.rst`'s stated formulas — no
+      kernel source tree and no hardware were available to write it against (see
+      `internal/lacphash/doc.go`'s own header comment for the full honesty caveat). Two genuinely
+      distinct things remain unverified, and neither is provable without a real switch:
+      1. **Whether this package's arithmetic matches the actual running kernel's `bond_main.c`
+         bit-for-bit.** The formulas are believed correct to bonding.rst's documented
+         *description*; the exact shift/fold order and use of reciprocal-scale hashing has changed
+         across kernel versions historically, and this package's own table-driven tests
+         (`internal/lacphash/policy_test.go`) can only prove internal consistency, never agreement
+         with one specific running kernel.
+      2. **Whether a real switch's own independent LACP hash agrees with the local kernel's
+         decision for the same flow.** Per-member hash outcome is a property of the switch's own
+         hashing algorithm interacting with real link members over a real 802.3ad aggregate — a
+         nested lab cannot produce this, and no amount of software-only testing can either. The
+         predicted-vs-actual comparison this task ships (`internal/lacphash.Compare`,
+         `web/src/topology/LacpHashSection.tsx`) only ever proves the *aggregate* observed rate
+         distribution lines up (or doesn't) with the local prediction — a strictly weaker claim
+         than "the kernel's per-flow hash decision, and the switch's own hash, agree slave-for-slave
+         with this package's `Hash()`". Confirming that needs a real 802.3ad bond on a live switch
+         under generated multi-flow traffic, comparing this package's per-flow predictions directly
+         against `tcpdump`/switch-side per-port counters — not just the bond-level rate comparison
+         this task can already do against `internal/metrics`.
+      Ships behind lab-simulated fixtures for development/tests (`internal/lacphash/predict_test.go`,
+      `web/src/topology/lacpHashPredict.test.ts`, `web/src/topology/LacpHashSection.test.tsx` — all
+      explicitly labeled as simulated, never presented as an observation), per this task's own
+      hardware-flagged framing. `health_lacpmismatch` (T-804) is unaffected — this is additive
+      visualization only, no change to that check's detection logic.
+      **Checked against `vnprox-dev` this session (read-only, 2026-08-28):** neither real node has
+      any bond configured at all. pvecube's `/proc/net/bonding/` is empty, `ip -d link show type
+      bond` returns nothing, and no `/sys/class/net/*/bonding` directory exists for any of its four
+      physical NICs (each is instead bridged 1:1 into its own vmbr); pve001, read via pvecube's own
+      `pvesh get /nodes/pve001/network`, likewise has no `"bond"`-typed interface anywhere in its
+      config. Transcript: `planning/reports/evidence/T-4110-pvecube-bond-config-2026-08-28.txt`.
+      This means the *coarser* claim `Compare`/`LacpHashSection` can otherwise check against real
+      per-slave rate counters (`internal/metrics`, item 2's "aggregate observed rate distribution")
+      has never had a real bond to run against on this cluster either — not just the per-flow
+      kernel-hash claim item 1/2 above already name as hardware-gated. Development and every test
+      here used `internal/lacphash`'s own lab-simulated fixtures exclusively.
 
 ## Management-redundancy wizard (T-703)
 

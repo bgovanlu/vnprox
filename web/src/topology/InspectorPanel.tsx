@@ -28,6 +28,7 @@ import { useAnnotationsForRef } from "./annotationsQueries";
 import { BondLacpSection } from "./BondLacpSection";
 import { fieldRows } from "./fields";
 import { InteriorTab } from "./InteriorTab";
+import { LacpHashSection } from "./LacpHashSection";
 import { METRICS_KINDS } from "./metricsKinds";
 import { MetricsTab } from "./MetricsTab";
 import { MigrationPreflightTab } from "./MigrationPreflightTab";
@@ -606,6 +607,7 @@ export function InspectorPanel({
             {isBondKind && (
               <RadixTabs.Content value="lacp" className="mt-3 flex-1 overflow-y-auto">
                 <BondLacpSection fields={data.fields} />
+                <LacpHashSection node={data.node} fields={data.fields} wsClient={metricsWsClient} />
               </RadixTabs.Content>
             )}
 
