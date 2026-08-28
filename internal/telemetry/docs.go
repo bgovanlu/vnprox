@@ -196,8 +196,14 @@ func ParseDocTable(md string) ([]DocRow, error) {
 }
 
 // CompareDoc is AC6 in one function: it fails when the documented table and
-// the payload struct disagree, in either direction.
-func CompareDoc(fields []Field, rows []DocRow) error {
+// the payload struct disagree, in either direction. docPath names the
+// document being compared, purely so the resulting error points at the
+// right file — docs/security.md and docs/telemetry.md (T-3812) both carry
+// a copy of this table, checked by two separate callers against the same
+// fields, and an error that always said "docs/security.md" regardless of
+// which one actually disagreed would send whoever reads it to the wrong
+// file.
+func CompareDoc(fields []Field, rows []DocRow, docPath string) error {
 	var problems []string
 	add := func(format string, args ...any) { problems = append(problems, fmt.Sprintf(format, args...)) }
 
@@ -214,17 +220,17 @@ func CompareDoc(fields []Field, rows []DocRow) error {
 		row, ok := byName[f.Name]
 		if !ok {
 			add("%s: is in the telemetry payload and has no row in %s — a field that is collected and not documented is exactly what this gate exists to stop",
-				f.Name, DocRelPath)
+				f.Name, docPath)
 			continue
 		}
 		if row.Type != f.Type {
-			add("%s: %s line %d calls it %q, the payload struct says %q", f.Name, DocRelPath, row.Line, row.Type, f.Type)
+			add("%s: %s line %d calls it %q, the payload struct says %q", f.Name, docPath, row.Line, row.Type, f.Type)
 		}
 		if strings.TrimSpace(row.What) == "" {
-			add("%s: %s line %d does not say what it is", f.Name, DocRelPath, row.Line)
+			add("%s: %s line %d does not say what it is", f.Name, docPath, row.Line)
 		}
 		if strings.TrimSpace(row.Why) == "" {
-			add("%s: %s line %d does not say why it carries no identity; that column is the whole promise", f.Name, DocRelPath, row.Line)
+			add("%s: %s line %d does not say why it carries no identity; that column is the whole promise", f.Name, docPath, row.Line)
 		}
 	}
 
@@ -234,7 +240,7 @@ func CompareDoc(fields []Field, rows []DocRow) error {
 	}
 	for _, r := range rows {
 		if !known[r.Field] {
-			add("%s: %s line %d documents a field the payload does not have — the document has outlived the code", r.Field, DocRelPath, r.Line)
+			add("%s: %s line %d documents a field the payload does not have — the document has outlived the code", r.Field, docPath, r.Line)
 		}
 	}
 

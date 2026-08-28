@@ -56,6 +56,7 @@ these; this list exists so no spec is reachable only by one route.
 | [API](api.md) | REST + WebSocket API, the automation contract |
 | [Security](security.md) | AuthN/AuthZ, TLS, threat model |
 | [Security verification](security-verification.md) | How each security claim in the doc above is actually checked, and by what |
+| [Coordinated disclosure process](security-disclosure-process.md) | What happens between a vulnerability report landing and a fix being public |
 | [PVE compatibility](compatibility.md) | Which PVE versions are tested, and how |
 | [Performance](performance.md) | Budgets and measured numbers |
 | [Development](development.md) | Building from source, the toolchain, the quality gate, approved dependencies |
@@ -66,6 +67,7 @@ these; this list exists so no spec is reachable only by one route.
 |---|---|
 | [Support](support.md) | Where to file a bug, what to attach, what response to expect |
 | [Contributing](../CONTRIBUTING.md) | Build, test, and the PR process |
+| [Code of Conduct](../CODE_OF_CONDUCT.md) | Community standards for this project's spaces |
 | [Community-repository assessment](community-repo-assessment.md) | Whether inclusion in a Proxmox community repository (e.g. the Community-Scripts project) makes sense for vnprox, and why |
 | [Forum announcement (draft)](forum-announcement.md) | The Proxmox forum post — drafted, not yet posted |
 | [The signed apt repo](../packaging/apt-repo.md) | The repository tooling and signing pipeline — built; the hosting it points at does not exist yet |

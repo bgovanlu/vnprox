@@ -92,14 +92,34 @@ Playwright's own call log, from a failing repeat, is decisive:
 
 Three distinct blockers, none of them "the element is still moving":
 
-1. **The node's own subtree intercepts its pointer events** — an inner `div` sits over the
-   accessible-name-bearing element Playwright targets, so the click lands on a child.
+1. **A sibling node's subtree intercepts the click** — the intercepting element is
+   `data-id="guest-nic:pve1:300/net0"`, i.e. **vm-a's node overlapping vm-b's click point**, not
+   merely an inner child of the target. Layout is placing two nodes close enough to overlap, and
+   the accessible-name-bearing element is not the pointer-receiving one. Repeats 1, 3 and 8 (the
+   1.3m/1.2m/1.2m failures) carry byte-identical occlusion text, so this is deterministic given
+   the layout, not random.
 2. **`.react-flow__pane` intercepts pointer events** — the canvas pane overlays the node.
 3. **The element is outside of the viewport** — layout placed it off the visible canvas and
    `scrolling into view` did not bring it back, which a `fitView` before interaction would.
 
-This also explains the **950ms failure**, which was never consistent with a stability timeout: a
-sub-second failure is the viewport/occlusion branch failing fast, not a budget being exhausted.
+**Correction (same day, before this card was acted on):** an earlier revision of this section
+explained the **950ms failure** as "the viewport/occlusion branch failing fast." That was a
+plausible inference and it is **wrong**. The raw log gives its actual text:
+
+```
+3) e2e/simulator.spec.ts:177:1 › T-504 AC5: Trace path from the map pre-fills and runs …
+   Error: Object with guid response@9a5a9a20a42a8ce154ad363e8837c02d was not bound in the connection
+```
+
+That is a Playwright/CDP driver-to-browser object-binding desync — **test-infrastructure
+flakiness, not an application defect**, and consistent with the load 19–22 contention that run
+executed under. It is a **fourth, separate failure family**, not a fast instance of the three
+above, and it must not be counted as evidence for any app-layer hypothesis. Whoever fixes the
+occlusion defect should expect this one to survive it and be diagnosed separately.
+
+(Recorded because the wrong explanation was written first and read plausibly. The same instinct —
+an inference that fits the shape of the evidence without matching its text — is what produced this
+card's original settle-condition diagnosis.)
 
 ### Ranked surviving hypotheses, for whoever takes this next
 

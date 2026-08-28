@@ -83,6 +83,8 @@ building it. The table below is the full corpus, contributor-dense documents inc
 | [`docs/user-guide.md`](docs/user-guide.md) | End-user guide (first run, common tasks) |
 | [`docs/development.md`](docs/development.md) | Tech stack, repo layout, standards, testing, CI |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Build, test, and the PR process for human contributors |
+| [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Community standards for this project's spaces (issues, PRs, discussions) |
+| [`SECURITY.md`](SECURITY.md) | How to report a vulnerability, privately |
 | [`docs/community-repo-assessment.md`](docs/community-repo-assessment.md) | Whether inclusion in a Proxmox community repository (e.g. Community-Scripts) makes sense, and why |
 | [`planning/implementation-plan.md`](planning/implementation-plan.md) | Phased plan, dependency graph, sub-agent task index |
 | [`planning/tasks/`](planning/tasks/) | Exact, self-contained task cards for implementation sub-agents |

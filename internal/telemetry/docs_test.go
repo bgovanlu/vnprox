@@ -38,7 +38,7 @@ func TestDocSectionMatchesPayload(t *testing.T) {
 	if len(fields) == 0 {
 		t.Fatal("reflection found no payload fields, so this comparison would pass against an empty document")
 	}
-	if err := CompareDoc(fields, rows); err != nil {
+	if err := CompareDoc(fields, rows, DocRelPath); err != nil {
 		t.Fatalf("%s and the telemetry payload struct disagree: %v", DocRelPath, err)
 	}
 	t.Logf("%d fields, stated identically in %s and internal/telemetry.Payload", len(rows), DocRelPath)
@@ -115,7 +115,7 @@ func TestCompareDocFailsInBothDirections(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parsing the fixture: %v", err)
 			}
-			err = CompareDoc(tc.fields, rows)
+			err = CompareDoc(tc.fields, rows, DocRelPath)
 			switch {
 			case tc.wantErr == "" && err != nil:
 				t.Fatalf("want agreement, got %v", err)
