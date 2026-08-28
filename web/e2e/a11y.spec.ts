@@ -393,6 +393,7 @@ const SWEEP_ROUTES: SweepRoute[] = [
   { path: "/flows", heading: /^Flow explorer$/ },
   { path: "/conntrack", heading: /^Conntrack explorer$/ },
   { path: "/edge", heading: /^Edge & NAT cockpit$/ },
+  { path: "/route-explorer", heading: /^Route explorer$/ },
   { path: "/diagnose", heading: /^No target selected$/, level: 2 },
   { path: "/analysis", heading: /^Analysis/ },
   { path: "/ports", heading: /^Ports$/ },

@@ -14,6 +14,7 @@ import { FirewallPage } from "./pages/FirewallPage";
 import { FlowExplorerPage } from "./pages/FlowExplorerPage";
 import { ConntrackPage } from "./pages/ConntrackPage";
 import { EdgePage } from "./pages/EdgePage";
+import { RouteExplorerPage } from "./pages/RouteExplorerPage";
 import { DiagnosePage } from "./pages/DiagnosePage";
 import { AnalysisPage } from "./pages/AnalysisPage";
 import { IpamPage } from "./pages/IpamPage";
@@ -181,6 +182,14 @@ export function App() {
               element={
                 <DesktopOnlyRoute pageLabel="Edge">
                   <EdgePage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/route-explorer"
+              element={
+                <DesktopOnlyRoute pageLabel="Route explorer">
+                  <RouteExplorerPage />
                 </DesktopOnlyRoute>
               }
             />

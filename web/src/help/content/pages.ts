@@ -284,6 +284,26 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
     seeAlso: ["flows-page", "path-simulator", "firewall-page", "capture-panel"],
   },
   {
+    id: "route-explorer-page",
+    title: "Route explorer",
+    surface: "page",
+    summary:
+      "The node's real routing state — kernel FIB across every table, policy rules, and FRR's RIB when it is running — plus a lookup that answers which path a given address would actually take.",
+    docRef: "docs/features/monitoring.md",
+    keywords: ["route", "routing", "fib", "rib", "frr", "next hop", "gateway", "policy rule"],
+    sections: [
+      {
+        heading: "What the path simulator declines to answer",
+        body: "The path simulator evaluates firewall and SDN configuration for endpoints it can model on-fabric, and says plainly that it does not evaluate routing once a destination leaves that fabric. This page is that missing half: it reads the kernel's own forwarding tables and FRR's RIB, so the answer comes from the node's actual state rather than from configuration.",
+      },
+      {
+        heading: "Lookup, not guesswork",
+        body: "Enter a destination address and the lookup performs longest-prefix match against the same tables the kernel uses, applying policy rules in order. Where a result depends on which interface traffic arrives from, it says so rather than picking one — the same ambiguity `ip route get` resolves by asking you for a device.",
+      },
+    ],
+    seeAlso: ["path-simulator", "topology-page", "conntrack-page"],
+  },
+  {
     id: "edge-page",
     title: "Edge & NAT",
     surface: "page",

@@ -11,13 +11,27 @@ import (
 // l3Path evaluates routing between two on-fabric endpoints that do NOT share
 // an L2 domain (different subnets/VNets/bridges). It emits hops and returns
 // the routing outcome per PVE SDN semantics (docs/features/sdn.md).
+//
+// T-3903's route explorer (internal/route, GET /route/lookup) is the
+// capability this function's FeatureExternalRouting caveat below
+// disclaims, not a competing engine: this function answers "what would
+// PVE's SDN config do with these two *inventory-modeled* endpoints"
+// (including the firewall verdicts baked into e.addHop's callers
+// elsewhere in this package), while internal/route answers "what would
+// this node's actual kernel/FRR routing state do with this destination"
+// for any destination, on- or off-fabric, once that question is exactly
+// what this function has just declined to guess at. Neither package
+// imports the other; see internal/route's own package doc comment for
+// the reverse cross-reference.
 func (e *Engine) l3Path(src, dst resolvedEP, res *Result) reachResult {
 	e.addHop(res, hopForEndpoint(src))
 	e.addHop(res, hopForAttachment(src))
 
 	// Routing decisions need both endpoints anchored to a subnet. Plain
 	// (non-SDN) bridges route via host routing tables the inventory does not
-	// carry — honestly not evaluated rather than guessed.
+	// carry — honestly not evaluated rather than guessed. T-3903's route
+	// explorer (internal/route.Lookup, GET /route/lookup) is exactly the
+	// capability declined here — see this function's doc comment above.
 	if src.subnet == nil || dst.subnet == nil {
 		res.addCaveat(notEvaluated(FeatureExternalRouting,
 			"L3 routing between these endpoints depends on host/upstream routing tables not carried in the inventory snapshot"))

@@ -477,6 +477,28 @@ export interface SavedViewPayload {
   view: "graph" | "switch";
 }
 
+/** T-3911's composable dashboard: one entry in a saved tile grid's ordered,
+ * visible tile list. `id` is either a fixed built-in tile id
+ * (`web/src/dashboard/tileRegistry.ts`, e.g. `"builtin:findings"`) or a
+ * plugin-provided tile's `DashboardTile.id` (GET /dashboard/tiles) prefixed
+ * `"plugin:"`. Array position (in DashboardLayoutPayload.tiles) is display
+ * order; a tile with no entry is hidden, not deleted from either catalog. */
+export interface DashboardTileRef {
+  id: string;
+  kind: "builtin" | "plugin";
+}
+
+/** T-3911's reserved `"dashboard"` layout blob (docs/api.md's "Dashboard
+ * tile layout shape" note): the home dashboard's tile grid, stored via the
+ * same per-user `layouts` mechanism `TopologyLayoutPayload`/
+ * `SavedViewPayload` above already use — no fourth persistence idiom.
+ * `kind: "dashboard-tiles"` is this blob's own discriminator, the same role
+ * `SavedViewPayload.kind` plays for named views. */
+export interface DashboardLayoutPayload {
+  kind: "dashboard-tiles";
+  tiles: DashboardTileRef[];
+}
+
 // --- Annotations (internal/api/annotations.go, T-907) ---------------------
 
 /** GET/POST /annotations' Annotation shape (docs/api.md's Saved views &
@@ -1893,6 +1915,52 @@ export interface FDBRow {
 
 export interface FDBResponse {
   items: FDBRow[];
+}
+
+// --- Multicast / MDB browser (GET /mdb; internal/api/mdb.go, T-3902) -------
+// Sibling of the MAC/FDB browser above, but a *live* cluster-wide fan-out
+// (like GET /conntrack) rather than an inventory-backed listing: there is
+// no netlink MDB dump this codebase's vendored netlink library supports,
+// so nothing feeds MDB state into the collected inventory graph the way
+// FDB is. Field shapes are grounded in
+// planning/reports/evidence/pve-9.2.4-bridge-mdb-2026-08-27.txt — the real
+// PVE 9.2.4 host observed carried only IPv6 mDNS ("ff02::fb") entries,
+// state "temp", protocol "kernel"; a "permanent" state, an IPv4 group, and
+// a VLAN-tagged row are all real `bridge` vocabulary but unverified
+// against actual output.
+
+/** One bridge multicast forwarding-database entry, node/bridge-tagged. */
+export interface MDBEntry {
+  node: string;
+  bridge: string;
+  group: string;
+  port?: string;
+  state?: string;
+  protocol?: string;
+  vlan?: number;
+}
+
+/** One bridge's IGMP/MLD-snooping configuration (docs/api.md's Multicast/
+ * MDB section). routerMode is the kernel's raw multicast_router sysfs
+ * value: 0 (never), 1 (learn/auto — the only value observed on a real PVE
+ * 9.2.4 host), 2 (permanently enabled). */
+export interface MDBBridge {
+  node: string;
+  bridge: string;
+  snooping: boolean;
+  querier: boolean;
+  routerMode: number;
+}
+
+/** GET /mdb's response envelope — the same cluster-fan-out shape GET
+ * /conntrack uses (partial/failedNodes), minus an unavailableNodes split:
+ * the `bridge` binary being missing is treated as an ordinary read
+ * failure, not a distinct expected-degraded state. */
+export interface MDBResponse {
+  entries: MDBEntry[];
+  bridges: MDBBridge[];
+  partial?: boolean;
+  failedNodes?: string[];
 }
 
 // --- SDN (docs/api.md §"Firewall, SDN, IPAM"; GET /sdn) --------------------
@@ -4412,6 +4480,26 @@ export interface PluginsListResponse {
   items: Plugin[];
 }
 
+// --- Dashboard tiles (T-3911, docs/api.md "Dashboard tiles" section) ------
+
+/** One tile a `dashboardTile` plugin contributes (internal/api/dashboard.go's
+ * dashboardTileResponse — a decoupled mirror of `plugin.Tile`'s exact wire
+ * shape, docs/plugins/dashboard-tile.md). Display-only: there is
+ * deliberately no action/mutation field. `severity` is advisory tile
+ * coloring only; an empty/absent value means neutral. */
+export interface DashboardTile {
+  id: string;
+  title: string;
+  value: string;
+  detail?: string;
+  link?: string;
+  severity?: "info" | "warn" | "critical";
+}
+
+export interface DashboardTilesResponse {
+  items: DashboardTile[];
+}
+
 // --- Doctor (GET /doctor/live, T-2406) -------------------------------------
 
 /** The four statuses `internal/doctor.Status` defines. `warn` exists and is
@@ -4436,4 +4524,98 @@ export interface DoctorResult {
  * doctor` suite. */
 export interface DoctorLiveResponse {
   results: DoctorResult[];
+}
+
+// --- Route explorer (T-3903, docs/api.md "Route explorer" section) --------
+
+/** `GET /route/nodes`'s envelope. */
+export interface RouteNodesResponse {
+  nodes: string[];
+}
+
+/** One kernel FIB entry (internal/route.FIBRoute's wire shape). `dst` is
+ * always a normalized CIDR — iproute2's `"default"` keyword is expanded to
+ * `"0.0.0.0/0"`/`"::/0"`, and a bare host address (every `"local"`-table
+ * entry) is given the family's full prefix length. `pref` (IPv6's RFC 4191
+ * route preference) is present only on `afi: "ipv6"` entries. */
+export interface FIBRoute {
+  afi: "ipv4" | "ipv6";
+  table: string;
+  type: string;
+  dst: string;
+  gateway?: string;
+  dev: string;
+  protocol?: string;
+  scope?: string;
+  prefSrc?: string;
+  pref?: string;
+  metric?: number;
+}
+
+/** One `ip rule` policy-routing rule (internal/route.PolicyRule). */
+export interface PolicyRule {
+  afi: "ipv4" | "ipv6";
+  src: string;
+  table: string;
+  priority: number;
+}
+
+/** One FRR RIB next hop (internal/route.RIBNextHop). */
+export interface RIBNextHop {
+  ip?: string;
+  interface: string;
+  directlyConnected?: boolean;
+  active: boolean;
+  fib: boolean;
+  weight?: number;
+}
+
+/** One FRR RIB entry (internal/route.RIBRoute). `protocol` uses FRR's own
+ * vocabulary ("connected"/"local"/"kernel"/"bgp"/...), distinct from
+ * `FIBRoute.protocol`'s kernel vocabulary. `selected`/`installed`
+ * distinguish "the route FRR chose" from a candidate it knows about but
+ * did not install — FRR can hold more than one candidate per prefix. */
+export interface RIBRoute {
+  afi: "ipv4" | "ipv6";
+  vrf: string;
+  prefix: string;
+  protocol: string;
+  uptime?: string;
+  nexthops: RIBNextHop[];
+  distance?: number;
+  metric?: number;
+  selected?: boolean;
+  installed?: boolean;
+}
+
+/** `GET /route/snapshot`'s response. `rib` is omitted (never an empty
+ * array) exactly when `frrUnavailable` is true — the node runs no FRR at
+ * all (no SDN EVPN zone configured, the common case), not a fetch
+ * failure. */
+export interface RouteSnapshot {
+  node: string;
+  fib: FIBRoute[];
+  rules: PolicyRule[];
+  rib?: RIBRoute[];
+  frrUnavailable: boolean;
+}
+
+/** `GET /route/lookup`'s response — T-3903's core operator question,
+ * "which path would this address take." `ambiguous` (candidate device
+ * names) is populated exactly when `reachable` is false because more than
+ * one equally-specific route matched and no `iface` hint was given to
+ * disambiguate (the same situation `ip route get` itself resolves by
+ * requiring an explicit `dev`). `rulesSkipped` names any policy rule the
+ * lookup could not evaluate (a source-address-scoped rule — this lookup
+ * answers "which path does a destination take," not "...from this
+ * specific source"). `trace` is a human-readable, ordered account of how
+ * the lookup reached its answer. */
+export interface RouteLookupResult {
+  dst: string;
+  reachable: boolean;
+  matchedRoute?: FIBRoute;
+  matchedRule?: PolicyRule;
+  trace?: string[];
+  ambiguous?: string[];
+  rulesSkipped?: string[];
 }

@@ -19,6 +19,7 @@ export const ROUTE_HELP: Readonly<Record<string, string>> = {
   "/ipam": "ipam-page",
   "/flows": "flows-page",
   "/conntrack": "conntrack-page",
+  "/route-explorer": "route-explorer-page",
   "/edge": "edge-page",
   "/diagnose": "diagnose-page",
   "/analysis": "analysis-page",
