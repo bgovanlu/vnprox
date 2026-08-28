@@ -179,6 +179,7 @@ var versionSeeds = map[int]versionSeed{
 	49: {seedV49, assertV49},
 	50: {seedV50, assertV50},
 	51: {seedV51, assertV51},
+	52: {seedV52, assertV52},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1884,6 +1885,45 @@ func assertV51(t *testing.T, db *sql.DB) {
 		}
 		if opsFingerprint != "fp-v51" {
 			t.Errorf("changeset_freeze_override (v51) ops_fingerprint = %q, want fp-v51", opsFingerprint)
+		}
+	}
+}
+
+func seedV52(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// A declared node maintenance window (0052_maintenance_windows.sql —
+	// T-4007).
+	mustExec(t, db, `INSERT INTO maintenance_windows (id, node, reason, created_by, zone, start_epoch, end_epoch, created_at)
+	      VALUES ('mw-v52', 'pve1', 'quarterly firmware update', 'carol', 'America/New_York', 1793000000, 1793003600, 1792999000)`)
+}
+
+func assertV52(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+
+	var node, reason, createdBy, zone string
+	var startEpoch, endEpoch, createdAt int64
+	if err := db.QueryRowContext(ctx, `SELECT node, reason, created_by, zone, start_epoch, end_epoch, created_at FROM maintenance_windows WHERE id = 'mw-v52'`).
+		Scan(&node, &reason, &createdBy, &zone, &startEpoch, &endEpoch, &createdAt); err != nil {
+		t.Errorf("maintenance_windows row (v52) lost across migration: %v", err)
+	} else {
+		if node != "pve1" {
+			t.Errorf("maintenance_windows (v52) node = %q, want pve1", node)
+		}
+		if reason != "quarterly firmware update" {
+			t.Errorf("maintenance_windows (v52) reason = %q, unexpected", reason)
+		}
+		if createdBy != "carol" {
+			t.Errorf("maintenance_windows (v52) created_by = %q, want carol", createdBy)
+		}
+		if zone != "America/New_York" {
+			t.Errorf("maintenance_windows (v52) zone = %q, want America/New_York", zone)
+		}
+		if startEpoch != 1793000000 || endEpoch != 1793003600 {
+			t.Errorf("maintenance_windows (v52) start/end = %d/%d, want 1793000000/1793003600", startEpoch, endEpoch)
+		}
+		if createdAt != 1792999000 {
+			t.Errorf("maintenance_windows (v52) created_at = %d, want 1792999000", createdAt)
 		}
 	}
 }

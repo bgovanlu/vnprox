@@ -96,6 +96,18 @@ const (
 	// sdn.apply — "a new apply-step kind ordered alongside the existing
 	// per-node ifreload step", per this card's task text.
 	StepQosApply StepKind = "qos_apply"
+
+	// StepTcMirrorApply realizes one tc.mirror.create/update/delete op
+	// (T-4014): a node-local tc/clsact/mirred mutation, executed by the
+	// daemon-level TcMirrorGateway — like StepQosApply (and unlike the
+	// ticket-scoped PVEGateway steps), this needs no live user session, so
+	// its rollback works on the unattended commit-confirm-timeout path too
+	// (T-205's existing inverse-order rollback contract). One step per op,
+	// in the changeset's own op order, placed after the per-node interface
+	// stage/reload pairs (a session's source/dest ifaces must already
+	// exist) and before any trailing sdn.apply — the same placement
+	// StepQosApply's own doc comment justifies, for the identical reason.
+	StepTcMirrorApply StepKind = "tc_mirror_apply"
 )
 
 // nodeFileOpTypes is the subset of the v1 op vocabulary that mutates a node's
@@ -232,6 +244,14 @@ var qosOpTypes = map[OpType]bool{
 	OpQosShapeDelete: true,
 }
 
+// tcMirrorOpTypes is T-4014's full tc.mirror op vocabulary: each becomes a
+// StepTcMirrorApply step executed by the node-local TcMirrorGateway.
+var tcMirrorOpTypes = map[OpType]bool{
+	OpTcMirrorCreate: true,
+	OpTcMirrorUpdate: true,
+	OpTcMirrorDelete: true,
+}
+
 // Step is one entry in a rendered apply Plan — the shape the review screen's
 // Plan tab (docs/features/change-management.md §3) renders and the executor
 // runs, persisted verbatim into changesets.plan_json before apply.
@@ -302,6 +322,7 @@ func BuildPlan(ops []Op) (Plan, error) {
 	var fwTargetOrder []inventory.Ref
 	byFwTarget := map[string][]int{}
 	var qosSteps []Step
+	var tcMirrorSteps []Step
 	var wgSteps []Step
 	var switchSteps []Step
 
@@ -314,6 +335,14 @@ func BuildPlan(ops []Op) (Plan, error) {
 				Target:  op.Target.String(),
 				OpIdx:   []int{i},
 				Summary: qosStepSummary(op),
+			})
+		case tcMirrorOpTypes[op.Type]:
+			tcMirrorSteps = append(tcMirrorSteps, Step{
+				Kind:    StepTcMirrorApply,
+				Node:    op.Target.Node,
+				Target:  op.Target.String(),
+				OpIdx:   []int{i},
+				Summary: tcMirrorStepSummary(op),
 			})
 		case wgOpTypes[op.Type]:
 			wgSteps = append(wgSteps, Step{
@@ -401,6 +430,10 @@ func BuildPlan(ops []Op) (Plan, error) {
 	// shape's bridge must already exist) and before firewall/sdn.apply —
 	// see StepQosApply's doc comment.
 	steps = append(steps, qosSteps...)
+	// tc.mirror steps come after the per-node interface stage/reload pairs
+	// (source/dest ifaces must already exist) and before firewall/sdn.apply
+	// — see StepTcMirrorApply's doc comment.
+	steps = append(steps, tcMirrorSteps...)
 	// WireGuard steps come after the per-node interface stage/reload pairs
 	// (the carrier interface must exist first) and before firewall/sdn.apply.
 	steps = append(steps, wgSteps...)
@@ -506,6 +539,33 @@ func (p Plan) hasQos() bool {
 	return false
 }
 
+// tcMirrorStepSummary renders one StepTcMirrorApply's Plan-tab summary
+// (T-4014).
+func tcMirrorStepSummary(op Op) string {
+	switch p := op.Params.(type) {
+	case *TcMirrorCreateParams:
+		return fmt.Sprintf("Create tc.mirror session %s: %s -> %s (max %ds)", op.Target.ID, p.SourceIface, p.DestIface, p.MaxDurationSec)
+	case *TcMirrorUpdateParams:
+		return fmt.Sprintf("Update tc.mirror session %s", op.Target.ID)
+	case *TcMirrorDeleteParams:
+		return fmt.Sprintf("Delete tc.mirror session %s", op.Target.ID)
+	default:
+		return "tc.mirror session operation"
+	}
+}
+
+// hasTcMirror reports whether the plan carries any tc.mirror step — the
+// gate for whether captureSnapshotFull/restoreAll need to touch
+// tc-mirror-session state at all (T-4014, mirroring hasQos exactly).
+func (p Plan) hasTcMirror() bool {
+	for _, s := range p.Steps {
+		if s.Kind == StepTcMirrorApply {
+			return true
+		}
+	}
+	return false
+}
+
 // switchStepSummary renders one StepSwitchApply's Plan-tab summary (T-1205).
 func switchStepSummary(op Op) string {
 	return fmt.Sprintf("Push switch port config to %s", op.Target.ID)
@@ -563,6 +623,21 @@ func (p Plan) qosNodes() []string {
 	seen := map[string]bool{}
 	for _, s := range p.Steps {
 		if s.Kind == StepQosApply && s.Node != "" && !seen[s.Node] {
+			seen[s.Node] = true
+			out = append(out, s.Node)
+		}
+	}
+	return out
+}
+
+// tcMirrorNodes returns, in first-appearance order, every node this plan's
+// StepTcMirrorApply steps touch — the set whose session state the
+// pre-apply snapshot must capture (T-4014, mirroring qosNodes exactly).
+func (p Plan) tcMirrorNodes() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, s := range p.Steps {
+		if s.Kind == StepTcMirrorApply && s.Node != "" && !seen[s.Node] {
 			seen[s.Node] = true
 			out = append(out, s.Node)
 		}

@@ -43,6 +43,12 @@ type executor struct {
 	// qosStateSnapshotPath file; hasQosPre is false for a changeset with no
 	// qos.* ops.
 	qosPre map[string]string
+	// tcMirrorPre is the per-node tc.mirror pre-apply state (TcMirrorGateway.
+	// SnapshotTcMirror), the restore target for a mid-apply failure that had
+	// already run a tc.mirror step (T-4014). Populated from the pre-snapshot's
+	// tcMirrorStateSnapshotPath file; hasTcMirrorPre is false for a changeset
+	// with no tc.mirror.* ops.
+	tcMirrorPre map[string]string
 	// wgPre is the per-node WireGuard pre-apply state (WGGateway.SnapshotWg),
 	// the restore target for a mid-apply failure that had already run a wg
 	// step (T-1401). Populated from the pre-snapshot's wgStateSnapshotPath
@@ -63,14 +69,15 @@ type executor struct {
 	// ran. That narrowing is the whole of T-2602's AC2: a node that was never
 	// contacted must not be contacted by the rollback either — not even for a
 	// DiscardStaged of a file that was never staged on it.
-	rollbackNodes []string
-	plan          Plan
-	cs            Changeset
-	deadline      int64 // unix; the commit-confirm deadline every node's local timer (T-304) is armed with
-	hasSDNPre     bool
-	hasQosPre     bool
-	hasWgPre      bool
-	hasSwitchPre  bool
+	rollbackNodes  []string
+	plan           Plan
+	cs             Changeset
+	deadline       int64 // unix; the commit-confirm deadline every node's local timer (T-304) is armed with
+	hasSDNPre      bool
+	hasQosPre      bool
+	hasTcMirrorPre bool
+	hasWgPre       bool
+	hasSwitchPre   bool
 }
 
 // newExecutor builds an executor with a fresh apply log (all steps pending)
@@ -101,6 +108,7 @@ func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW
 		fwPre = map[string]string{}
 	}
 	qosPre, hasQosPre := qosStateFromSnapshot(pre)
+	tcMirrorPre, hasTcMirrorPre := tcMirrorStateFromSnapshot(pre)
 	wgPre, hasWgPre := wgStateFromSnapshot(pre)
 	switchPre, hasSwitchPre := switchStateFromSnapshot(pre)
 	steps := make([]StepLog, len(plan.Steps))
@@ -117,7 +125,7 @@ func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW
 	}
 	return &executor{
 		svc: s, cs: cs, plan: plan, pre: preByNode, sdnPre: sdnPre, hasSDNPre: hasSDNPre,
-		qosPre: qosPre, hasQosPre: hasQosPre, wgPre: wgPre, hasWgPre: hasWgPre,
+		qosPre: qosPre, hasQosPre: hasQosPre, tcMirrorPre: tcMirrorPre, hasTcMirrorPre: hasTcMirrorPre, wgPre: wgPre, hasWgPre: hasWgPre,
 		switchPre: switchPre, hasSwitchPre: hasSwitchPre, pveGW: pveGW, deadline: deadline,
 		log:           &ApplyLog{Steps: steps},
 		rollbackNodes: plan.affectedNodes(),
@@ -301,6 +309,15 @@ func (e *executor) execStep(ctx context.Context, i int) error {
 			return fmt.Errorf("qos_apply step must reference exactly one op, got %d", len(st.OpIdx))
 		}
 		return e.svc.qos.ApplyQosOp(ctx, e.cs.Ops[st.OpIdx[0]])
+
+	case StepTcMirrorApply:
+		if e.svc.tcMirror == nil {
+			return fmt.Errorf("no tc.mirror gateway available for tc.mirror op (tc.mirror not wired on this daemon)")
+		}
+		if len(st.OpIdx) != 1 {
+			return fmt.Errorf("tc_mirror_apply step must reference exactly one op, got %d", len(st.OpIdx))
+		}
+		return e.svc.tcMirror.ApplyTcMirrorOp(ctx, e.cs.Ops[st.OpIdx[0]])
 	default:
 		return fmt.Errorf("unknown step kind %q", st.Kind)
 	}
@@ -445,6 +462,9 @@ func (e *executor) rollbackAfterFailure(ctx context.Context) {
 	if e.hasQosPre && e.anyQosStepSucceeded() {
 		e.log.Rollback = append(e.log.Rollback, e.svc.restoreQosState(ctx, scopedToNodes(e.qosPre, inScope))...)
 	}
+	if e.hasTcMirrorPre && e.anyTcMirrorStepSucceeded() {
+		e.log.Rollback = append(e.log.Rollback, e.svc.restoreTcMirrorState(ctx, scopedToNodes(e.tcMirrorPre, inScope))...)
+	}
 	if e.hasWgPre && e.anyWgStepSucceeded() {
 		e.log.Rollback = append(e.log.Rollback, e.svc.restoreWgState(ctx, scopedToNodes(e.wgPre, inScope))...)
 	}
@@ -476,6 +496,19 @@ func scopedToNodes(state map[string]string, inScope map[string]bool) map[string]
 func (e *executor) anyQosStepSucceeded() bool {
 	for _, s := range e.log.Steps {
 		if s.Kind == StepQosApply && s.Status == StepOK {
+			return true
+		}
+	}
+	return false
+}
+
+// anyTcMirrorStepSucceeded reports whether any StepTcMirrorApply step in
+// this apply attempt reached StepOK - the gate for whether
+// restoreTcMirrorState has anything to undo (T-4014, mirroring
+// anyQosStepSucceeded exactly).
+func (e *executor) anyTcMirrorStepSucceeded() bool {
+	for _, s := range e.log.Steps {
+		if s.Kind == StepTcMirrorApply && s.Status == StepOK {
 			return true
 		}
 	}
@@ -530,6 +563,37 @@ func (s *Service) restoreQosState(ctx context.Context, state map[string]string) 
 			Summary: fmt.Sprintf("Restore QoS shape state on %s from pre-apply snapshot", node),
 		}
 		if err := s.qos.RestoreQos(ctx, node, state[node]); err != nil {
+			rb.Status = StepFailed
+			rb.Error = err.Error()
+		}
+		logs = append(logs, rb)
+	}
+	return logs
+}
+
+// restoreTcMirrorState reconciles every node in state back to its captured
+// tc.mirror pre-apply state via the daemon-level TcMirrorGateway (callable
+// unattended - no user ticket). Best-effort per node: an error restoring
+// one is recorded but does not abort the rest (T-4014, mirroring
+// restoreQosState exactly).
+func (s *Service) restoreTcMirrorState(ctx context.Context, state map[string]string) []RollbackLog {
+	if s.tcMirror == nil {
+		return nil
+	}
+	nodes := make([]string, 0, len(state))
+	for node := range state {
+		nodes = append(nodes, node)
+	}
+	sort.Strings(nodes)
+	logs := make([]RollbackLog, 0, len(nodes))
+	for _, node := range nodes {
+		rb := RollbackLog{
+			Node:    node,
+			At:      s.now().Unix(),
+			Status:  StepOK,
+			Summary: fmt.Sprintf("Restore tc.mirror session state on %s from pre-apply snapshot", node),
+		}
+		if err := s.tcMirror.RestoreTcMirror(ctx, node, state[node]); err != nil {
 			rb.Status = StepFailed
 			rb.Error = err.Error()
 		}

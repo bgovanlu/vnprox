@@ -204,6 +204,27 @@ const (
 	// It ships dark — no push is possible unless both a daemon-level flag and
 	// the specific switch's `enabled` are true (docs/security.md).
 	OpSwitchPortUpdate OpType = "switch.port.update"
+
+	// tc.mirror op group (T-4014: SPAN/mirror session manager). A mirror
+	// session copies a node's live traffic (source iface -> destination
+	// iface) via a `tc`/clsact/mirred SPAN — a standing config change to
+	// the node's tc rules, not a bounded diagnostic run, so — unlike
+	// packet capture (internal/capture, gated on auth.CapCapture alone,
+	// with deliberately no changeset op) — every tc.mirror.* op is an
+	// ordinary changeset op flowing through the full stage->validate->
+	// diff->apply->confirm/rollback lifecycle (CLAUDE.md's change-engine
+	// invariant): there is no second mutation path for a mirror session.
+	// A mirror session's own MAXIMUM DURATION (TcMirrorCreateParams.
+	// MaxDurationSec) is enforced by a mechanism that reuses this same
+	// lifecycle rather than inventing a second one — see
+	// internal/change/tcmirror_expiry.go's doc comment for exactly how a
+	// session "stops itself" without any second mutation path. Target is
+	// Ref{Kind: KindTcMirror, Node: owning node, ID: caller-chosen session
+	// id} — no dedicated live-polled inventory entity, mirroring
+	// KindQosShape's identical "app-owned intent only" shape.
+	OpTcMirrorCreate OpType = "tc.mirror.create"
+	OpTcMirrorUpdate OpType = "tc.mirror.update"
+	OpTcMirrorDelete OpType = "tc.mirror.delete"
 )
 
 // noTargetOps is the (deliberately tiny) set of ops with no natural target
@@ -317,6 +338,10 @@ var paramFactories = map[OpType]func() Params{
 	OpRouteStaticDelete:    func() Params { return &RouteStaticDeleteParams{} },
 	OpVFProvision:          func() Params { return &VFProvisionParams{} },
 	OpSwitchPortUpdate:     func() Params { return &SwitchPortUpdateParams{} },
+
+	OpTcMirrorCreate: func() Params { return &TcMirrorCreateParams{} },
+	OpTcMirrorUpdate: func() Params { return &TcMirrorUpdateParams{} },
+	OpTcMirrorDelete: func() Params { return &TcMirrorDeleteParams{} },
 }
 
 // KnownOpTypes returns every OpType this package can decode, for tests

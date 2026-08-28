@@ -43,6 +43,15 @@ const (
 // would collide.
 const qosStateSnapshotPath = "/var/lib/vnprox/qos.state"
 
+// tcMirrorStateSnapshotPath is the synthetic, cluster-scoped (Node="")
+// snapshotFile path holding T-4014's tc.mirror pre-apply state: a JSON
+// object mapping each affected node to the opaque
+// TcMirrorGateway.SnapshotTcMirror string for that node - the tc.mirror
+// analogue of qosStateSnapshotPath above, for the identical reason (a
+// per-node interfaces file already occupies that node's snapshotFile
+// slot).
+const tcMirrorStateSnapshotPath = "/var/lib/vnprox/tcmirror.state"
+
 // wgStateSnapshotPath is the synthetic, cluster-scoped (Node="") snapshotFile
 // path holding T-1401's WireGuard pre-apply state: a JSON object mapping each
 // affected node to the opaque WGGateway.SnapshotWg string for that node. It is
@@ -196,6 +205,14 @@ func (s *Service) captureSnapshotFull(ctx context.Context, changesetID, kind str
 		files = append(files, qosFile)
 	}
 
+	if plan.hasTcMirror() && s.tcMirror != nil {
+		tcMirrorFile, err := s.tcMirrorStateSnapshotFile(ctx, plan.tcMirrorNodes())
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, tcMirrorFile)
+	}
+
 	if plan.hasWg() && s.wg != nil {
 		wgFile, err := s.wgStateSnapshotFile(ctx, plan.wgNodes())
 		if err != nil {
@@ -248,6 +265,45 @@ func (s *Service) qosStateSnapshotFile(ctx context.Context, nodes []string) (sna
 func qosStateFromSnapshot(files []snapshotFile) (state map[string]string, ok bool) {
 	for _, f := range files {
 		if f.Path == qosStateSnapshotPath {
+			if json.Unmarshal([]byte(f.Content), &state) == nil {
+				return state, true
+			}
+		}
+	}
+	return nil, false
+}
+
+// tcMirrorStateSnapshotFile captures each tc.mirror node's session state
+// (TcMirrorGateway.SnapshotTcMirror) into one cluster-scoped snapshotFile
+// (tcMirrorStateSnapshotPath), stored in the blob store exactly like every
+// other snapshot file (T-4014, mirroring qosStateSnapshotFile exactly).
+func (s *Service) tcMirrorStateSnapshotFile(ctx context.Context, nodes []string) (snapshotFile, error) {
+	state := make(map[string]string, len(nodes))
+	for _, node := range nodes {
+		snap, err := s.tcMirror.SnapshotTcMirror(ctx, node)
+		if err != nil {
+			return snapshotFile{}, fmt.Errorf("change: snapshotting tc.mirror state on node %s: %w", node, err)
+		}
+		state[node] = snap
+	}
+	b, err := json.Marshal(state)
+	if err != nil {
+		return snapshotFile{}, fmt.Errorf("change: encoding tc.mirror state snapshot: %w", err)
+	}
+	content := string(b)
+	hash, err := s.blobs.Put(ctx, content)
+	if err != nil {
+		return snapshotFile{}, fmt.Errorf("change: storing tc.mirror state snapshot blob: %w", err)
+	}
+	return snapshotFile{Path: tcMirrorStateSnapshotPath, SHA256: hash, Content: content}, nil
+}
+
+// tcMirrorStateFromSnapshot decodes the per-node tc.mirror state map out of
+// a loaded pre-snapshot's file list. ok is false if the snapshot carries no
+// tc.mirror state file (a changeset with no tc.mirror.* ops).
+func tcMirrorStateFromSnapshot(files []snapshotFile) (state map[string]string, ok bool) {
+	for _, f := range files {
+		if f.Path == tcMirrorStateSnapshotPath {
 			if json.Unmarshal([]byte(f.Content), &state) == nil {
 				return state, true
 			}

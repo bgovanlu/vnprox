@@ -93,6 +93,41 @@ type QosGateway interface {
 	RestoreQos(ctx context.Context, node, snapshot string) error
 }
 
+// TcMirrorGateway performs node-local tc/clsact/mirred mutations for
+// T-4014's tc.mirror.* op family: it renders (internal/tcmirror.RenderTC/
+// RenderTCTeardown) and execs each session's on-node tc commands, and
+// persists the session's own intent+accounting row
+// (store.TcMirrorSessionRepo) alongside, the same shape QosGateway
+// describes for qos.shape.* and for the same reason: a mirror session is
+// node-local state with no PVE API surface of its own, so it needs no
+// user ticket, and that means its rollback works on the unattended
+// commit-confirm-timeout / crash-recovery path too, the same way
+// NodeAgent's interfaces-file restore does.
+//
+// A nil TcMirrorGateway makes tc.mirror.* ops unexecutable (execStep
+// errors), the same "nil dependency -> that op family isn't wired"
+// degradation the other seams use.
+type TcMirrorGateway interface {
+	// ApplyTcMirrorOp applies one tc.mirror.* op on op.Target.Node: renders
+	// the session's tc/clsact/mirred commands and execs them, and persists/
+	// updates/removes its tc_mirror_sessions row accordingly. For
+	// tc.mirror.create it also computes and persists the session's
+	// expires_at deadline (from the op's MaxDurationSec) - see
+	// internal/change/tcmirror_expiry.go for how that deadline is enforced.
+	ApplyTcMirrorOp(ctx context.Context, op Op) error
+
+	// SnapshotTcMirror captures node's full set of currently-stored
+	// sessions as an opaque string, for the pre-apply snapshot.
+	SnapshotTcMirror(ctx context.Context, node string) (string, error)
+
+	// RestoreTcMirror reconciles node's session set back to a
+	// SnapshotTcMirror output: sessions present live but absent from the
+	// snapshot are torn down (tc filter/qdisc removed, store row deleted);
+	// sessions in the snapshot but missing live are re-applied from their
+	// exact stored fields. Callable unattended - no user ticket needed.
+	RestoreTcMirror(ctx context.Context, node, snapshot string) error
+}
+
 // WGGateway performs node-local WireGuard mutations for T-1401's wg.* op
 // family. Like NodeAgent (and unlike the ticket-scoped PVEGateway), it is a
 // daemon-level (root) dependency injected once at Service construction: the

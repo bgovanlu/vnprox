@@ -826,6 +826,24 @@ func (s *Service) doRollbackScopedLocked(ctx context.Context, cs *Changeset, act
 		}
 	}
 
+	// T-4014: tc.mirror session state restore. Like QoS above (and unlike
+	// SDN/fw.*), this works on the unattended commit-confirm-timeout /
+	// crash-recovery path too - the TcMirrorGateway is daemon-level (no
+	// user ticket needed) - so a tc.mirror.create that times out
+	// un-confirmed fully reverts (tc filter/qdisc + tc_mirror_sessions row
+	// removed).
+	if plan.hasTcMirror() {
+		if tcMirrorPre, ok := tcMirrorStateFromSnapshot(pre); ok {
+			tcMirrorLogs := s.restoreTcMirrorState(ctx, tcMirrorPre)
+			for _, l := range tcMirrorLogs {
+				if l.Status != StepOK {
+					anyFailed = true
+				}
+			}
+			rbLogs = append(rbLogs, tcMirrorLogs...)
+		}
+	}
+
 	// T-1401: WireGuard state restore. Unlike SDN/fw, this works on the
 	// unattended commit-confirm-timeout / crash-recovery paths too — the
 	// WGGateway is daemon-level (no user ticket needed) — so a wg.tunnel.create
