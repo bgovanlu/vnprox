@@ -1,7 +1,7 @@
 # T-4216 — The visual gate had never run, and still does not capture the map
 
 **Phase:** 42 (Design language) — follow-up to T-4210
-**Status:** part 1 fixed (commit pending); parts 2 and 3 open
+**Status:** parts 1 and 2 done (`e0590c43`, `231a34ba`); part 3 open
 **Depends on:** T-4210 (visual regression gate)
 
 ## 1. It had never run — fixed
@@ -33,7 +33,7 @@ Both determinism tricks moved outside the document:
 
 Result: **81 passed, 15 failed**, and 81 baselines exist for the first time.
 
-## 2. The gate does not capture the topology map — open
+## 2. The gate does not capture the topology map — DONE
 
 The remaining problem is larger than the fifteen failures.
 
@@ -45,10 +45,17 @@ the baseline named `topology-dark-linux.png` is a screenshot of the switch view.
 baseline in the visual regression gate.** T-4301 changed every colour that canvas draws with and
 this suite could not have detected any of it.
 
-Fix: capture the topology route in both view modes. `viewMode` is in a store, so the cleanest
-route is probably a URL parameter (`?view=graph` — `TopologyPage.tsx:329` already reads a
-`urlView`) rather than a click, since a click makes the capture depend on control labels. Whatever
-the mechanism, the acceptance test is that renaming a canvas colour fails this suite.
+Fixed with the product's own share-link deeplink rather than a click:
+`/topology?svLayers=phys,l2,sdn,guest&svView=graph&svZoom=1&svX=0&svY=0`. A click would make the
+capture depend on a control label, so renaming the Switch/Graph button would silently stop
+capturing the map — the same class of silent skip this card exists for.
+
+Two details worth keeping. `svLayers` is **mandatory**: `decodeViewFromSearch` returns `undefined`
+without it and ignores the whole deeplink, which would have left the new test quietly
+screenshotting the switch view a second time and reporting green. And the test asserts the
+deeplink actually took (`getByRole("radio", { name: "Graph" })` is checked) — a silently-ignored
+parameter and a working one are indistinguishable in a screenshot nobody has looked at, which is
+how the map came to be missing from this suite to begin with.
 
 While looking at the one baseline that does exist, two things are worth recording:
 
