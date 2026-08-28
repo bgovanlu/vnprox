@@ -38,15 +38,31 @@ make lint     # golangci-lint + eslint + tsc --noEmit
 make check    # lint + test + govulncheck + npm audit — run this before opening a PR
 ```
 
+**Prerequisites:** Go, at the version `scripts/lib/versions.sh`'s `GO_VERSION_EXPECTED` names (a
+newer local `go` still builds via `GOTOOLCHAIN` auto-download, but that needs network access); and
+Node 22 via [nvm](https://github.com/nvm-sh/nvm) — `scripts/lib/versions.sh`'s `NODE_MAJOR`, not
+whatever Node your system happens to have. That file is the single source of truth for both
+numbers on purpose; don't copy them into a second place. `docs/architecture-tour.md` §1 has the
+exact one-command bootstrap (nvm/Node, `go mod download`, `npm ci`, `make dev`), run end to end on
+a clean checkout while that page was written.
+
 None of this needs a real Proxmox cluster: `internal/pvemock` is a fixture-driven mock PVE API
 server, and `make dev`/`make test` run against it. See `docs/development.md` §"The mock PVE
 server" for how it works, and its "Definition of done" section for what a change needs before it's
 considered complete (table-driven tests, `docs/api.md`/`docs/data-model.md` contract compliance
 where relevant, `make check` green).
 
-**A note on CI:** GitHub Actions is currently disabled for this repository (billing exhausted,
-`release.yml`'s own header comment). `scripts/ci-local.sh` reproduces the full job matrix locally
-and is the actual gate today — see `docs/development.md` §CI.
+**New to this repository?** `docs/architecture-tour.md` is a stranger-friendly walkthrough (one
+request, browser to Proxmox and back; what lives in `internal/` vs `web/src/`; the invariants that
+will bite you if you don't know them) — distinct from the dense, authoritative `docs/architecture.md`.
+`docs/first-change.md` walks a small, real change through this loop end to end, including the parts
+that don't work on the first try, down to a green `make check`.
+
+**A note on CI:** hosted GitHub Actions is retired for this repository, not paused (T-3301,
+`docs/development.md` §CI) — the three workflows stay disabled on purpose rather than as a stopgap
+while billing is down. `scripts/ci-local.sh` (or `make ci` for the fast, container-free subset)
+reproduces the full job matrix locally and is the actual gate today; `.githooks/pre-push`
+(`make install-hooks`) runs `make ci` on every push automatically.
 
 ## Code standards
 
