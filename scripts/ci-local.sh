@@ -28,6 +28,11 @@
 #   * Another, `reproducible` (T-3806), also has no workflow counterpart: it
 #     builds the .deb twice from a clean detached-HEAD git worktree and
 #     diffs the sha256sums — see scripts/verify-reproducible.sh.
+#   * `terraform-provider` (T-4001) also has no workflow counterpart: it
+#     builds/vets/tests contrib/terraform-provider-vnprox — a separate Go
+#     module by design (this file's job_terraform_provider comment) — and
+#     runs its TF_ACC=1 acceptance suite when a terraform/tofu binary is on
+#     $PATH.
 #
 # Usage:
 #   scripts/ci-local.sh                # every job
@@ -50,7 +55,7 @@ cd "$REPO_ROOT"
 FUZZTIME="${FUZZTIME:-60s}"
 LOG_DIR="${LOG_DIR:-$REPO_ROOT/.ci-local}"
 
-ALL_JOBS=(check e2e cross-arm64 fuzz package packaging-matrix cluster-ssh dco reproducible openapi-client license)
+ALL_JOBS=(check e2e cross-arm64 fuzz package packaging-matrix cluster-ssh dco reproducible openapi-client license terraform-provider)
 
 # --- job selection ---------------------------------------------------------
 
@@ -303,6 +308,38 @@ job_license() {
     scripts/check-licenses.sh
 }
 
+# job_terraform_provider (T-4001) builds and tests
+# contrib/terraform-provider-vnprox — its own Go module, deliberately outside
+# this repository's own go.mod/go.sum (the same structural isolation
+# job_reproducible's worktree gets, and commit 34c11588's sigstore-go split
+# gets cmd/vnproxctl: a large, unrelated dependency tree stays out of the
+# module whose build graph cmd/vnproxd and cmd/vnproxctl are checked
+# against, see cmd/vnproxd/tfproviderguard_test.go). Like job_dco/
+# job_reproducible/job_openapi_client/job_license, it has no ci.yml
+# counterpart today — Actions is unfunded (docs/development.md's "CI"
+# section) — so this script is the only place it runs.
+#
+# Acceptance tests (TF_ACC=1) build and run the REAL cmd/pvemock and
+# cmd/vnproxd binaries from THIS module as subprocesses
+# (contrib/terraform-provider-vnprox/internal/provider/harness_test.go) and
+# need a `terraform` (or `tofu`) binary on $PATH to drive them; when neither
+# is present this job still runs the provider's build/vet/unit tests (which
+# includes TestClient_HasNoApplyMethod, the stage-only contract's own
+# structural guard) and reports the acceptance half skipped rather than
+# failing the whole job over an optional local tool.
+job_terraform_provider() {
+    ( cd contrib/terraform-provider-vnprox && go build ./... ) || return 1
+    ( cd contrib/terraform-provider-vnprox && go vet ./... ) || return 1
+
+    if command -v terraform >/dev/null 2>&1 || command -v tofu >/dev/null 2>&1; then
+        echo ">> terraform-provider: terraform/tofu CLI found — running unit + acceptance tests (TF_ACC=1)"
+        ( cd contrib/terraform-provider-vnprox && TF_ACC=1 go test ./... -timeout 20m )
+    else
+        echo "!! terraform-provider: no terraform/tofu CLI on \$PATH — running unit tests only; acceptance tests (TF_ACC=1) skipped" >&2
+        ( cd contrib/terraform-provider-vnprox && go test ./... )
+    fi
+}
+
 # --- dispatch --------------------------------------------------------------
 
 for j in "${JOBS[@]}"; do
@@ -318,6 +355,7 @@ for j in "${JOBS[@]}"; do
         reproducible)     run_job reproducible     job_reproducible ;;
         openapi-client)   run_job openapi-client   job_openapi_client ;;
         license)          run_job license          job_license ;;
+        terraform-provider) run_job terraform-provider job_terraform_provider ;;
     esac
 done
 
