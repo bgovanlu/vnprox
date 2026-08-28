@@ -155,6 +155,14 @@ Query duration is instrumented once, transparently, at `store.DB`'s own `ExecCon
 |---|---|---|---|
 | `vnprox_ws_connections` | gauge (pull) | *(none)* | 1 series. Live `/api/ws` client count, read from `topology.Hub`'s own connection map (`Hub.ConnCount`, already existed for tests) at scrape time — no push instrumentation added. |
 
+### SIEM export
+
+| Name | Type | Labels | Cardinality bound |
+|---|---|---|---|
+| `vnprox_siemexport_events_total` | counter | `outcome` | `outcome`: `sent`\|`dropped_buffer_full`\|`dropped_send_error` (3, closed — `internal/siemexport.DropReason`'s own vocabulary plus the success case). Fixed at 3 series, always. |
+
+Recorded by `internal/siemexport.Exporter` via `cmd/vnproxd`'s `siemMetricsAdapter` (`internal/siemexport.DropObserver`), one increment per export attempt's outcome — see §12 below for what is exported and `internal/siemexport/doc.go` for the delivery semantics `dropped_buffer_full`/`dropped_send_error` distinguish. This is the "a metric ... when events are dropped" half of T-4012's card; the same drops are also visible without scraping `GET /metrics` at all, via `Exporter.Stats()` (used by this package's own tests) and this daemon's structured logs (one `WARN siemexport: dropping event after send failure` line per `dropped_send_error`).
+
 ### Testing
 
 `internal/metrics/self_test.go` covers the registry primitives directly (cumulative histogram bucket math, the cardinality-cap overflow bucket). `internal/api/redmetrics_test.go` and `internal/api/selfmetrics_reality_test.go` cover this task's AC1 (the route-pattern-not-raw-path test above) and AC2 (driving real HTTP traffic, a failing collector, and a rolled-back changeset through a real router/service and asserting the expected series move) respectively. `internal/collect`, `internal/change`, `internal/store`, and `internal/peer` each carry their own package-local tests for their one new hook/wrapper (`OnPoll`, `MetricsRecorder`, the query-duration wrapper, `do`'s outcome classification).
@@ -199,5 +207,30 @@ Phase 17's exit demo (`docs/roadmap-universal.md`) describes an on-call human co
 **Confirming still requires a real session.** A notification's `notificationclick` handler (`web/public/sw.js`) only ever posts a URL to an open tab or opens a new one — it is a deep link, never an action token. Whatever page it lands on enforces its own `RequireAuth`/capability gate exactly as if the operator had typed the URL in by hand.
 
 **Subscriptions are credentials, encrypted at rest, and die with their session.** `push_subscriptions` (`0046_push_subscriptions.sql`) stores a browser's endpoint/keys as AES-256-GCM ciphertext under the same session-secret cipher `sessions.pve_ticket_enc` uses; `session_id` is a foreign key `ON DELETE CASCADE`, so a logout or session expiry removes the row structurally, not via a handler that has to remember to. Listable/revocable per device at Settings → Notifications → "Your devices" (`GET`/`DELETE /push/subscriptions`).
+
+## 12. SIEM export (T-4012)
+
+vnprox is explicitly not a long-horizon warehouse (`docs/features.md`): `audit_log` and the findings stream are both bounded and pruned (`store.AuditRepo.RunPruneLoop`, `[retention] audit_keep_days`). An operator who wants ninety days of audit history is expected to keep it in a SIEM they already run, not in vnprox's own SQLite — `internal/siemexport` is the "ship it out" half of that contract: a bounded, best-effort streaming export of every audit row and every finding transition, in RFC 5424 syslog or newline-delimited JSON. Full design rationale lives in `internal/siemexport/doc.go`; this section is the operator-facing summary.
+
+**Off by default, config-gated, `[siemexport]`.** The zero value is a complete no-op. An *enabled* section is validated strictly at startup (`internal/config.resolveSIEMExportConfig`) — a half-configured destination (a `format` with no `address`, both `path` and `network`/`address` set for `jsonl`, an out-of-range `facility`, ...) refuses to start rather than silently exporting nothing:
+
+```toml
+[siemexport]
+enabled = true
+format = "syslog"          # "syslog" (RFC 5424) | "jsonl" (newline-delimited JSON)
+network = "tcp"             # "tcp" | "udp" (syslog); "tcp" | "udp" | "unix" (jsonl socket mode)
+address = "siem.example:6514"
+# path = "/var/log/vnprox/audit.jsonl"   # jsonl-to-file, mutually exclusive with network/address
+buffer_size = 4096           # bounded ring buffer capacity (default 4096)
+facility = 16                # RFC 5424 facility 0-23 (default 16, local0; syslog only)
+```
+
+**Fed from the existing fan-in, not a new capture path.** Audit rows: `store.AuditRepo`'s existing `SetOnAppend` hook (`cmd/vnproxd/events.go`'s `wireAuditAppendedEvents`, already feeding the `audit.appended` WS event) is extended to additionally call `Exporter.ExportAudit`, once per committed row, same as the WS event. Findings: rather than `internal/findings.Engine`'s `Notifier` interface (which only fires above the operator's own `NotifyThreshold` — an alerting knob a SIEM export must not be silently gated by), `cmd/vnproxd`'s `siemFindingsTracker` diffs the full findings list `Config.OnCycle` already hands it every cycle against its own previous-cycle snapshot, exporting every finding that newly appears, changes severity, or resolves (`transition`: `new`\|`changed`\|`resolved`) — regardless of alert threshold, and without re-sending an unchanged finding every cycle forever.
+
+**Delivery is at-most-once, deliberately.** Every event is attempted exactly one time: on success it is done; on failure (far end down, connection reset, write timeout) it is dropped and counted, never retried — retrying would risk a duplicate row in the SIEM if the original send actually succeeded but its ACK was lost, and a security team debugging a duplicate is a worse failure than a security team seeing a drop counter move. The buffer itself (`Exporter`'s bounded ring, capacity `buffer_size`) evicts the OLDEST not-yet-attempted event when full, favoring recency — the same bounded-ring shape `internal/capture`'s retention sweep and `internal/metrics`'s self-observability ring already use elsewhere in this codebase. Neither failure mode is silent: every drop increments `vnprox_siemexport_events_total{outcome="dropped_buffer_full"|"dropped_send_error"}` (§9 above) and calls a `DropObserver` hook, and `internal/siemexport.Exporter.Stats()` exposes the running counts directly. Export failure never touches the primary record — `audit_log`/the findings stream are written exactly as they were before this section existed, regardless of whether the configured sink is reachable.
+
+**Redaction is mandatory, not opt-in.** Every audit `detail_json` and finding `detail` passes through `internal/redact` (`redact.JSON`/`redact.Scrub` — the same vocabulary support-bundle export already uses) inside `Exporter`'s own event constructors, so there is no code path that can export an unredacted event. See `internal/redact/redact.go`'s doc comment for exactly what it catches (keyed secrets by name, PVE tickets/API tokens, `Authorization` headers, URL userinfo, base64-shaped keys, PEM blocks) and what it does not (a secret with no recognizable key name or wire shape).
+
+**Field mapping.** Every exported event carries `kind` (`"audit"`\|`"finding"`), `at` (UTC), and `severity` (`"error"`\|`"warning"`\|`"info"`), plus either the audit fields (`auditId`, `username`, `action`, `target`, `changesetId`, `result`, `ip`, `detail`) or the finding fields (`findingId`, `source`, `check`, `transition`, `nodes`, `refs`, `findingDetail`). JSONL uses these exact field names; syslog carries the same fields as RFC 5424 SD-PARAMs inside one `vnproxAudit@32473`/`vnproxFinding@32473` SD-ELEMENT (32473 is RFC 5424 §7.2.2's reserved example enterprise number — vnprox has no IANA-registered PEN), plus a human-readable `MSG` for a parser that only reads that field. `internal/siemexport/doc.go`'s "Field mapping" section is the source of truth this paragraph summarizes.
 
 **Offline shell.** The service worker precaches the app shell and opportunistically caches static assets, but never `/api/*` — a cached authenticated response on a shared device would leak the previous session's data to whoever logs in next. `OfflineShellBanner` (`web/src/layout/OfflineShellBanner.tsx`) is the honesty half: while `navigator.onLine` is false it says so explicitly and states the age of whatever data is on screen (via the shared `QueryClient`'s own cache timestamps), so a stale topology is never presented as current.

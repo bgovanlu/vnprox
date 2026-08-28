@@ -173,6 +173,11 @@ const (
 )
 
 // Config is the fully parsed, defaulted, and validated daemon configuration.
+// that adds a config section (28 already) and is constructed exactly once
+// at startup — never a hot allocation path — so field order documents
+// "one line per [section]", not packing.
+//
+//nolint:govet // fieldalignment: this struct grows by one field per task
 type Config struct {
 	PVE         PVEConfig
 	Peer        PeerConfig
@@ -201,6 +206,7 @@ type Config struct {
 	Webhooks    WebhooksConfig
 	Switches    SwitchesConfig
 	MCP         MCPConfig
+	SIEMExport  SIEMExportConfig
 	Demo        bool
 }
 
@@ -896,8 +902,62 @@ func (c CertsConfig) ExpiryWarn() time.Duration {
 	return time.Duration(c.ExpiryWarnDays) * 24 * time.Hour
 }
 
+// SIEMExportConfig is the [siemexport] section (T-4012): the bounded,
+// best-effort streaming export of vnprox's audit log and findings stream
+// to an operator-run SIEM (internal/siemexport's own doc.go has the full
+// design). Off by default, per this product's opt-in convention for
+// anything that sends data to an operator-chosen external destination
+// ([telemetry], [mcp]) — the zero value (Enabled false) is a complete
+// no-op, byte-identical to a pre-T-4012 daemon.
+//
+// Exactly one destination shape is active at a time, chosen by Format:
+// "syslog" ships to Network+Address only (Path must be empty — syslog has
+// no file-destination mode); "jsonl" ships to EITHER Path (a local file,
+// opened append-only) OR Network+Address (a socket), never both — see
+// resolveSIEMExportConfig for the exact refusal rules. This mirrors
+// GitSyncConfig's own asymmetry: a disabled section is never checked (an
+// operator who never turned this on must never see an error from it), an
+// *enabled* one is checked strictly and fatally, because a daemon that
+// came up believing it was exporting but silently was not is worse than a
+// daemon that refused to start.
+// field (format/network/address/path, then the two int knobs, then
+// Enabled last) for readability; this is a config value read once at
+// startup, never a hot allocation path.
+//
+//nolint:govet // fieldalignment: field order groups doc comments with their
+type SIEMExportConfig struct {
+	// Format is "syslog" (RFC 5424) or "jsonl" (newline-delimited JSON).
+	Format string
+	// Network is the destination transport: "tcp" | "udp" for syslog;
+	// "tcp" | "udp" | "unix" for jsonl (when Path is empty).
+	Network string
+	// Address is host:port (tcp/udp) or a socket path (unix).
+	Address string
+	// Path is a jsonl-only local file destination, mutually exclusive
+	// with Network/Address.
+	Path string
+	// BufferSize bounds the in-memory ring buffer siemexport.Exporter
+	// drops the oldest event from once full. Zero/unset resolves to
+	// siemexport.DefaultBufferSize.
+	BufferSize int
+	// Facility is the RFC 5424 facility number (0-23), syslog format
+	// only. Zero/unset resolves to 16 (local0) — see
+	// resolveSIEMExportConfig's firstNonZeroInt call; an operator who
+	// really wants facility 0 (kern) must say so explicitly, the same
+	// "zero means unset, not a deliberate choice" precedent
+	// ChangesetsConfig.AllowSelfApproval's doc comment documents for its
+	// own *bool.
+	Facility int
+	Enabled  bool
+}
+
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
+//
+// [section], grown per task) — same "constructed once at startup, never a
+// hot path" rationale.
+//
+//nolint:govet // fieldalignment: mirrors Config's own struct (one line per
 type rawConfig struct {
 	PVE         rawPVE         `toml:"pve"`
 	Peer        rawPeer        `toml:"peer"`
@@ -927,6 +987,7 @@ type rawConfig struct {
 	Webhooks    rawWebhooks    `toml:"webhooks"`
 	Switches    rawSwitches    `toml:"switches"`
 	MCP         rawMCP         `toml:"mcp"`
+	SIEMExport  rawSIEMExport  `toml:"siemexport"`
 }
 
 // rawChangesets mirrors [changesets] (T-2003). AllowSelfApproval is a *bool
@@ -980,6 +1041,19 @@ type rawGitSync struct {
 	AllowedSignersFile   string `toml:"allowed_signers_file"`
 	Enabled              bool   `toml:"enabled"`
 	RequireSignedCommits bool   `toml:"require_signed_commits"`
+}
+
+// rawSIEMExport is [siemexport] (T-4012). See SIEMExportConfig's doc
+// comment for the field shapes and resolveSIEMExportConfig for the
+// validation rules.
+type rawSIEMExport struct {
+	Format     string `toml:"format"`
+	Network    string `toml:"network"`
+	Address    string `toml:"address"`
+	Path       string `toml:"path"`
+	BufferSize int    `toml:"buffer_size"`
+	Facility   int    `toml:"facility"`
+	Enabled    bool   `toml:"enabled"`
 }
 
 type rawHA struct {
@@ -1228,6 +1302,10 @@ func loadBytes(data []byte, path string, logger *slog.Logger) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	siemExportCfg, err := resolveSIEMExportConfig(raw.SIEMExport)
+	if err != nil {
+		return nil, err
+	}
 	// T-2401: absent/"" means OFF (the default), so this cannot go through
 	// parseDurationOrDefault, which treats a non-positive duration as an
 	// error. A malformed string is still fatal — an operator who wrote
@@ -1377,8 +1455,9 @@ func loadBytes(data []byte, path string, logger *slog.Logger) (*Config, error) {
 			RetentionHours:        firstNonZeroInt(raw.Capture.RetentionHours, capture.DefaultCaps.RetentionHours),
 			MaxFilterInstructions: firstNonZeroInt(raw.Capture.MaxFilterInstructions, capture.DefaultMaxFilterInstructions),
 		},
-		OIDC:    resolveOIDCConfig(raw.OIDC),
-		GitSync: gitSyncCfg,
+		OIDC:       resolveOIDCConfig(raw.OIDC),
+		GitSync:    gitSyncCfg,
+		SIEMExport: siemExportCfg,
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -1850,6 +1929,84 @@ func resolveGitSyncConfig(raw rawGitSync) (GitSyncConfig, error) {
 		// naming rather than a policy worth honouring.
 		return GitSyncConfig{}, fmt.Errorf("%w: gitsync.allowed_signers_file is required when gitsync.require_signed_commits is true", ErrInvalidConfig)
 	}
+	return cfg, nil
+}
+
+// defaultSIEMExportFacility is RFC 5424's local0 — a reasonable default
+// for an application's own logs, distinct from every reserved
+// kernel/mail/daemon facility a SIEM's routing rules might already treat
+// specially.
+const defaultSIEMExportFacility = 16
+
+// resolveSIEMExportConfig resolves and validates [siemexport] (T-4012).
+// Mirrors resolveGitSyncConfig's asymmetry (that function's own doc
+// comment has the argument): a disabled section is returned as-is, with
+// no check at all; an *enabled* one is checked strictly and fatally,
+// because a daemon that believed it was streaming audit/finding events to
+// a SIEM but silently was not is a worse failure mode than refusing to
+// start.
+func resolveSIEMExportConfig(raw rawSIEMExport) (SIEMExportConfig, error) {
+	cfg := SIEMExportConfig{
+		Enabled:    raw.Enabled,
+		Format:     strings.TrimSpace(raw.Format),
+		Network:    strings.TrimSpace(raw.Network),
+		Address:    strings.TrimSpace(raw.Address),
+		Path:       strings.TrimSpace(raw.Path),
+		BufferSize: firstNonZeroInt(raw.BufferSize, 4096),
+		Facility:   firstNonZeroInt(raw.Facility, defaultSIEMExportFacility),
+	}
+	if !cfg.Enabled {
+		return cfg, nil
+	}
+
+	if cfg.Facility < 0 || cfg.Facility > 23 {
+		return SIEMExportConfig{}, fmt.Errorf("%w: siemexport.facility must be 0-23, got %d", ErrInvalidConfig, cfg.Facility)
+	}
+	if cfg.BufferSize <= 0 {
+		return SIEMExportConfig{}, fmt.Errorf("%w: siemexport.buffer_size must be positive, got %d", ErrInvalidConfig, cfg.BufferSize)
+	}
+
+	switch cfg.Format {
+	case "syslog":
+		if cfg.Path != "" {
+			return SIEMExportConfig{}, fmt.Errorf("%w: siemexport.path must not be set when siemexport.format is \"syslog\" (syslog has no file destination)", ErrInvalidConfig)
+		}
+		switch cfg.Network {
+		case "tcp", "udp":
+		case "":
+			return SIEMExportConfig{}, fmt.Errorf("%w: siemexport.network is required (\"tcp\" or \"udp\") when siemexport.format is \"syslog\"", ErrInvalidConfig)
+		default:
+			return SIEMExportConfig{}, fmt.Errorf("%w: siemexport.network %q is not one of tcp, udp", ErrInvalidConfig, cfg.Network)
+		}
+		if cfg.Address == "" {
+			return SIEMExportConfig{}, fmt.Errorf("%w: siemexport.address is required when siemexport.format is \"syslog\"", ErrInvalidConfig)
+		}
+	case "jsonl":
+		hasSocket := cfg.Network != "" || cfg.Address != ""
+		if cfg.Path != "" && hasSocket {
+			return SIEMExportConfig{}, fmt.Errorf("%w: siemexport.path and siemexport.network/address are mutually exclusive when siemexport.format is \"jsonl\"", ErrInvalidConfig)
+		}
+		if cfg.Path == "" && !hasSocket {
+			return SIEMExportConfig{}, fmt.Errorf("%w: siemexport.path, or siemexport.network and siemexport.address, is required when siemexport.format is \"jsonl\"", ErrInvalidConfig)
+		}
+		if cfg.Path == "" {
+			switch cfg.Network {
+			case "tcp", "udp", "unix":
+			case "":
+				return SIEMExportConfig{}, fmt.Errorf("%w: siemexport.network is required (\"tcp\", \"udp\", or \"unix\") when siemexport.address is set", ErrInvalidConfig)
+			default:
+				return SIEMExportConfig{}, fmt.Errorf("%w: siemexport.network %q is not one of tcp, udp, unix", ErrInvalidConfig, cfg.Network)
+			}
+			if cfg.Address == "" {
+				return SIEMExportConfig{}, fmt.Errorf("%w: siemexport.address is required when siemexport.network is set", ErrInvalidConfig)
+			}
+		}
+	case "":
+		return SIEMExportConfig{}, fmt.Errorf("%w: siemexport.format is required (\"syslog\" or \"jsonl\") when siemexport.enabled is true", ErrInvalidConfig)
+	default:
+		return SIEMExportConfig{}, fmt.Errorf("%w: siemexport.format %q is not one of syslog, jsonl", ErrInvalidConfig, cfg.Format)
+	}
+
 	return cfg, nil
 }
 

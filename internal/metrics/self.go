@@ -343,6 +343,8 @@ type Registry struct {
 
 	peerCalls        *counterVec
 	peerCallDuration *histogramVec
+
+	siemExportEvents *counterVec
 }
 
 // NewRegistry constructs an empty Registry. logger is used only for the
@@ -381,6 +383,18 @@ func NewRegistry(logger *slog.Logger) *Registry {
 		peerCallDuration: newHistogramVec("vnprox_peer_call_duration_seconds",
 			"Peer-API RPC duration in seconds, by node and endpoint.",
 			[]string{"node", "endpoint"}, peerCallDurationBuckets, logger),
+
+		// T-4012: internal/siemexport's own drop-visibility contract —
+		// "silent loss in an audit path is worse than no export at all".
+		// One vec keyed by outcome ("sent" | "dropped_buffer_full" |
+		// "dropped_send_error", the latter two matching
+		// siemexport.DropReason's string values verbatim) rather than a
+		// separate sent/dropped counter pair, so a single query
+		// (`sum by (outcome) (vnprox_siemexport_events_total)`) shows the
+		// whole picture.
+		siemExportEvents: newCounterVec("vnprox_siemexport_events_total",
+			"Total SIEM-export events, by outcome (sent, dropped_buffer_full, dropped_send_error).",
+			[]string{"outcome"}, logger),
 	}
 }
 
@@ -487,6 +501,24 @@ func (r *Registry) ObservePeerCall(node, endpoint, outcome string, dur time.Dura
 	r.peerCallDuration.observe(dur.Seconds(), node, endpoint)
 }
 
+// --- SIEM export (internal/siemexport.Exporter, T-4012) ---
+
+// ObserveSIEMExportSent records one successfully delivered export event.
+func (r *Registry) ObserveSIEMExportSent() {
+	r.siemExportEvents.inc("sent")
+}
+
+// ObserveSIEMExportDropped records one dropped export event, labeled by
+// why. reason is siemexport.DropReason's string value
+// ("buffer_full"|"send_error") — this package does not import
+// internal/siemexport (cmd/vnproxd's composition-root adapter passes the
+// string through, the same decoupling every other cross-package hook in
+// this codebase uses), so an unrecognized reason string is still accepted
+// and labeled verbatim rather than rejected.
+func (r *Registry) ObserveSIEMExportDropped(reason string) {
+	r.siemExportEvents.inc("dropped_" + reason)
+}
+
 // WriteTo renders every push-model series this Registry holds, in
 // Prometheus/OpenMetrics text exposition format, appending to buf. A
 // family with zero observations so far is omitted entirely (unlike the
@@ -504,4 +536,5 @@ func (r *Registry) WriteTo(buf *bytes.Buffer) {
 	r.storeQueryDuration.writeTo(buf)
 	r.peerCalls.writeTo(buf)
 	r.peerCallDuration.writeTo(buf)
+	r.siemExportEvents.writeTo(buf)
 }

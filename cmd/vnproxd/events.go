@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 
+	"github.com/bgovanlu/vnprox/internal/siemexport"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
 
@@ -48,7 +49,16 @@ type eventsBroadcaster interface {
 // binary also uses (see server.go's construction order) — a second,
 // independent AuditRepo wrapping the same table would silently miss every
 // append that went through it instead.
-func wireAuditAppendedEvents(audit *store.AuditRepo, ws eventsBroadcaster, logger *slog.Logger) {
+//
+// siemExporter (T-4012) is a second, independent consumer of the exact
+// same append hook — store.AuditRepo.SetOnAppend only ever holds one func
+// (the same "single registration point" constraint topology.Hub.
+// SetEventSink has), so rather than have two setup functions race to
+// overwrite each other's registration, this is the one place that fans
+// every appended row out to both the WS broadcaster and the SIEM export
+// sink. nil-safe: a disabled [siemexport] section passes a nil exporter
+// here and this call costs nothing beyond the branch.
+func wireAuditAppendedEvents(audit *store.AuditRepo, ws eventsBroadcaster, siemExporter *siemexport.Exporter, logger *slog.Logger) {
 	audit.SetOnAppend(func(e store.AuditEntry) {
 		evt := auditAppendedEvent{
 			Event: "audit.appended", ID: e.ID, At: e.At, Username: e.Username,
@@ -66,8 +76,28 @@ func wireAuditAppendedEvents(audit *store.AuditRepo, ws eventsBroadcaster, logge
 		data, err := json.Marshal(evt)
 		if err != nil {
 			logger.Error("events: marshaling audit.appended event", "error", err)
-			return
+		} else {
+			ws.Broadcast(topicEvents, data)
 		}
-		ws.Broadcast(topicEvents, data)
+
+		if siemExporter != nil {
+			detailJSON := ""
+			if e.DetailJSON.Valid {
+				detailJSON = e.DetailJSON.String
+			}
+			target := ""
+			if e.Target.Valid {
+				target = e.Target.String
+			}
+			changesetID := ""
+			if e.ChangesetID.Valid {
+				changesetID = e.ChangesetID.String
+			}
+			siemExporter.ExportAudit(siemexport.AuditInput{
+				ID: e.ID, At: e.At, Username: e.Username, Action: e.Action,
+				Target: target, ChangesetID: changesetID, Result: e.Result,
+				IP: e.IP, DetailJSON: detailJSON,
+			})
+		}
 	})
 }

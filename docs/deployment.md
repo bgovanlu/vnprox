@@ -114,6 +114,46 @@ unit, no PVE API token, no config, no root. Useful for trying
 `vnproxd --demo` (docs/features/demo-mode.md) on a machine that is not a
 Proxmox node.
 
+### Offline install bundle (T-4009)
+
+The `--prefix`/air-gapped install above is the unprivileged, no-PVE-setup
+path (try `--demo` on a non-Proxmox machine). For a real cluster with **no
+outbound network at all**, `packaging/bundle-offline.sh` assembles a
+self-contained bundle — the `.deb`, `install.sh` itself (copied in, so
+nothing is fetched separately), a detached signature and its trust anchor,
+`SHA256SUMS`, and (optionally) a `vnproxctl hub mirror` of the blueprint/
+plugin registry:
+
+```bash
+make build && make deb
+packaging/bundle-offline.sh ./offline-bundle dist/vnprox_*.deb
+# optionally also mirror the hub registry into the bundle:
+#   VNPROX_MIRROR_REGISTRY=https://hub.example.com/vnprox \
+#   VNPROX_MIRROR_SIGNERS=<fingerprint> \
+#   packaging/bundle-offline.sh ./offline-bundle dist/vnprox_*.deb
+```
+
+Carry `./offline-bundle` to the air-gapped node (removable media, etc.) and
+install from it — `install.sh`'s existing `--offline <file>` path does the
+rest, verified against the bundle's own `release-key.asc`, with
+`--no-install-recommends` so the optional `lldpd`/`ifupdown2` Recommends
+never trigger a network fetch that would fail air-gapped:
+
+```bash
+cd offline-bundle
+sha256sum -c SHA256SUMS
+sudo ./install.sh --offline ./vnprox_<version>_amd64.deb --release-key release-key.asc
+```
+
+Verified end to end in a `--network=none` container (podman): signature
+check, package install, and `vnprox-setup`'s non-PVE-specific steps all
+complete with zero network calls. `vnproxctl doctor`'s `pmxcfs` check (and
+the other PVE-specific steps) still fail outside a real Proxmox node — that
+part is unrelated to the air gap and already covered by this document's
+existing hardware-validation notes. See `docs/hub-registry.md`'s
+"Air-gapped operation" section for the hub-mirror half, including what an
+operator can and cannot know about revocations offline.
+
 ### Idempotence
 
 Running the installer twice leaves the same versions and one apt sources
@@ -163,6 +203,18 @@ confirm_timeout_default = 120
 # Each override warns at every startup.
 # allow_private_targets = false   # admit loopback/RFC1918/link-local targets
 # allow_insecure_targets = false  # admit plain-http targets
+
+[siemexport]
+# T-4012: streams audit_log rows and findings-stream transitions to an
+# operator-run SIEM — off by default. See docs/features/monitoring.md §12
+# for the full field mapping and delivery-semantics contract.
+# enabled = false
+# format = "syslog"                    # "syslog" (RFC 5424) | "jsonl"
+# network = "tcp"                      # "tcp" | "udp" (syslog); + "unix" (jsonl socket)
+# address = "siem.example:6514"
+# path = ""                            # jsonl-to-file, mutually exclusive with network/address
+# buffer_size = 4096                   # bounded ring buffer capacity
+# facility = 16                        # RFC 5424 facility 0-23 (default local0)
 
 [pve]
 api_url = "https://127.0.0.1:8006"
