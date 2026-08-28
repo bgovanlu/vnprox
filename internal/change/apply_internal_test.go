@@ -226,6 +226,7 @@ func TestParamsUnion_Membership(t *testing.T) {
 		&RouteStaticCreateParams{}, &RouteStaticUpdateParams{}, &RouteStaticDeleteParams{},
 		&VFProvisionParams{},
 		&SwitchPortUpdateParams{},
+		&TcMirrorCreateParams{}, &TcMirrorUpdateParams{}, &TcMirrorDeleteParams{},
 	}
 	for _, m := range members {
 		m.isChangeParams() // marker; asserts union membership at runtime too

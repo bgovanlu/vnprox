@@ -1,0 +1,277 @@
+=== ip link (for iface names) ===
+lo               UNKNOWN        00:00:00:00:00:00 <LOOPBACK,UP,LOWER_UP> 
+enp1s0           UP             a8:b8:e0:00:0e:e8 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+enp2s0           DOWN           a8:b8:e0:00:0e:e9 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+enp3s0           UP             a8:b8:e0:00:04:47 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+enp4s0           DOWN           a8:b8:e0:00:04:46 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+vmbr0            UP             a8:b8:e0:00:0e:e8 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+vmbr1            DOWN           a8:b8:e0:00:0e:e9 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+vmbr2            UP             a8:b8:e0:00:04:47 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+vmbr3            DOWN           a8:b8:e0:00:04:46 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+veth103i0@if2    UP             fe:cc:f2:d1:ad:7e <BROADCAST,MULTICAST,UP,LOWER_UP> 
+veth104i0@if2    UP             fe:6e:94:10:ab:dd <BROADCAST,MULTICAST,UP,LOWER_UP> 
+fwbr103i0        UP             92:51:5a:6a:c4:dc <BROADCAST,MULTICAST,UP,LOWER_UP> 
+fwbr104i0        UP             86:28:9e:78:7e:91 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+fwpr104p0@fwln104i0 UP             f6:2d:89:a1:7b:d4 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+fwln104i0@fwpr104p0 UP             86:28:9e:78:7e:91 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+fwpr103p0@fwln103i0 UP             a2:b1:1c:1e:51:b9 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+fwln103i0@fwpr103p0 UP             92:51:5a:6a:c4:dc <BROADCAST,MULTICAST,UP,LOWER_UP> 
+vmbr99           UP             d6:94:bf:28:6c:a4 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+tap9101i0        UNKNOWN        d6:94:bf:28:6c:a4 <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+tap9102i0        UNKNOWN        32:03:82:86:9f:08 <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+
+=== tc qdisc show (all) ===
+qdisc noqueue 0: dev lo root refcnt 2 
+qdisc mq 0: dev enp1s0 root 
+qdisc fq_codel 0: dev enp1s0 parent :4 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: dev enp1s0 parent :3 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: dev enp1s0 parent :2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: dev enp1s0 parent :1 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc mq 0: dev enp2s0 root 
+qdisc fq_codel 0: dev enp2s0 parent :4 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: dev enp2s0 parent :3 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: dev enp2s0 parent :2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: dev enp2s0 parent :1 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc mq 0: dev enp3s0 root 
+qdisc fq_codel 0: dev enp3s0 parent :4 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: dev enp3s0 parent :3 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: dev enp3s0 parent :2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: dev enp3s0 parent :1 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc mq 0: dev enp4s0 root 
+qdisc fq_codel 0: dev enp4s0 parent :4 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: dev enp4s0 parent :3 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: dev enp4s0 parent :2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: dev enp4s0 parent :1 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc noqueue 0: dev vmbr0 root refcnt 2 
+qdisc noqueue 0: dev vmbr1 root refcnt 2 
+qdisc noqueue 0: dev vmbr2 root refcnt 2 
+qdisc noqueue 0: dev vmbr3 root refcnt 2 
+qdisc noqueue 0: dev veth103i0 root refcnt 2 
+qdisc noqueue 0: dev veth104i0 root refcnt 2 
+qdisc noqueue 0: dev fwbr103i0 root refcnt 2 
+qdisc noqueue 0: dev fwbr104i0 root refcnt 2 
+qdisc noqueue 0: dev fwpr104p0 root refcnt 2 
+qdisc noqueue 0: dev fwln104i0 root refcnt 2 
+qdisc noqueue 0: dev fwpr103p0 root refcnt 2 
+qdisc noqueue 0: dev fwln103i0 root refcnt 2 
+qdisc noqueue 0: dev vmbr99 root refcnt 2 
+qdisc fq_codel 0: dev tap9101i0 root refcnt 2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: dev tap9102i0 root refcnt 2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+
+=== tc -j qdisc show (JSON test) ===
+[{"kind":"noqueue","handle":"0:","dev":"lo","root":true,"refcnt":2,"options":{}},{"kind":"mq","handle":"0:","dev":"enp1s0","root":true,"options":{}},{"kind":"fq_codel","handle":"0:","dev":"enp1s0","parent":":4","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"fq_codel","handle":"0:","dev":"enp1s0","parent":":3","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"fq_codel","handle":"0:","dev":"enp1s0","parent":":2","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"fq_codel","handle":"0:","dev":"enp1s0","parent":":1","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"mq","handle":"0:","dev":"enp2s0","root":true,"options":{}},{"kind":"fq_codel","handle":"0:","dev":"enp2s0","parent":":4","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"fq_codel","handle":"0:","dev":"enp2s0","parent":":3","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"fq_codel","handle":"0:","dev":"enp2s0","parent":":2","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"fq_codel","handle":"0:","dev":"enp2s0","parent":":1","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"mq","handle":"0:","dev":"enp3s0","root":true,"options":{}},{"kind":"fq_codel","handle":"0:","dev":"enp3s0","parent":":4","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"fq_codel","handle":"0:","dev":"enp3s0","parent":":3","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"fq_codel","handle":"0:","dev":"enp3s0","parent":":2","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"fq_codel","handle":"0:","dev":"enp3s0","parent":":1","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"mq","handle":"0:","dev":"enp4s0","root":true,"options":{}},{"kind":"fq_codel","handle":"0:","dev":"enp4s0","parent":":4","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"fq_codel","handle":"0:","dev":"enp4s0","parent":":3","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"fq_codel","handle":"0:","dev":"enp4s0","parent":":2","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"fq_codel","handle":"0:","dev":"enp4s0","parent":":1","options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"noqueue","handle":"0:","dev":"vmbr0","root":true,"refcnt":2,"options":{}},{"kind":"noqueue","handle":"0:","dev":"vmbr1","root":true,"refcnt":2,"options":{}},{"kind":"noqueue","handle":"0:","dev":"vmbr2","root":true,"refcnt":2,"options":{}},{"kind":"noqueue","handle":"0:","dev":"vmbr3","root":true,"refcnt":2,"options":{}},{"kind":"noqueue","handle":"0:","dev":"veth103i0","root":true,"refcnt":2,"options":{}},{"kind":"noqueue","handle":"0:","dev":"veth104i0","root":true,"refcnt":2,"options":{}},{"kind":"noqueue","handle":"0:","dev":"fwbr103i0","root":true,"refcnt":2,"options":{}},{"kind":"noqueue","handle":"0:","dev":"fwbr104i0","root":true,"refcnt":2,"options":{}},{"kind":"noqueue","handle":"0:","dev":"fwpr104p0","root":true,"refcnt":2,"options":{}},{"kind":"noqueue","handle":"0:","dev":"fwln104i0","root":true,"refcnt":2,"options":{}},{"kind":"noqueue","handle":"0:","dev":"fwpr103p0","root":true,"refcnt":2,"options":{}},{"kind":"noqueue","handle":"0:","dev":"fwln103i0","root":true,"refcnt":2,"options":{}},{"kind":"noqueue","handle":"0:","dev":"vmbr99","root":true,"refcnt":2,"options":{}},{"kind":"fq_codel","handle":"0:","dev":"tap9101i0","root":true,"refcnt":2,"options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}},{"kind":"fq_codel","handle":"0:","dev":"tap9102i0","root":true,"refcnt":2,"options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64}}]
+
+=== tc -V (version) ===
+tc utility, iproute2-6.15.0, libbpf 1.5.0
+
+--- tc qdisc show dev lo ---
+qdisc noqueue 0: root refcnt 2 
+--- tc filter show dev lo ---
+--- tc -j filter show dev lo ---
+[]
+--- tc qdisc show dev enp1s0 ---
+qdisc mq 0: root 
+qdisc fq_codel 0: parent :4 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: parent :3 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: parent :2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: parent :1 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+--- tc filter show dev enp1s0 ---
+--- tc -j filter show dev enp1s0 ---
+[]
+--- tc qdisc show dev enp2s0 ---
+qdisc mq 0: root 
+qdisc fq_codel 0: parent :4 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: parent :3 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: parent :2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: parent :1 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+--- tc filter show dev enp2s0 ---
+--- tc -j filter show dev enp2s0 ---
+[]
+--- tc qdisc show dev enp3s0 ---
+qdisc mq 0: root 
+qdisc fq_codel 0: parent :4 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: parent :3 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: parent :2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: parent :1 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+--- tc filter show dev enp3s0 ---
+--- tc -j filter show dev enp3s0 ---
+[]
+--- tc qdisc show dev enp4s0 ---
+qdisc mq 0: root 
+qdisc fq_codel 0: parent :4 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: parent :3 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: parent :2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 0: parent :1 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+--- tc filter show dev enp4s0 ---
+--- tc -j filter show dev enp4s0 ---
+[]
+--- tc qdisc show dev vmbr0 ---
+qdisc noqueue 0: root refcnt 2 
+--- tc filter show dev vmbr0 ---
+--- tc -j filter show dev vmbr0 ---
+[]
+--- tc qdisc show dev vmbr1 ---
+qdisc noqueue 0: root refcnt 2 
+--- tc filter show dev vmbr1 ---
+--- tc -j filter show dev vmbr1 ---
+[]
+--- tc qdisc show dev vmbr2 ---
+qdisc noqueue 0: root refcnt 2 
+--- tc filter show dev vmbr2 ---
+--- tc -j filter show dev vmbr2 ---
+[]
+--- tc qdisc show dev vmbr3 ---
+qdisc noqueue 0: root refcnt 2 
+--- tc filter show dev vmbr3 ---
+--- tc -j filter show dev vmbr3 ---
+[]
+--- tc qdisc show dev veth103i0 ---
+qdisc noqueue 0: root refcnt 2 
+--- tc filter show dev veth103i0 ---
+--- tc -j filter show dev veth103i0 ---
+[]
+--- tc qdisc show dev veth104i0 ---
+qdisc noqueue 0: root refcnt 2 
+--- tc filter show dev veth104i0 ---
+--- tc -j filter show dev veth104i0 ---
+[]
+--- tc qdisc show dev fwbr103i0 ---
+qdisc noqueue 0: root refcnt 2 
+--- tc filter show dev fwbr103i0 ---
+--- tc -j filter show dev fwbr103i0 ---
+[]
+--- tc qdisc show dev fwbr104i0 ---
+qdisc noqueue 0: root refcnt 2 
+--- tc filter show dev fwbr104i0 ---
+--- tc -j filter show dev fwbr104i0 ---
+[]
+--- tc qdisc show dev fwpr104p0 ---
+qdisc noqueue 0: root refcnt 2 
+--- tc filter show dev fwpr104p0 ---
+--- tc -j filter show dev fwpr104p0 ---
+[]
+--- tc qdisc show dev fwln104i0 ---
+qdisc noqueue 0: root refcnt 2 
+--- tc filter show dev fwln104i0 ---
+--- tc -j filter show dev fwln104i0 ---
+[]
+--- tc qdisc show dev fwpr103p0 ---
+qdisc noqueue 0: root refcnt 2 
+--- tc filter show dev fwpr103p0 ---
+--- tc -j filter show dev fwpr103p0 ---
+[]
+--- tc qdisc show dev fwln103i0 ---
+qdisc noqueue 0: root refcnt 2 
+--- tc filter show dev fwln103i0 ---
+--- tc -j filter show dev fwln103i0 ---
+[]
+--- tc qdisc show dev vmbr99 ---
+qdisc noqueue 0: root refcnt 2 
+--- tc filter show dev vmbr99 ---
+--- tc -j filter show dev vmbr99 ---
+[]
+--- tc qdisc show dev tap9101i0 ---
+qdisc fq_codel 0: root refcnt 2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+--- tc filter show dev tap9101i0 ---
+--- tc -j filter show dev tap9101i0 ---
+[]
+--- tc qdisc show dev tap9102i0 ---
+qdisc fq_codel 0: root refcnt 2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+--- tc filter show dev tap9102i0 ---
+--- tc -j filter show dev tap9102i0 ---
+[]
+=== lsmod | grep -E "mirred|ifb|clsact|matchall|u32" ===
+
+=== modinfo act_mirred ===
+filename:       /lib/modules/7.0.14-4-pve/kernel/net/sched/act_mirred.ko
+license:        GPL
+description:    Device Mirror/redirect actions
+author:         Jamal Hadi Salim(2002)
+alias:          net-act-mirred
+srcversion:     CC9BAF163CB26F075808DF1
+depends:        
+intree:         Y
+name:           act_mirred
+retpoline:      Y
+vermagic:       7.0.14-4-pve SMP preempt mod_unload modversions 
+sig_id:         PKCS#7
+signer:         Build time autogenerated kernel key
+sig_key:        02:D1:6C:96:5F:44:C6:98:A7:2C:2D:F1:1C:3F:27:36:27:DD:39:28
+sig_hashalgo:   sha512
+signature:      27:36:E3:31:60:92:25:24:7A:E9:B1:76:E7:63:59:4B:B9:B1:23:9F:
+		46:56:E1:73:42:E3:BB:CB:F9:30:39:7A:C7:04:FE:9B:C0:35:70:C2:
+		86:25:62:F4:2C:FF:21:5C:FF:EA:CB:74:F5:38:20:52:4F:54:C3:D7:
+		1F:0B:F8:42:FD:A3:CC:CA:38:11:61:46:34:81:60:F6:53:EA:10:D1:
+		B8:FE:25:E4:CD:32:AC:9B:54:B1:11:EC:C1:74:99:5B:27:59:53:81:
+
+=== modinfo cls_matchall ===
+filename:       /lib/modules/7.0.14-4-pve/kernel/net/sched/cls_matchall.ko
+license:        GPL v2
+description:    Match-all classifier
+author:         Jiri Pirko <jiri@mellanox.com>
+alias:          net-cls-matchall
+srcversion:     B6123C92807D7AD903B9763
+depends:        
+intree:         Y
+name:           cls_matchall
+retpoline:      Y
+vermagic:       7.0.14-4-pve SMP preempt mod_unload modversions 
+sig_id:         PKCS#7
+signer:         Build time autogenerated kernel key
+sig_key:        02:D1:6C:96:5F:44:C6:98:A7:2C:2D:F1:1C:3F:27:36:27:DD:39:28
+sig_hashalgo:   sha512
+signature:      39:06:02:B0:DF:9F:B8:DA:E7:01:7C:16:E4:9C:42:F9:32:32:73:EE:
+		AD:4A:C1:EF:42:73:4C:F0:5B:84:F6:90:B1:55:C8:51:BE:17:7C:A6:
+		C9:6E:A5:60:8C:FE:35:B6:05:98:45:F0:AF:22:B5:CF:9C:47:9A:CF:
+		C9:0C:BA:72:66:13:5C:80:5E:0C:82:7F:A1:C0:FD:A8:EE:FD:8D:FD:
+		38:08:52:46:6D:39:FC:FE:A1:A0:B5:07:31:7F:88:E4:FE:EF:29:C5:
+
+=== modinfo sch_ingress ===
+filename:       /lib/modules/7.0.14-4-pve/kernel/net/sched/sch_ingress.ko
+description:    Ingress and clsact based ingress and egress qdiscs
+license:        GPL
+alias:          net-sch-clsact
+alias:          net-sch-ingress
+srcversion:     071FA4DED7E3D3FA0E57CBF
+depends:        
+intree:         Y
+name:           sch_ingress
+retpoline:      Y
+vermagic:       7.0.14-4-pve SMP preempt mod_unload modversions 
+sig_id:         PKCS#7
+signer:         Build time autogenerated kernel key
+sig_key:        02:D1:6C:96:5F:44:C6:98:A7:2C:2D:F1:1C:3F:27:36:27:DD:39:28
+sig_hashalgo:   sha512
+signature:      25:D8:D7:CF:AB:A5:8C:FA:79:2D:3C:3F:40:D2:42:F2:B8:91:AD:A0:
+		09:DF:28:CF:63:5D:35:24:61:6C:D0:7B:76:A5:9D:69:53:11:92:D3:
+		2F:65:5D:D6:9D:3F:FD:59:F9:D7:0A:33:B1:9D:96:B2:53:28:79:1C:
+		9B:D7:EB:6F:CB:FF:07:D9:F7:15:34:B8:45:15:88:18:90:8E:9E:90:
+		12:2E:EE:D3:7D:EE:DB:A5:28:BB:03:2C:11:1A:CC:CE:A0:E6:BF:32:
+
+=== tc filter help (mirred) ===
+Usage: tc filter [ add | del | change | replace | show ] [ dev STRING ]
+       tc filter [ add | del | change | replace | show ] [ block BLOCK_INDEX ]
+       tc filter get dev STRING parent CLASSID protocol PROTO handle FILTERID pref PRIO FILTER_TYPE
+       tc filter get block BLOCK_INDEX protocol PROTO handle FILTERID pref PRIO FILTER_TYPE
+       [ pref PRIO ] protocol PROTO [ chain CHAIN_INDEX ]
+       [ estimator INTERVAL TIME_CONSTANT ]
+       [ root | ingress | egress | parent CLASSID ]
+       [ handle FILTERID ] [ [ FILTER_TYPE ] [ help | OPTIONS ] ]
+
+       tc filter show [ dev STRING ] [ root | ingress | egress | parent CLASSID ]
+       tc filter show [ block BLOCK_INDEX ]
+Where:
+FILTER_TYPE := { u32 | bpf | fw | route | etc. }
+FILTERID := ... format depends on classifier, see there
+OPTIONS := ... try tc filter add <desired FILTER_KIND> help
+
+=== kernel version ===
+7.0.14-4-pve
+
+=== tc actions ls action mirred (should be empty/no error, read-only listing) ===
+
+=== check for existing ifb devices ===
+
+=== nft/iptables presence (unrelated but useful) ===
+/usr/sbin/nft
+/usr/sbin/iptables

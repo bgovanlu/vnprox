@@ -44,6 +44,7 @@ var allOpTypeConstants = []OpType{
 	OpRouteStaticCreate, OpRouteStaticUpdate, OpRouteStaticDelete,
 	OpVFProvision,
 	OpSwitchPortUpdate,
+	OpTcMirrorCreate, OpTcMirrorUpdate, OpTcMirrorDelete,
 }
 
 // docs/data-model.md §3's table lists exactly these groups: iface(3, incl.
@@ -52,9 +53,10 @@ var allOpTypeConstants = []OpType{
 // route(3, T-1403), vf(1, T-1506) = 58, plus T-1204's sdn.dns.zone.*(3) +
 // sdn.dns.record.*(3) = 6, T-1205's switch.port.update(1) = 65,
 // T-3101's sdn.fabric.create/update/delete(3) = 68, T-3102's
-// sdn.controller.create/update/delete(3) = 71, and T-3104's
-// sdn.ipam.create/update/delete(3) = 74.
-const wantOpVocabularySize = 74
+// sdn.controller.create/update/delete(3) = 71, T-3104's
+// sdn.ipam.create/update/delete(3) = 74, and T-4014's
+// tc.mirror.create/update/delete(3) = 77.
+const wantOpVocabularySize = 77
 
 func TestOpVocabulary_SizeMatchesDataModelDoc(t *testing.T) {
 	if len(allOpTypeConstants) != wantOpVocabularySize {
@@ -486,6 +488,21 @@ func opRoundTripCases() []opRoundTripCase {
 				LacpRate:       str("fast"),
 				ExpectNeighbor: SwitchNeighbor{ChassisID: "aa:bb:cc:dd:ee:ff", PortID: "eno1"},
 			},
+		},
+		{
+			name: "tc.mirror.create", opType: OpTcMirrorCreate,
+			target: ref(inventory.KindTcMirror, "pve1", "span1"),
+			params: &TcMirrorCreateParams{SourceIface: "vmbr0", DestIface: "vmbr99", MaxMbit: intPtr(100), MaxDurationSec: 3600},
+		},
+		{
+			name: "tc.mirror.update", opType: OpTcMirrorUpdate,
+			target: ref(inventory.KindTcMirror, "pve1", "span1"),
+			params: &TcMirrorUpdateParams{MaxDurationSec: intPtr(7200)},
+		},
+		{
+			name: "tc.mirror.delete", opType: OpTcMirrorDelete,
+			target: ref(inventory.KindTcMirror, "pve1", "span1"),
+			params: &TcMirrorDeleteParams{},
 		},
 	}
 }

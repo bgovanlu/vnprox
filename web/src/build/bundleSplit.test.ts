@@ -155,7 +155,18 @@ describe("production bundle: Monaco code-split (T-208 AC4)", () => {
         // ReviewApplyScreen.tsx beside BreakGlassPanel), their API types in
         // web/src/api/policies.ts/types.ts, and one new help topic. Measured:
         // 4_307_562, i.e. 0.18% over the old ceiling.
-        expect(mainSize).toBeLessThan(4_320_000);
+        //
+        // T-4015 raised it again, from 4_320_000 to 4_340_000. `git diff
+        // web/package.json web/package-lock.json` is empty — no new runtime
+        // dependency, the benign case again. The growth is the general
+        // (non-federation-scoped) WireGuard tunnel management page:
+        // `web/src/wireguard/WireGuardPage.tsx` (eagerly imported from
+        // App.tsx exactly like every other routed page here — none of them
+        // are `lazy(`-split) plus its op builders (`wgTunnelOps.ts`) and
+        // three-state derivation (`wgTunnelState.ts`), a new Sidebar entry,
+        // and one new help topic. Measured: 4_333_421, i.e. 0.31% over the
+        // old ceiling.
+        expect(mainSize).toBeLessThan(4_340_000);
 
         // The load-bearing check: Monaco's own distinctive runtime marker
         // must appear in the Monaco chunk and must NOT appear in the main

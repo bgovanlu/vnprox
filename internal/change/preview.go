@@ -145,6 +145,9 @@ func buildUnprojectableReasons() map[OpType]string {
 	for _, t := range []OpType{OpSdnIpamCreate, OpSdnIpamUpdate, OpSdnIpamDelete} {
 		reasons[t] = "an SDN ipam plugin instance is PVE-managed connection config, not a drawable entity in the topology graph; see the IPAM page instead"
 	}
+	for _, t := range []OpType{OpTcMirrorCreate, OpTcMirrorUpdate, OpTcMirrorDelete} {
+		reasons[t] = "a tc.mirror session is app-owned intent applied with tc/clsact/mirred, like a QoS shape; it is not an entity in the topology graph"
+	}
 	return reasons
 }
 

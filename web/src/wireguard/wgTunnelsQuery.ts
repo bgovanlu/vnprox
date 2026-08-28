@@ -7,7 +7,7 @@
 // mechanism, same "only fetch while genuinely paintable" scope every other
 // topology overlay layer already uses.
 import { useQuery } from "@tanstack/react-query";
-import { fetchWireGuardTunnels } from "../api/wireguard";
+import { fetchWireGuardPeerConfig, fetchWireGuardPubkey, fetchWireGuardTunnels } from "../api/wireguard";
 import type { WireGuardTunnel } from "../api/types";
 
 export const wireGuardTunnelsKey = ["wireguard-tunnels"] as const;
@@ -28,4 +28,32 @@ export function useWireGuardTunnelsQuery(
     refetchInterval: enabled ? REFETCH_MS : false,
   });
   return { data, isLoading, isError };
+}
+
+/** T-4015: the general management surface's "view public key" affordance —
+ * fetched only while the viewer dialog is open (`enabled`), never eagerly,
+ * since it's one more round trip the tunnel list itself doesn't need. Only
+ * ever the DERIVED public key: GET /wireguard/tunnels/{id}/pubkey has no
+ * route or param that can return the private key (internal/api/wireguard.go's
+ * own doc comment on WireGuardService.PublicKey). */
+export function useWireGuardPubkeyQuery(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["wireguard-tunnels", id, "pubkey"] as const,
+    queryFn: () => fetchWireGuardPubkey(id),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
+/** The exportable wg-quick config block an external peer would install on
+ * its own side — the far side's own private key is left a placeholder
+ * (vnprox never holds it), and this tunnel's own private key never appears
+ * in the rendered text (docs/api.md's WireGuard section). */
+export function useWireGuardPeerConfigQuery(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["wireguard-tunnels", id, "peer-config"] as const,
+    queryFn: () => fetchWireGuardPeerConfig(id),
+    enabled,
+    staleTime: 60_000,
+  });
 }

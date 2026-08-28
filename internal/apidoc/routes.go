@@ -100,13 +100,14 @@ var Operations = map[string]Operation{
 	"POST /api/v1/drift/{id}/adopt-reality":  {Summary: "Propose a spec commit describing the cluster as it is.", Tag: "drift", Auth: AuthSession},
 	"GET /api/v1/drift/{id}/adoption":        {Summary: "Return the pull request this drift finding was adopted as.", Tag: "drift", Auth: AuthSession},
 
-	"GET /api/v1/digest/schedule":      {Summary: "Return the scheduled-digest cadence, recipients, and last run.", Tag: "digest", Auth: AuthSession},
-	"PUT /api/v1/digest/schedule":      {Summary: "Change the scheduled-digest cadence, recipients, or enablement.", Tag: "digest", Auth: AuthSession},
-	"GET /api/v1/findings":             {Summary: "List open findings, optionally filtered by acknowledgement.", Tag: "findings", Auth: AuthSession},
-	"POST /api/v1/findings/{id}/fix":   {Summary: "Stage a changeset fixing one finding.", Tag: "findings", Auth: AuthSession},
-	"POST /api/v1/findings/fix":        {Summary: "Stage one changeset fixing several findings together.", Tag: "findings", Auth: AuthSession},
-	"POST /api/v1/findings/{id}/ack":   {Summary: "Acknowledge a finding, with a reason and optional expiry.", Tag: "findings", Auth: AuthSession},
-	"DELETE /api/v1/findings/{id}/ack": {Summary: "Withdraw a finding's acknowledgement.", Tag: "findings", Auth: AuthSession},
+	"GET /api/v1/digest/schedule":                        {Summary: "Return the scheduled-digest cadence, recipients, and last run.", Tag: "digest", Auth: AuthSession},
+	"PUT /api/v1/digest/schedule":                        {Summary: "Change the scheduled-digest cadence, recipients, or enablement.", Tag: "digest", Auth: AuthSession},
+	"GET /api/v1/findings":                               {Summary: "List open findings, optionally filtered by acknowledgement.", Tag: "findings", Auth: AuthSession},
+	"POST /api/v1/findings/{id}/fix":                     {Summary: "Stage a changeset fixing one finding.", Tag: "findings", Auth: AuthSession},
+	"POST /api/v1/findings/fix":                          {Summary: "Stage one changeset fixing several findings together.", Tag: "findings", Auth: AuthSession},
+	"POST /api/v1/findings/{id}/ack":                     {Summary: "Acknowledge a finding, with a reason and optional expiry.", Tag: "findings", Auth: AuthSession},
+	"POST /api/v1/findings/{id}/runbooks/{name}/prepare": {Summary: "Run a runbook's read-checks and stage its remediation changeset for review. Prepares only; never applies.", Tag: "findings", Auth: AuthSession},
+	"DELETE /api/v1/findings/{id}/ack":                   {Summary: "Withdraw a finding's acknowledgement.", Tag: "findings", Auth: AuthSession},
 
 	// --- Audit, history, doctor ----------------------------------------------
 	"GET /api/v1/audit":          {Summary: "Read the audit log.", Tag: "audit", Auth: AuthSession},

@@ -29,6 +29,7 @@ func safetyValidate(ops []Op, snap inventory.Snapshot, safety SafetyOptions) []F
 	out = append(out, vnetDeletionGuardFindings(ops, snap)...)
 	out = append(out, subnetDeletionGuardFindings(ops, safety.Allocations)...)
 	out = append(out, dnsZoneDeletionGuardFindings(ops, snap)...)
+	out = append(out, tcMirrorProtectedDestFindings(ops, safety.Protected)...)
 
 	if safety.AllowDangerousOps {
 		for i := range out {
@@ -659,6 +660,189 @@ func guestBearingBridgeFindings(ops []Op, snap inventory.Snapshot) []Finding {
 		out = append(out, errorf(codeGuestBearingBridge, refOf(op),
 			"bridge %s still has %d running guest(s) attached in this changeset's final state: %s — add guest.nic.update ops reattaching all of them to a surviving bridge or vnet before deleting it",
 			op.Target.ID, len(attached), strings.Join(attached, "; ")))
+	}
+	return out
+}
+
+// --- T-4014's tc.mirror.* safety class --------------------------------
+
+// tcMirrorProtectedDestFindings flags a tc.mirror.create whose destIface
+// names a protected interface (management IP or corosync link) — reusing
+// protected.go's ProtectedSet directly, the SAME interlock (and, via this
+// function's call site inside safetyValidate, the same AllowDangerousOps
+// downgrade) every other mgmt-path-cutting op already carries, per T-4014's
+// own card: "reusing internal/change's existing management-path
+// protection... rather than a new check with different semantics".
+//
+// Unlike protectedInterfaceFindings (which reasons about a changeset's net
+// EFFECT on an existing protected address/bridge-path — an iface.update
+// that re-addresses it, a bridge.delete that detaches it), this is a
+// direct, static check: a mirror session never modifies destIface's own
+// config at all, it only asks whether destIface currently carries a
+// protected role. Repurposing the management/corosync path as a raw
+// traffic sink for a mirror copy is refused regardless of whether the
+// session would otherwise "break" it in the connectivity sense
+// protectedInterfaceFindings checks.
+func tcMirrorProtectedDestFindings(ops []Op, protected ProtectedSet) []Finding {
+	if len(protected) == 0 {
+		return nil
+	}
+	var out []Finding
+	for _, op := range ops {
+		create, ok := op.Params.(*TcMirrorCreateParams)
+		if !ok || create.DestIface == "" {
+			continue
+		}
+		for _, pref := range protected[op.Target.Node] {
+			if pref.ID == create.DestIface {
+				out = append(out, errorf(codeProtectedInterface, refOf(op),
+					"tc.mirror destination %q is a protected interface on node %s (management IP or corosync link) — mirroring traffic onto it is refused",
+					create.DestIface, op.Target.Node))
+				break
+			}
+		}
+	}
+	return out
+}
+
+// TcMirrorLimits is the server-configured, un-overridable ceiling set for
+// tc.mirror.* sessions — the tc.mirror analogue of internal/capture's
+// Caps/Ceilings, threaded in via Service.Config (cmd/vnproxd's daemon
+// config) rather than hardcoded, but — unlike capture's Caps, which are
+// silently CLAMPED down to the ceiling — an over-ceiling tc.mirror.create
+// request is a hard validate-time REJECTION (T-4014 acceptance criterion
+// 2's own wording: "rejected... not silently clamped").
+//
+// A Config left at the zero value does NOT mean "no ceiling": Service
+// fills MaxConcurrentPerNode and MaxDurationSec in from
+// DefaultTcMirrorLimits (defaultTcMirrorLimits, mirroring
+// capture.defaultCeilings exactly) — "a misconfigured daemon never mirrors
+// unbounded" is a property of this feature too, not just capture's.
+// MaxBandwidthMbit is the one exception, left at 0 (unconstrained) when
+// unconfigured: unlike a time or a session count, there is no universally
+// sane default network-bandwidth budget this codebase could pick on an
+// operator's behalf.
+type TcMirrorLimits struct {
+	MaxConcurrentPerNode int
+	MaxBandwidthMbit     int
+	MaxDurationSec       int
+}
+
+// DefaultTcMirrorLimits is the fallback ceiling set a zero-value Config
+// field is filled from (defaultTcMirrorLimits) — conservative bounds so a
+// misconfigured daemon never mirrors unbounded, the same role
+// capture.DefaultCaps plays for packet capture.
+var DefaultTcMirrorLimits = TcMirrorLimits{
+	MaxConcurrentPerNode: 4,
+	MaxDurationSec:       24 * 3600, // 24h
+	// MaxBandwidthMbit is deliberately left 0 (unconstrained) - see
+	// TcMirrorLimits' own doc comment for why bandwidth has no default.
+}
+
+// defaultTcMirrorLimits fills any zero field of c from
+// DefaultTcMirrorLimits, mirroring internal/capture's defaultCeilings
+// exactly.
+func defaultTcMirrorLimits(c TcMirrorLimits) TcMirrorLimits {
+	if c.MaxConcurrentPerNode <= 0 {
+		c.MaxConcurrentPerNode = DefaultTcMirrorLimits.MaxConcurrentPerNode
+	}
+	if c.MaxDurationSec <= 0 {
+		c.MaxDurationSec = DefaultTcMirrorLimits.MaxDurationSec
+	}
+	return c
+}
+
+// TcMirrorUsage is one node's current active tc.mirror session accounting
+// — Count of active sessions, Mbit the sum of their declared MaxMbit
+// (sessions with no declared MaxMbit contribute 0, since an undeclared
+// bandwidth budget cannot be summed; validate_safety.go's cap check is
+// therefore a floor, not a precise live measurement — consistent with
+// MaxMbit itself being a DECLARED, not kernel-measured, ceiling).
+type TcMirrorUsage struct {
+	Sources map[string]bool
+	Count   int
+	Mbit    int
+}
+
+// TcMirrorSafetyInput is SafetyOptions.TcMirror's payload — see that
+// field's doc comment.
+type TcMirrorSafetyInput struct {
+	Usage    map[string]TcMirrorUsage
+	Ceilings TcMirrorLimits
+}
+
+// tcMirrorCapValidate is T-4014 acceptance criterion 2's own validator
+// class: the server-enforced concurrent-session, aggregate-bandwidth, and
+// max-duration ceilings. It runs as ITS OWN class — called directly from
+// ValidateWithSafety, not folded into safetyValidate's AllowDangerousOps-
+// downgradable pool — for the same reason switchValidate's
+// codeProtectedSwitchPort finding lives outside safetyValidate too
+// (that function's own doc comment): a resource/capacity ceiling is not a
+// connectivity interlock allow_dangerous_ops was ever meant to override,
+// and internal/capture's own caps are described as "never client-
+// overridable upward" — this class holds mirror sessions to the identical
+// standard, with no escape hatch at all.
+//
+// Every tc.mirror.create in ops accumulates against its node's live Usage
+// baseline IN ORDER, so a single changeset staging several sessions for
+// the same node cannot smuggle a batch past the ceiling one op at a time.
+func tcMirrorCapValidate(ops []Op, input TcMirrorSafetyInput) []Finding {
+	var out []Finding
+	running := map[string]TcMirrorUsage{}
+	for node, u := range input.Usage {
+		running[node] = u
+	}
+	for _, op := range ops {
+		create, ok := op.Params.(*TcMirrorCreateParams)
+		if !ok {
+			continue
+		}
+		node := op.Target.Node
+
+		// codeTcMirrorSourceInUse: "no conflicting existing qdisc" — a
+		// source already claimed by another active (or earlier-in-this-
+		// batch) session is refused, checked before accumulating this
+		// op's own counts so it does not also count itself against the
+		// ceilings below.
+		u := running[node]
+		if u.Sources != nil && u.Sources[create.SourceIface] {
+			out = append(out, errorf(codeTcMirrorSourceInUse, refOf(op),
+				"interface %q on node %s is already the source of another active mirror session", create.SourceIface, node))
+		}
+		if u.Sources == nil {
+			u.Sources = map[string]bool{}
+		} else {
+			// Don't mutate the caller's map when we fork it below into
+			// running[node]'s own copy.
+			cp := make(map[string]bool, len(u.Sources)+1)
+			for k := range u.Sources {
+				cp[k] = true
+			}
+			u.Sources = cp
+		}
+		u.Sources[create.SourceIface] = true
+
+		u.Count++
+		if create.MaxMbit != nil {
+			u.Mbit += *create.MaxMbit
+		}
+		running[node] = u
+
+		if ceil := input.Ceilings.MaxConcurrentPerNode; ceil > 0 && u.Count > ceil {
+			out = append(out, errorf(codeTcMirrorConcurrencyCap, refOf(op),
+				"node %s would have %d concurrent mirror session(s), exceeding the configured limit of %d",
+				node, u.Count, ceil))
+		}
+		if ceil := input.Ceilings.MaxBandwidthMbit; ceil > 0 && u.Mbit > ceil {
+			out = append(out, errorf(codeTcMirrorBandwidthCap, refOf(op),
+				"node %s's declared mirrored bandwidth would total %dmbit, exceeding the configured limit of %dmbit",
+				node, u.Mbit, ceil))
+		}
+		if ceil := input.Ceilings.MaxDurationSec; ceil > 0 && create.MaxDurationSec > ceil {
+			out = append(out, errorf(codeTcMirrorDurationCap, refOf(op),
+				"maxDurationSec %d exceeds the configured maximum of %d seconds",
+				create.MaxDurationSec, ceil))
+		}
 	}
 	return out
 }

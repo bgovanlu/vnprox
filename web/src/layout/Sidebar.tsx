@@ -20,6 +20,7 @@ import {
   ClipboardList,
   EthernetPort,
   FileCode,
+  GlobeLock,
   History,
   House,
   LayoutTemplate,
@@ -89,6 +90,9 @@ const NAV_GROUPS: NavGroup[] = [
       { path: "/route-explorer", label: "Route explorer", icon: Signpost },
       { path: "/flows", label: "Flows", icon: Route },
       { path: "/conntrack", label: "Conntrack", icon: Activity },
+      // T-4015: the general WireGuard tunnel management surface — list,
+      // create, and edit tunnels/peers outside the federation wizard flow.
+      { path: "/wireguard", label: "WireGuard", icon: GlobeLock },
     ],
   },
   {

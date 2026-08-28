@@ -569,7 +569,7 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
         body: "Bringing up a tunnel doesn't attach a cluster, and attaching a cluster doesn't require a tunnel. Where a federated cluster is reachable over a tunnel this wizard created, that linkage is recorded so you can see which transport a cluster is actually using.",
       },
     ],
-    seeAlso: ["settings-federation-page", "federation", "commit-confirm"],
+    seeAlso: ["settings-federation-page", "federation", "commit-confirm", "wireguard-page"],
   },
   {
     id: "onboarding-walkthrough",

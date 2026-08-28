@@ -205,6 +205,7 @@ func allStepKindsForContractTest() []StepKind {
 	return []StepKind{
 		StepStageFile, StepReload, StepSDNApply, StepSDNStage, StepFwApply,
 		StepFwVerify, StepWgApply, StepSwitchApply, StepIpamAlloc, StepQosApply,
+		StepTcMirrorApply,
 	}
 }
 

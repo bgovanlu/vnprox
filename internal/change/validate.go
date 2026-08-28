@@ -46,6 +46,17 @@ type SafetyOptions struct {
 	OverriddenTags map[string]string
 	Switches       SwitchSafetyInput
 	Allocations    []DHCPRangeAllocation
+	// TcMirror (T-4014) carries the server-enforced tc.mirror.* ceilings
+	// (max concurrent sessions / aggregate declared bandwidth per node /
+	// max duration) plus each node's current active-session usage, both
+	// assembled once by Service.validationInputs from its own store read
+	// (tcMirrorUsage) — the identical "Service reads live state, the pure
+	// validator only compares against what it's given" shape Allocations
+	// above already uses. Its zero value has zero ceilings, which
+	// tcMirrorCapFindings (validate_safety.go) treats as "unconfigured —
+	// skip the cap check", exactly like a nil Allocations skips
+	// checkDHCPRangeOverlap.
+	TcMirror TcMirrorSafetyInput
 	// Policy (T-2601) is the cluster's declarative policy-as-code rule set
 	// (policy.go). Its zero value is an empty set, which evaluates to
 	// nothing at all — so every caller that does not know about policies
@@ -138,6 +149,17 @@ func ValidateWithSafety(ops []Op, snap inventory.Snapshot, safety SafetyOptions)
 	switchFindings := switchValidate(ops, safety.Switches)
 	findings = append(findings, switchFindings...)
 	if hasError(switchFindings) {
+		return findings
+	}
+
+	// T-4014's tc.mirror.* concurrent-session/bandwidth/duration ceiling
+	// class — its own class, not folded into safetyValidate, for the exact
+	// reason switchFindings' codeProtectedSwitchPort lives outside it too
+	// (see tcMirrorCapValidate's own doc comment): a resource ceiling is
+	// not an AllowDangerousOps-overridable connectivity interlock.
+	tcMirrorCapFindings := tcMirrorCapValidate(ops, safety.TcMirror)
+	findings = append(findings, tcMirrorCapFindings...)
+	if hasError(tcMirrorCapFindings) {
 		return findings
 	}
 

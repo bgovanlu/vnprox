@@ -184,6 +184,16 @@ const (
 	// splits on only the first two ':'), so the port name may itself contain
 	// '/' (common on chassis switches) and still round-trip.
 	KindSwitchPort Kind = "switch-port"
+
+	// KindTcMirror names a tc.mirror.* changeset op's target (T-4014:
+	// SPAN/mirror session manager): a node-local `tc`/clsact/mirred SPAN
+	// session, node-scoped with a caller-chosen id — the same "app-owned
+	// intent, no dedicated live-polled entity" shape KindQosShape's own
+	// doc comment describes, for the same reason: its entire state lives
+	// in the app-owned tc_mirror_sessions store table
+	// (internal/store/migrations/0053_tc_mirror_sessions.sql), never a
+	// shadow copy of live tc state.
+	KindTcMirror Kind = "tc-mirror"
 )
 
 // knownKinds is the closed set of valid Kind values. ParseRef rejects any
@@ -202,6 +212,7 @@ var knownKinds = map[Kind]bool{
 	KindSDNFabric:     true,
 	KindSDNController: true,
 	KindSDNIpam:       true,
+	KindTcMirror:      true,
 }
 
 // Ref is the stable identity of one inventory entity: a (Kind, Node, ID)

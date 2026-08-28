@@ -40,6 +40,8 @@ const NETWORK_LABELS = [
   "Route explorer",
   "Flows",
   "Conntrack",
+  // T-4015: the general WireGuard tunnel management surface.
+  "WireGuard",
 ];
 const OPERATE_LABELS = ["History", "Incidents", "Audit", "Analysis", "Tools"];
 const AUTOMATE_LABELS = ["Config as code", "Governance", "Blueprints", "Hub"];

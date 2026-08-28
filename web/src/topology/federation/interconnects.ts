@@ -51,8 +51,14 @@ export interface ClusterInterconnect {
  * `internal/findings.WgTunnelHasFreshHandshake`/cmd/vnproxd's `TunnelDown`
  * adapter exactly (any one peer's handshake age within the threshold means
  * up), applied to the already-fetched `WireGuardTunnel` view instead of a
- * live `wg show ... dump` poll. */
-function tunnelHasFreshHandshake(tunnel: WireGuardTunnel, nowUnix: number, staleThresholdSec: number): boolean {
+ * live `wg show ... dump` poll.
+ *
+ * Exported so wireguard/wgTunnelState.ts (T-4015's general tunnel
+ * management surface) can derive the identical up/down verdict for every
+ * tunnel, not only federation-linked ones — reusing this function, not a
+ * second definition of "is this tunnel up", is what T-3909 and T-4015
+ * guarantee can never disagree. */
+export function tunnelHasFreshHandshake(tunnel: WireGuardTunnel, nowUnix: number, staleThresholdSec: number): boolean {
   return tunnel.peers.some(
     (p) => p.lastHandshakeUnix !== undefined && p.lastHandshakeUnix > 0 && nowUnix - p.lastHandshakeUnix <= staleThresholdSec,
   );

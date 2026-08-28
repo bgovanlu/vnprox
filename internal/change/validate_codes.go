@@ -445,4 +445,65 @@ const (
 	// mutation primitive, so a changeset that would span clusters can never
 	// even validate, let alone apply.
 	codeCrossClusterRef = "federation.cross_cluster_ref"
+
+	// --- T-4014's tc.mirror.* codes --------------------------------------
+
+	// codeTcMirrorSameIface flags a tc.mirror.create/update whose
+	// sourceIface and destIface name the same interface — a session cannot
+	// mirror an interface to itself.
+	codeTcMirrorSameIface = "schema.tc_mirror_same_iface"
+	// codeTcMirrorDurationInvalid flags a tc.mirror.create op whose
+	// maxDurationSec is not positive — T-4014's card is explicit that a
+	// mirror session "must have a maximum duration": zero/negative is
+	// never "unbounded", it is simply invalid.
+	codeTcMirrorDurationInvalid = "schema.tc_mirror_duration_invalid"
+	// codeTcMirrorBandwidthInvalid flags a tc.mirror.create op whose
+	// declared maxMbit (when set) is non-positive.
+	codeTcMirrorBandwidthInvalid = "schema.tc_mirror_bandwidth_invalid"
+	// codeTcMirrorSourceNotFound / codeTcMirrorDestNotFound (referential
+	// class) flag a tc.mirror.create/update whose sourceIface/destIface
+	// does not currently exist on the target's node — reusing
+	// checkEdgeRuleIface's identical "interface must exist" check
+	// nat.*/route.static.* already run (validate_referential.go), one
+	// code per field so a client can tell which side is missing.
+	codeTcMirrorSourceNotFound = "referential.tc_mirror_source_not_found"
+	codeTcMirrorDestNotFound   = "referential.tc_mirror_dest_not_found"
+	// codeTcMirrorSourceInUse flags a tc.mirror.create whose sourceIface is
+	// already the source of another currently-active mirror session on the
+	// same node — T-4014's card requirement "no conflicting existing
+	// qdisc": internal/tcmirror's clsact qdisc is exclusively owned by one
+	// session (RenderTCTeardown's doc comment), so a second session on the
+	// same source would either collide at the tc layer or silently steal
+	// the first session's filters. Checked against vnprox's own app-owned
+	// tc_mirror_sessions store (SafetyOptions.TcMirror.Usage), the same
+	// "app-owned intent is authoritative, not live tc state" stance
+	// 0053_tc_mirror_sessions.sql documents for the whole feature, mirroring
+	// how every other op family in this codebase checks conflicts against
+	// its own store rather than shelling out to inspect live state.
+	codeTcMirrorSourceInUse = "safety.tc_mirror_source_in_use"
+	// codeTcMirrorProtectedDest flags a tc.mirror.create/update whose
+	// destIface names a protected interface (management IP or corosync
+	// link) — reusing protected.go's exact management-path protection
+	// (ProtectedSet), the same interlock, same AllowDangerousOps override
+	// semantics, and same finding code (codeProtectedInterface) every other
+	// mgmt-path-cutting op already carries, per T-4014's own card: "reusing
+	// internal/change's existing management-path protection... rather than
+	// a new check with different semantics." No separate code constant is
+	// declared for this — see protectedInterfaceFindings' tc.mirror branch
+	// in validate_safety.go, which emits codeProtectedInterface directly.
+
+	// codeTcMirrorConcurrencyCap / codeTcMirrorBandwidthCap (T-4014
+	// acceptance criterion 2) flag a tc.mirror.create that would exceed the
+	// server-configured concurrent-session count or aggregate declared-
+	// bandwidth ceiling for its node — a hard validate-time rejection,
+	// never a silent clamp (internal/capture's Caps clamp silently; this
+	// deliberately does not — see TcMirrorCreateParams' doc comment).
+	codeTcMirrorConcurrencyCap = "safety.tc_mirror_concurrency_cap"
+	codeTcMirrorBandwidthCap   = "safety.tc_mirror_bandwidth_cap"
+	// codeTcMirrorDurationCap flags a tc.mirror.create/update whose
+	// maxDurationSec exceeds the server-configured ceiling
+	// (TcMirrorLimits.MaxDurationSec) — distinct from
+	// codeTcMirrorDurationInvalid (which flags a non-positive value
+	// regardless of any ceiling).
+	codeTcMirrorDurationCap = "safety.tc_mirror_duration_cap"
 )

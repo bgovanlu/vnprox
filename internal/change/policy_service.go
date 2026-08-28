@@ -128,6 +128,7 @@ func (s *Service) policyForValidation(ctx context.Context, clusterID string) (Po
 func (s *Service) validationInputs(ctx context.Context, clusterID, changesetID string, ops []Op, report *PolicyResult) (SafetyOptions, []Finding) {
 	safety := s.safetyOptions()
 	safety.Allocations = s.dhcpAllocations(ctx)
+	safety.TcMirror = s.tcMirrorUsage(ctx)
 	safety.Switches = s.switchSafetyInput(ctx)
 	policy, policyFindings := s.policyForValidation(ctx, clusterID)
 	safety.Policy = policy

@@ -22,6 +22,7 @@ import { AnalysisPage } from "./pages/AnalysisPage";
 import { IpamPage } from "./pages/IpamPage";
 import { ManagementPage } from "./pages/ManagementPage";
 import { PortsPage } from "./pages/PortsPage";
+import { WireGuardPage } from "./pages/WireGuardPage";
 import { CablingPlanPage } from "./pages/CablingPlanPage";
 import { BlueprintsPage } from "./pages/BlueprintsPage";
 import { HubPage } from "./hub/HubPage";
@@ -239,6 +240,17 @@ export function App() {
               element={
                 <DesktopOnlyRoute pageLabel="Ports">
                   <PortsPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            {/* T-4015: the general (non-federation-scoped) WireGuard tunnel
+              * management surface — list/create/edit tunnels and peers.
+              * Desktop-only like every other dense editing screen. */}
+            <Route
+              path="/wireguard"
+              element={
+                <DesktopOnlyRoute pageLabel="WireGuard">
+                  <WireGuardPage />
                 </DesktopOnlyRoute>
               }
             />

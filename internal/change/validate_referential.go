@@ -456,9 +456,40 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 		// see NatMasqueradeDeleteParams above.
 	case *VFProvisionParams:
 		checkVFProvision(p, op, params, ref, &out)
+
+	case *TcMirrorCreateParams:
+		checkTcMirrorIface(p, op.Target.Node, params.SourceIface, codeTcMirrorSourceNotFound, ref, &out)
+		checkTcMirrorIface(p, op.Target.Node, params.DestIface, codeTcMirrorDestNotFound, ref, &out)
+
+	case *TcMirrorUpdateParams:
+		// SourceIface/DestIface are immutable after create (params_tcmirror.go's
+		// doc comment) — an update carries no iface field to re-check.
+
+	case *TcMirrorDeleteParams:
+		// A mirror session has no snapshot-backed existence check (like a
+		// qos.shape, it lives only in the app-owned tc_mirror_sessions
+		// store this pure, snapshot-driven validator class never reads —
+		// see QosShapeDeleteParams' identical comment above); the
+		// apply-time TcMirrorGateway still errors cleanly on a truly
+		// nonexistent id.
 	}
 
 	return out
+}
+
+// checkTcMirrorIface flags a T-4014 tc.mirror.create op whose
+// sourceIface/destIface does not name a currently known interface(5)
+// stanza on node — reusing checkEdgeRuleIface's exact "interface must
+// exist" logic (nat.*/route.static.* already run this identical check),
+// just parameterized by which finding code to use so a client can tell
+// source from dest.
+func checkTcMirrorIface(p *projection, node, iface, code, ref string, out *[]Finding) {
+	if iface == "" {
+		return // schema class already flagged the missing-iface case
+	}
+	if _, ok := p.ifaceRef(node, iface); !ok {
+		*out = append(*out, errorf(code, ref, "interface %q does not exist on node %s", iface, node))
+	}
 }
 
 // checkQosBridge flags a T-1505 qos.shape.* op whose Bridge does not name a

@@ -1173,6 +1173,31 @@ func schemaValidateOp(op Op) []Finding {
 
 	case *RouteStaticDeleteParams:
 		// no params to validate.
+
+	case *TcMirrorCreateParams:
+		if p.SourceIface == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "tc.mirror.create requires sourceIface"))
+		}
+		if p.DestIface == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "tc.mirror.create requires destIface"))
+		}
+		if p.SourceIface != "" && p.DestIface != "" && p.SourceIface == p.DestIface {
+			out = append(out, errorf(codeTcMirrorSameIface, ref, "destIface must differ from sourceIface (both %q)", p.SourceIface))
+		}
+		if p.MaxDurationSec <= 0 {
+			out = append(out, errorf(codeTcMirrorDurationInvalid, ref, "maxDurationSec %d must be positive — a mirror session must have a bounded, self-stopping maximum duration", p.MaxDurationSec))
+		}
+		if p.MaxMbit != nil && *p.MaxMbit <= 0 {
+			out = append(out, errorf(codeTcMirrorBandwidthInvalid, ref, "maxMbit %d must be positive", *p.MaxMbit))
+		}
+
+	case *TcMirrorUpdateParams:
+		if p.MaxDurationSec != nil && *p.MaxDurationSec <= 0 {
+			out = append(out, errorf(codeTcMirrorDurationInvalid, ref, "maxDurationSec %d must be positive — a mirror session must have a bounded, self-stopping maximum duration", *p.MaxDurationSec))
+		}
+
+	case *TcMirrorDeleteParams:
+		// no params to validate.
 	}
 
 	return out

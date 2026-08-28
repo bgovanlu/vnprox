@@ -46,6 +46,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/push"
 	"github.com/bgovanlu/vnprox/internal/reconcile"
 	"github.com/bgovanlu/vnprox/internal/route"
+	"github.com/bgovanlu/vnprox/internal/runbook"
 	"github.com/bgovanlu/vnprox/internal/sdn"
 	"github.com/bgovanlu/vnprox/internal/store"
 	"github.com/bgovanlu/vnprox/internal/tenant"
@@ -962,6 +963,18 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	}
 	qosReadSvc := newQosReadService(qosShapeRepo)
 
+	// T-4014: tc.mirror session storage + the node-local tc/clsact/mirred
+	// gateway, mirroring qosGateway's own real-vs-dev-sandbox split
+	// immediately above for the identical reason (a `make dev` daemon must
+	// never install a real SPAN against the developer's own traffic).
+	tcMirrorSessionRepo := store.NewTcMirrorSessionRepo(db)
+	var tcMirrorGateway *hostTcMirrorGateway
+	if cfg.Safety.DevInterfacesDir != "" {
+		tcMirrorGateway = newDevTcMirrorGateway(tcMirrorSessionRepo, localNode, logger)
+	} else {
+		tcMirrorGateway = newHostTcMirrorGateway(tcMirrorSessionRepo, localNode, logger)
+	}
+
 	// T-1201: the federation core — the cluster registry (credential sealed
 	// at rest with the same session cipher every other secret column uses)
 	// plus the read aggregator. With zero clusters attached (a single-cluster
@@ -1093,6 +1106,16 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		// T-1505: node-local QoS gateway (qos.shape.* ops) — daemon-level,
 		// no user ticket needed, exactly like Nodes above.
 		Qos: qosGateway,
+		// T-4014: node-local tc.mirror gateway (tc.mirror.* ops) —
+		// daemon-level, no user ticket needed, exactly like Qos above.
+		// TcMirrorSessions backs both the concurrent-session/bandwidth cap
+		// check and the unattended expiry sweep (RunTcMirrorSweep below);
+		// TcMirrorLimits is left at its zero value here (code defaults —
+		// see change.DefaultTcMirrorLimits — rather than a new [tcmirror]
+		// config-file section, a deliberately flagged scope cut for a
+		// follow-up task).
+		TcMirror:         tcMirrorGateway,
+		TcMirrorSessions: tcMirrorSessionRepo,
 		// T-1401: the node-local WireGuard gateway (keygen on-node, sealed
 		// private key via the same session cipher, fixed-argv wg/wg-quick
 		// exec). Daemon-level, so wg rollback works on the unattended
@@ -1600,6 +1623,27 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// whether a given finding is currently acked.
 	findingAcks := findings.NewAckService(findingAckStoreAdapter{repo: store.NewFindingAckRepo(db)}, nil)
 
+	// T-4003: runbook.Service is the third caller of the stage/validate/stop
+	// contract T-4001 (Terraform)/T-4002 (Ansible) established — it never
+	// reaches past Create/Validate on changeSvc (internal/runbook/
+	// stageonly.go). FwAnalytics is left nil (degrading
+	// TemplateDeleteUnusedFwRule to always refuse rather than propose an
+	// unverified delete) when fwlogSvc itself is nil, matching this same
+	// file's own fwLogAPI-wiring guard just above: assigning a nil
+	// *fwlog.Service straight into the findings.FwAnalyticsProvider
+	// interface field would produce a non-nil interface wrapping a nil
+	// pointer, defeating runbook.Service's own nil check.
+	var runbookFwAnalytics findings.FwAnalyticsProvider
+	if fwlogSvc != nil {
+		runbookFwAnalytics = fwlogSvc
+	}
+	runbookSvc := runbook.New(runbook.Config{
+		Changes:     changeSvc,
+		Findings:    findingsEngine,
+		Inventory:   graph,
+		FwAnalytics: runbookFwAnalytics,
+	})
+
 	apiOpts := api.Options{
 		Version: version,
 		// Non-secret operational config for the Settings page's Instance
@@ -1634,6 +1678,7 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		LLDP:       topoSvc,
 		Drift:      driftSvc,
 		Findings:   findingsEngine,
+		Runbooks:   runbookSvc,
 		// T-2901: origins allowed to iframe the /embed/* views beyond
 		// same-origin ([server] embed_frame_ancestors, validated at Load).
 		EmbedFrameAncestors: cfg.Server.EmbedFrameAncestors,
@@ -2180,6 +2225,15 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// every other prune loop above follows.
 	g.add(func(ctx context.Context) error {
 		return captureCoord.RunSweepLoop(ctx, captureSweepInterval)
+	})
+	// T-4014: the tc.mirror expiry sweep — tears down any active session
+	// whose max-duration deadline has passed (including a session orphaned
+	// by a daemon restart mid-session, caught on this loop's own eager
+	// priming tick — see internal/change/tcmirror_expiry.go's doc comment),
+	// on the same owned-goroutine/shutdown-path pattern every other prune
+	// loop here follows.
+	g.add(func(ctx context.Context) error {
+		return changeSvc.RunTcMirrorSweep(ctx, change.DefaultTcMirrorSweepInterval)
 	})
 	// T-2504: the soak gate's deliberate leak fixtures. Empty in every build
 	// without the `soakleak` tag (soakleak_off.go) — which is every build

@@ -420,6 +420,30 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
     seeAlso: ["findings-stream", "topology-page", "switch-push", "cabling-plan-page"],
   },
   {
+    id: "wireguard-page",
+    title: "WireGuard",
+    surface: "page",
+    summary:
+      "Every WireGuard tunnel this node manages — live up/down/unknown state, handshake age and transfer counters per peer, and create/edit/delete for tunnels and peers, staged through the same ops the Connect clusters wizard uses.",
+    docRef: "docs/api.md",
+    keywords: ["wireguard", "wg", "tunnel", "vpn", "peer", "handshake", "site-to-site"],
+    sections: [
+      {
+        heading: "General-purpose, not federation-only",
+        body: "The Connect clusters wizard (Settings → Federated clusters) is still the fast path for standing up a tunnel and its firewall rule together for a federated cluster in one guided flow. This page is for everything else: managing tunnels that have nothing to do with federation, editing an existing tunnel's peers, or just seeing what's configured. Both surfaces build the identical wg.tunnel.*/wg.peer.* operations — a tunnel created one way is fully editable from the other.",
+      },
+      {
+        heading: "Three states, not two",
+        body: "A tunnel shows up, down, or unknown — never collapsed to two. Up means at least one peer handshaked within the last five minutes; down means that state is known and none did (including a brand-new tunnel with no peers yet); unknown means this node's own read of live WireGuard state hasn't succeeded, so nothing about the tunnel can be asserted one way or the other. Unknown is never shown as down — a local read problem is not the same fact as a broken tunnel.",
+      },
+      {
+        heading: "What you can and can't see of key material",
+        body: "Only a tunnel's derived public key and an exportable peer-config block are ever shown, both fetched on demand from a dedicated read-only view. The private key is generated on the owning node only when the changeset that creates the tunnel actually applies, is sealed before it touches storage, and never appears in any response, form, or log line this page — or any other part of vnprox — can read. A peer's preshared key is write-only: typed in once, staged sealed, and never redisplayed even when you reopen that peer's own edit form.",
+      },
+    ],
+    seeAlso: ["wireguard-connect-clusters", "settings-federation-page", "topology-page"],
+  },
+  {
     id: "cabling-plan-page",
     title: "Cabling plan",
     surface: "page",

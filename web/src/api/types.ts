@@ -1527,7 +1527,8 @@ export interface PlanStep {
     | "fw_verify"
     | "sdn_apply"
     | "switch_apply"
-    | "qos_apply";
+    | "qos_apply"
+    | "tc_mirror_apply";
   node?: string;
   summary: string;
   opIdx?: number[];

@@ -115,148 +115,56 @@ type MetricsRecorder interface {
 // Now/Logger default sensibly when zero, mirroring internal/auth.Config's
 // same conventions.
 type Config struct {
-	Clock  Clock
-	Timers NodeTimerAgent
-	Qos    QosGateway
-	WG     WGGateway
-	Sealer SecretSealer
-	// RevertGateways (T-1805 / D1) rebuilds a PVEGateway from the ticket
-	// sealed at apply time, so the unattended commit-confirm-timeout and
-	// crash-recovery reverts can restore a changeset's `fw.*`/`sdn.*` portion
-	// with no live user session. nil disables sealing entirely: nothing is
-	// captured, and the apply response reports unattended revert as
-	// unavailable — the pre-T-1805 behaviour, stated rather than implied.
-	RevertGateways    RevertGatewayFactory
-	WgCarriers        WgCarrierSource
-	Switches          SwitchGateway
-	SwitchScope       SwitchScopeSource
-	Nodes             NodeAgent
-	Refresher         InventoryRefresher
-	WS                Broadcaster
-	Inventory         InventorySource
-	Allocations       AllocationsSource
-	ClusterMembership ClusterMembershipSource
-	ImpactPreflight   ImpactPreflighter
-	// Metrics (T-1903) is the self-observability recorder for apply/confirm/
-	// rollback/unattended-revert outcomes and awaiting_confirm duration.
-	// Nil disables recording.
-	Metrics MetricsRecorder
-	Logger  *slog.Logger
-	// Comments (T-2003) backs the review surface's per-op/changeset comments.
-	// Optional (nil-safe, review.go's ErrReviewNotConfigured/no-op
-	// convention): a Service built without it behaves exactly like a
-	// pre-T-2003 one.
-	Comments  *store.ChangesetCommentRepo
-	Now       func() time.Time
-	Snapshots *store.SnapshotRepo
-	// LeaderGuard, when set, is consulted immediately before any UNATTENDED,
-	// timer-driven apply/confirm/rollback decision this daemon would make on
-	// its own (the commit-confirm auto-rollback timer and the scheduler's
-	// fire tick) — T-1704's single-writer fencing hook. It returns true only
-	// while this daemon currently holds the HA leader lease; a false answer
-	// makes the callback a logged no-op, so a demoted or fenced former-active
-	// never drives a rollback/apply the current lease-term holder is (or will
-	// be) responsible for. nil (the default, and every non-HA deployment)
-	// means "always this daemon" — behaviour is identical to pre-T-1704.
-	// Interactive, human-initiated Apply/Confirm/Rollback API calls are NOT
-	// gated here: those flow through the API's own auth/role checks and the
-	// single active daemon is the only one serving the API behind the VIP.
-	LeaderGuard func() bool
-	Blobs       *store.BlobRepo
-	Changesets  *store.ChangesetRepo
-	TimerFunc   TimerFunc
-	Audit       *store.AuditRepo
-	Schedules   *store.ChangeScheduleRepo
-	// Approvals (T-2003) backs the review surface's approval gate — see
-	// Approval's own doc comment below. Optional/nil-safe like Comments
-	// above.
-	Approvals *store.ChangesetApprovalRepo
-	// SDNPendingAcks (T-3101-followup-01) backs the foreign-SDN-pending
-	// "surface and confirm" gate (apply_sdn_foreign.go) — the operator's
-	// server-recorded acknowledgement that a changeset's sdn.apply will
-	// also commit specific foreign pending SDN state. Optional/nil-safe
-	// like Comments/Approvals above: a Service built without it treats
-	// every changeset as never acknowledged, so beginApply refuses any
-	// SDN-carrying apply that finds foreign pending state rather than ever
-	// silently permitting one it cannot prove was surfaced.
-	SDNPendingAcks *store.ChangesetSDNPendingAckRepo
-	// Signoffs (T-2604) backs the two-person rule's distinct-approver set —
-	// one row per (changeset, principal), which is what makes "two tokens
-	// belonging to one person are one approver" a storage-level property.
-	// Optional/nil-safe: a Service built without it can record no sign-offs
-	// at all, so a deployment that also configures ProtectedClasses refuses
-	// every protected apply rather than permitting one it cannot prove.
-	Signoffs *store.ChangesetSignoffRepo
-	// BreakGlass (T-2604) backs the emergency override of that rule.
-	// Optional/nil-safe: without it InvokeBreakGlass reports
-	// ErrBreakGlassNotConfigured and no apply is ever overridden.
-	BreakGlass *store.ChangesetBreakGlassRepo
-	// FreezeOverrides (T-4006) backs the audited escape hatch for a
-	// declared freeze-window policy rule (PolicyTagFreeze) — see
-	// freeze_override.go's own doc comment for why this is a separate
-	// mechanism from BreakGlass rather than a reuse of it. Optional/
-	// nil-safe: without it InvokeFreezeOverride reports
-	// ErrFreezeOverrideNotConfigured and no freeze is ever overridden.
-	FreezeOverrides *store.ChangesetFreezeOverrideRepo
-	// MaintenanceWindows (T-4007) backs declared node maintenance windows —
-	// see maintenance.go's own doc comment for why this is a separate table
-	// from Policies rather than a reuse of PolicyRule. Optional/nil-safe:
-	// without it DeclareMaintenanceWindow reports
-	// ErrMaintenanceWindowNotConfigured and internal/findings suppresses
-	// nothing, the same "absent feature is a no-op" degradation every other
-	// optional store here uses.
-	MaintenanceWindows *store.MaintenanceWindowRepo
-	// ProtectedClasses (T-2604) declares which classes of change require N
-	// distinct approvers before they may be applied — op-type globs
-	// ("fw.*"), ProtectedClassMgmtPath, or "tag:<policy tag>" (twoperson.go).
-	// EMPTY IS THE DEFAULT AND A COMPLETE NO-OP: no changeset is ever in a
-	// protected class, so every pre-T-2604 deployment's apply behaviour is
-	// byte-identical. NewService's own validation refuses a malformed entry
-	// rather than dropping it, so a mistyped class name can never present as
-	// a gate that quietly does not exist.
-	ProtectedClasses []ProtectedClass
-	// Policies (T-2601) backs the declarative policy-as-code guardrail:
-	// the cluster's installed rule set and its per-rule bookkeeping.
-	// Optional/nil-safe — a Service built without it evaluates an empty
-	// rule set, which produces no findings at all, so a pre-T-2601
-	// deployment's validation is byte-identical.
-	Policies *store.PolicySetRepo
-	// Stages (T-2602) backs the staged (canary) apply's PERSISTED pause
-	// between stages. Optional: a Service built without it applies exactly
-	// as it always did, and a caller that asks for `mode: canary` is
-	// refused at validation time with a message saying why — a pause with
-	// nowhere to be recorded is precisely the unknown state a staged apply
-	// exists to prevent, so it is never silently downgraded to an
-	// all-at-once apply.
-	Stages *store.ChangesetStageRepo
-	// Canary (T-2602) is the health/finding evidence the `gate: auto`
-	// promotion is decided on. Optional: without it, `gate: manual` works
-	// normally and `gate: auto` is refused at validation time rather than
-	// treated as "no evidence, therefore clean".
-	Canary         CanaryHealthChecker
-	ProtectedPath  string
-	CorosyncPath   string
-	LocalClusterID string
-	// Approval (T-2003) is the deployment-wide review-approval policy —
-	// see ApprovalConfig's own doc comment (review.go). Its zero value is a
-	// complete no-op, so every pre-T-2003 deployment's apply behavior is
-	// byte-identical until an admin opts in.
-	Approval           ApprovalConfig
-	RollbackWindowDays int
-	ConfirmTimeout     time.Duration
-	// PolicyUnmatchedAfter (T-2601) is how long a policy rule may go
-	// without matching anything before PolicyStatus reports it as
-	// probably-misconfigured. Zero means DefaultPolicyUnmatchedAfter.
+	Metrics              MetricsRecorder
+	Timers               NodeTimerAgent
+	Qos                  QosGateway
+	TcMirror             TcMirrorGateway
+	WG                   WGGateway
+	Sealer               SecretSealer
+	Canary               CanaryHealthChecker
+	Clock                Clock
+	RevertGateways       RevertGatewayFactory
+	WgCarriers           WgCarrierSource
+	Switches             SwitchGateway
+	SwitchScope          SwitchScopeSource
+	Nodes                NodeAgent
+	Refresher            InventoryRefresher
+	WS                   Broadcaster
+	Inventory            InventorySource
+	Allocations          AllocationsSource
+	ClusterMembership    ClusterMembershipSource
+	ImpactPreflight      ImpactPreflighter
+	LeaderGuard          func() bool
+	FreezeOverrides      *store.ChangesetFreezeOverrideRepo
+	Comments             *store.ChangesetCommentRepo
+	Now                  func() time.Time
+	Snapshots            *store.SnapshotRepo
+	TcMirrorSessions     *store.TcMirrorSessionRepo
+	Blobs                *store.BlobRepo
+	Changesets           *store.ChangesetRepo
+	TimerFunc            TimerFunc
+	Audit                *store.AuditRepo
+	Schedules            *store.ChangeScheduleRepo
+	Approvals            *store.ChangesetApprovalRepo
+	SDNPendingAcks       *store.ChangesetSDNPendingAckRepo
+	Signoffs             *store.ChangesetSignoffRepo
+	BreakGlass           *store.ChangesetBreakGlassRepo
+	Logger               *slog.Logger
+	MaintenanceWindows   *store.MaintenanceWindowRepo
+	Stages               *store.ChangesetStageRepo
+	Policies             *store.PolicySetRepo
+	ProtectedPath        string
+	CorosyncPath         string
+	LocalClusterID       string
+	ProtectedClasses     []ProtectedClass
+	Approval             ApprovalConfig
+	TcMirrorLimits       TcMirrorLimits
+	RollbackWindowDays   int
+	ConfirmTimeout       time.Duration
 	PolicyUnmatchedAfter time.Duration
 	SwitchPushEnabled    bool
 	AllowDangerousOps    bool
-	// AutoRollbackOnError (T-2603) is the CLUSTER DEFAULT for the
-	// finding-triggered rollback inside the commit-confirm window
-	// (autorollback.go). false — the zero value, and every deployment that
-	// does not opt in — means a changeset is guarded only when its own apply
-	// request asks for it, and a deployment that never asks behaves exactly
-	// as it did before this card: no findings cycle can roll anything back.
-	AutoRollbackOnError bool
+	AutoRollbackOnError  bool
 }
 
 // TimerFunc arms a one-shot timer that runs f after d and can be stopped.
@@ -279,82 +187,57 @@ type Stopper interface {
 // draft<->validated status transition. Diff/Apply/Confirm/Rollback are
 // T-205's responsibility — see doc.go.
 type Service struct {
-	ws              Broadcaster
-	nodes           NodeAgent
-	qos             QosGateway
-	wg              WGGateway
-	sealer          SecretSealer
-	revertGateways  RevertGatewayFactory
-	wgCarriers      WgCarrierSource
-	switches        SwitchGateway
-	allocations     AllocationsSource
-	inv             InventorySource
-	refresher       InventoryRefresher
-	nodeTimers      NodeTimerAgent
-	clock           Clock
-	switchScope     SwitchScopeSource
-	membership      ClusterMembershipSource
-	impactPreflight ImpactPreflighter
-	metrics         MetricsRecorder
-	blobs           *store.BlobRepo
-	schedules       *store.ChangeScheduleRepo
-	snapshots       *store.SnapshotRepo
-	timers          map[string]Stopper
-	audit           *store.AuditRepo
-	// comments/approvals/approval (T-2003): see Config.Comments/Approvals/
-	// Approval's doc comments — nil-safe, review.go owns all access.
-	comments  *store.ChangesetCommentRepo
-	approvals *store.ChangesetApprovalRepo
-	// sdnPendingAcks (T-3101-followup-01): see Config.SDNPendingAcks — nil-
-	// safe, apply_sdn_foreign.go owns all access.
-	sdnPendingAcks *store.ChangesetSDNPendingAckRepo
-	// signoffs/breakGlass/protectedClasses (T-2604): the two-person rule's
-	// distinct-approver set, its emergency override, and the declared
-	// protected classes. See Config's own doc comments — nil/empty is a
-	// complete no-op, and twoperson.go owns all access.
-	signoffs         *store.ChangesetSignoffRepo
-	breakGlass       *store.ChangesetBreakGlassRepo
-	protectedClasses []ProtectedClass
-	// freezeOverrides (T-4006): see Config.FreezeOverrides — nil-safe,
-	// freeze_override.go owns all access.
-	freezeOverrides *store.ChangesetFreezeOverrideRepo
-	// maintenanceWindows (T-4007): see Config.MaintenanceWindows — nil-safe,
-	// maintenance.go owns all access.
-	maintenanceWindows *store.MaintenanceWindowRepo
-	// policies (T-2601): see Config.Policies — nil-safe,
-	// policy_service.go owns all access.
-	policies *store.PolicySetRepo
-	// stages/canary/holdTimers (T-2602): the staged-apply pause store, the
-	// auto gate's evidence source, and the in-process hold timers. holdTimers
-	// is deliberately a SECOND map rather than sharing s.timers: a paused
-	// changeset has both a hold deadline and a commit-confirm deadline armed
-	// at once, and cancelling one must never cancel the other.
-	stages     *store.ChangesetStageRepo
-	canary     CanaryHealthChecker
-	holdTimers map[string]Stopper
-	// guards/lastFindings/seenCycle/findMu (T-2603): the armed
-	// finding-triggered rollback watches, the most recent findings cycle's ID
-	// set (the baseline a newly-armed guard inherits), and the lock over both.
-	// Deliberately its own mutex rather than applyMu: a findings cycle must
-	// never block behind an in-flight apply, and evaluating a cycle takes no
-	// apply-engine state at all. Lock order, where both are needed, is
-	// applyMu -> findMu and never the reverse — ObserveFindings releases
-	// findMu before any rollback path takes applyMu (see fireAutoRollback).
-	guards         map[string]*autoRollbackGuard
-	lastFindings   map[string]bool
-	leaderGuard    func() bool
-	log            *slog.Logger
-	newTimer       TimerFunc
-	now            func() time.Time
-	repo           *store.ChangesetRepo
-	lockHeldBy     string
-	corosyncPath   string
-	protectedPath  string
-	localClusterID string
-	scheduleSecret []byte
-	approval       ApprovalConfig
-	confirmTimeout time.Duration
-	// policyUnmatchedAfter (T-2601): see Config.PolicyUnmatchedAfter.
+	ws                   Broadcaster
+	nodes                NodeAgent
+	qos                  QosGateway
+	tcMirror             TcMirrorGateway
+	wg                   WGGateway
+	sealer               SecretSealer
+	revertGateways       RevertGatewayFactory
+	wgCarriers           WgCarrierSource
+	switches             SwitchGateway
+	allocations          AllocationsSource
+	inv                  InventorySource
+	refresher            InventoryRefresher
+	nodeTimers           NodeTimerAgent
+	clock                Clock
+	switchScope          SwitchScopeSource
+	membership           ClusterMembershipSource
+	impactPreflight      ImpactPreflighter
+	metrics              MetricsRecorder
+	canary               CanaryHealthChecker
+	tcMirrorSess         *store.TcMirrorSessionRepo
+	blobs                *store.BlobRepo
+	schedules            *store.ChangeScheduleRepo
+	snapshots            *store.SnapshotRepo
+	timers               map[string]Stopper
+	audit                *store.AuditRepo
+	comments             *store.ChangesetCommentRepo
+	approvals            *store.ChangesetApprovalRepo
+	sdnPendingAcks       *store.ChangesetSDNPendingAckRepo
+	signoffs             *store.ChangesetSignoffRepo
+	breakGlass           *store.ChangesetBreakGlassRepo
+	freezeOverrides      *store.ChangesetFreezeOverrideRepo
+	maintenanceWindows   *store.MaintenanceWindowRepo
+	policies             *store.PolicySetRepo
+	stages               *store.ChangesetStageRepo
+	holdTimers           map[string]Stopper
+	guards               map[string]*autoRollbackGuard
+	lastFindings         map[string]bool
+	leaderGuard          func() bool
+	log                  *slog.Logger
+	newTimer             TimerFunc
+	now                  func() time.Time
+	repo                 *store.ChangesetRepo
+	lockHeldBy           string
+	corosyncPath         string
+	protectedPath        string
+	localClusterID       string
+	protectedClasses     []ProtectedClass
+	scheduleSecret       []byte
+	approval             ApprovalConfig
+	tcMirrorLimits       TcMirrorLimits
+	confirmTimeout       time.Duration
 	policyUnmatchedAfter time.Duration
 	rollbackWindowDays   int
 	applyMu              sync.Mutex
@@ -362,9 +245,7 @@ type Service struct {
 	switchPushEnabled    bool
 	allowDangerousOps    bool
 	seenCycle            bool
-	// autoRollbackDefault (T-2603) is the cluster default for the guard —
-	// see Config.AutoRollbackOnError.
-	autoRollbackDefault bool
+	autoRollbackDefault  bool
 }
 
 // Commit-confirm window bounds (docs/features/change-management.md §4).
@@ -437,6 +318,7 @@ func NewService(cfg Config) (*Service, error) {
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
 		localClusterID: cfg.LocalClusterID, membership: cfg.ClusterMembership, impactPreflight: cfg.ImpactPreflight,
 		nodes: cfg.Nodes, nodeTimers: cfg.Timers, qos: cfg.Qos, wg: cfg.WG, sealer: cfg.Sealer, revertGateways: cfg.RevertGateways, wgCarriers: cfg.WgCarriers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
+		tcMirror: cfg.TcMirror, tcMirrorSess: cfg.TcMirrorSessions, tcMirrorLimits: defaultTcMirrorLimits(cfg.TcMirrorLimits),
 		switches: cfg.Switches, switchScope: cfg.SwitchScope, switchPushEnabled: cfg.SwitchPushEnabled,
 		confirmTimeout:     clampConfirmTimeout(confirmTimeout),
 		rollbackWindowDays: rollbackWindowDays,
@@ -531,6 +413,40 @@ func (s *Service) dhcpAllocations(ctx context.Context) []DHCPRangeAllocation {
 		return nil
 	}
 	return allocs
+}
+
+// tcMirrorUsage assembles T-4014's SafetyOptions.TcMirror from live state:
+// the server's configured ceilings (already defaulted at Service
+// construction, defaultTcMirrorLimits) plus every node's current active
+// tc.mirror session accounting, read from the store the same
+// soft-fail-on-read-error way dhcpAllocations reads live IPAM allocations
+// above — a transient store hiccup degrades to "no cap check this round",
+// never blocks validation outright.
+func (s *Service) tcMirrorUsage(ctx context.Context) TcMirrorSafetyInput {
+	input := TcMirrorSafetyInput{Ceilings: s.tcMirrorLimits}
+	if s.tcMirrorSess == nil {
+		return input
+	}
+	sessions, err := s.tcMirrorSess.ActiveByNode(ctx, "")
+	if err != nil {
+		s.log.Debug("change: reading live tc.mirror sessions for cap check failed, skipping", "error", err)
+		return input
+	}
+	usage := make(map[string]TcMirrorUsage, len(sessions))
+	for _, sess := range sessions {
+		u := usage[sess.Node]
+		u.Count++
+		if sess.MaxMbit != nil {
+			u.Mbit += *sess.MaxMbit
+		}
+		if u.Sources == nil {
+			u.Sources = map[string]bool{}
+		}
+		u.Sources[sess.SourceIface] = true
+		usage[sess.Node] = u
+	}
+	input.Usage = usage
+	return input
 }
 
 // auditSafetyOverride records an audit entry when allow_dangerous_ops
