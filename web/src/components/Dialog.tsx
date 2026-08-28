@@ -4,7 +4,7 @@ import type { ComponentPropsWithoutRef } from "react";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import clsx from "clsx";
 import { useDensity, type Density } from "./density";
-import { useReducedMotion } from "../lib/useReducedMotion";
+import "./motion.css";
 
 // react-refresh's only-export-components rule can't see that these are
 // components — they're re-exported references to Radix's, not functions
@@ -47,29 +47,32 @@ export function DialogContent({
   ...props
 }: DialogContentProps) {
   const resolvedDensity = useDensity(density);
-  // T-905: `prefers-reduced-motion: reduce` drops the open/close
-  // fade — the dialog still opens/closes instantly, just without the
-  // animation classes.
-  const reducedMotion = useReducedMotion();
   return (
     <RadixDialog.Portal>
-      <RadixDialog.Overlay
-        className={clsx(
-          "fixed inset-0 z-40 bg-black/50",
-          !reducedMotion &&
-            "data-[state=open]:animate-in data-[state=open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out",
-        )}
-      />
+      {/* T-4206: `.motion-scrim` (motion.css) plays a real fade in/out
+       * keyframe driven by the `--motion-*`/`--ease-*` tokens — no
+       * `useReducedMotion()` check needed here: index.css's
+       * `prefers-reduced-motion` block already zeroes those duration
+       * tokens (and, as a blanket fallback, every animation-duration in
+       * the app), so this collapses to instant for free. */}
+      <RadixDialog.Overlay className="motion-scrim fixed inset-0 z-40 bg-black/50" />
       <RadixDialog.Content
         data-density={resolvedDensity}
         className={clsx(
           // T-3405: softer dialog — larger radius, a subtle shadow instead
           // of a heavy one, hairline border (docs/development.md "Visual
           // language" — "borders before shadows").
-          "fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 rounded-xl border shadow-lg",
+          // T-4203: a dialog is a floating layer above the page/raised
+          // chrome beneath it, so it sits at the top of the surface ladder
+          // (`surface-overlay`) in both themes with no `dark:` prefix.
+          // T-4206: `.motion-dialog-surface` (motion.css) owns the
+          // fixed/centered positioning's entrance+exit animation — see
+          // that file's doc comment for why the centering transform lives
+          // in the keyframe rather than a separate static utility.
+          "motion-dialog-surface fixed left-1/2 top-1/2 z-50 w-full rounded-xl border shadow-lg",
           DENSITY_PADDING[resolvedDensity],
           widthClassName,
-          "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900",
+          "border-slate-200 bg-surface-overlay dark:border-slate-800",
           "focus:outline-none",
           className,
         )}

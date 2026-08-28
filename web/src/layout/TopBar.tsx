@@ -64,22 +64,32 @@ export function TopBar({ onOpenHelp, onOpenPageHelp }: TopBarProps) {
   }
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-950">
+    // T-4203: chrome framing the page, one level up from `surface-page` —
+    // `surface-raised`, matching Sidebar.tsx. Previously `dark:bg-slate-950`
+    // (darker than the page's `dark:bg-slate-900`), which is exactly the
+    // "elevation by darkening" anti-pattern index.css's T-4203 comment
+    // argues against — with no shadow to read in dark mode, a chrome bar
+    // darker than the page it frames doesn't land as elevated at all.
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-surface-raised px-4 dark:border-slate-800">
       <button
         type="button"
         onClick={openSearch}
         aria-label="Search"
         // T-905: text-slate-400/dark:text-slate-500 (the original pairing)
         // failed axe's color-contrast check in dark mode (4.23:1 measured
-        // against the header's dark:bg-slate-950, below WCAG AA's 4.5:1
-        // minimum for this ~14px text) — swapped so each mode gets the
-        // shade with adequate contrast against ITS background (slate-500
-        // reads clearly on the light header's white; slate-400 reads
-        // clearly on the dark header's near-black), rather than the same
-        // shade doing double duty across both. T-3403: kept byte-for-byte —
-        // only the shape (rounded-md -> rounded-full) and the glyph (a
-        // plain-text "⌕" -> a lucide Search icon) changed, so this reasoning
-        // still applies unmodified.
+        // against the header's then-background dark:bg-slate-950, below
+        // WCAG AA's 4.5:1 minimum for this ~14px text) — swapped so each
+        // mode gets the shade with adequate contrast against ITS
+        // background (slate-500 reads clearly on the light header's white;
+        // slate-400 reads clearly on the dark header), rather than the
+        // same shade doing double duty across both. T-3403: kept
+        // byte-for-byte — only the shape (rounded-md -> rounded-full) and
+        // the glyph (a plain-text "⌕" -> a lucide Search icon) changed, so
+        // this reasoning still applies unmodified. T-4203: the header's
+        // background moved from dark:bg-slate-950 to dark:bg-surface-raised
+        // (#182133, lighter) — re-measured, dark:text-slate-400 against it
+        // is still 6.28:1, comfortably above the 4.5:1 floor this comment
+        // is about.
         className="flex h-9 w-full max-w-sm items-center gap-2 rounded-full border border-slate-300 px-3.5 text-left text-sm text-slate-500 hover:border-slate-400 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600"
       >
         <Search aria-hidden className="h-4 w-4 shrink-0" />
@@ -134,7 +144,8 @@ export function TopBar({ onOpenHelp, onOpenPageHelp }: TopBarProps) {
             <RadixDropdown.Content
               align="end"
               sideOffset={6}
-              className="z-50 min-w-[10rem] rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+              // T-4203: a floating menu above the chrome — `surface-overlay`.
+              className="z-50 min-w-[10rem] rounded-lg border border-slate-200 bg-surface-overlay p-1 shadow-lg dark:border-slate-700"
             >
               {demoSession ? (
                 <div className="px-2 py-1.5 text-xs text-slate-500 dark:text-slate-400">demo mode</div>

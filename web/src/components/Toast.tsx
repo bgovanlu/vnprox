@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import * as RadixToast from "@radix-ui/react-toast";
 import clsx from "clsx";
 import { DensityProvider, useDensity, type Density } from "./density";
-import { useReducedMotion } from "../lib/useReducedMotion";
+import "./motion.css";
 
 export type ToastVariant = "default" | "success" | "error";
 
@@ -31,8 +31,12 @@ const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 // T-3405: hairline borders (default variant matches Dialog/Drawer's
 // slate-200/slate-800 pairing); status variants keep their own hue but stay
 // on the same hairline weight rather than a heavier border.
+// T-4203: the default variant is a floating layer over the page, same as a
+// dialog/drawer — `surface-overlay` in both themes. The success/error
+// variants intentionally stay off the neutral ladder: their whole job is
+// to read as a status colour, not a neutral surface.
 const variantClasses: Record<ToastVariant, string> = {
-  default: "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900",
+  default: "border-slate-200 bg-surface-overlay dark:border-slate-800",
   success: "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950",
   error: "border-red-300 bg-red-50 dark:border-red-700 dark:bg-red-950",
 };
@@ -55,9 +59,6 @@ export function ToastProvider({ children, density }: ToastProviderProps) {
   const [toasts, setToasts] = useState<ToastRecord[]>([]);
   const nextId = useRef(0);
   const resolvedDensity = useDensity(density);
-  // T-905: reduced motion drops the slide-in/fade-out animation classes —
-  // the toast still appears/dismisses, just without the transition.
-  const reducedMotion = useReducedMotion();
 
   const toast = useCallback((input: ToastInput) => {
     const id = nextId.current++;
@@ -94,10 +95,11 @@ export function ToastProvider({ children, density }: ToastProviderProps) {
                 // T-3405: larger radius, subtle shadow (docs/development.md
                 // "Visual language" — shadows reserved for floating layers,
                 // which a toast is, so it keeps one, just a lighter one).
-                "rounded-xl border shadow-md",
+                // T-4206: `.motion-toast` (motion.css) slides+fades in from
+                // the right and reverses on close — no `useReducedMotion()`
+                // check needed; see Dialog.tsx's identical note.
+                "motion-toast rounded-xl border shadow-md",
                 DENSITY_PADDING[resolvedDensity],
-                !reducedMotion &&
-                  "data-[state=open]:animate-in data-[state=open]:slide-in-from-right data-[state=closed]:animate-out data-[state=closed]:fade-out",
                 variantClasses[t.variant],
               )}
             >

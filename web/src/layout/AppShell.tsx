@@ -41,7 +41,11 @@ export function AppShell() {
   });
 
   return (
-    <div className="flex h-dvh w-full bg-slate-100 text-slate-900 dark:bg-slate-900 dark:text-slate-100">
+    // T-4203: the app's page-level ground — the sidebar/top bar chrome sit
+    // above it at `surface-raised` (Sidebar.tsx/TopBar.tsx); floating
+    // layers (dialogs, drawers, the inspector stack) sit above that at
+    // `surface-overlay`. Correct in both themes with no `dark:` prefix.
+    <div className="flex h-dvh w-full bg-surface-page text-slate-900 dark:text-slate-100">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar onOpenHelp={() => { setHelpOpen(true); }} onOpenPageHelp={openPageHelp} />

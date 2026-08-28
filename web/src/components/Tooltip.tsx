@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import * as RadixTooltip from "@radix-ui/react-tooltip";
 import clsx from "clsx";
 import { useDensity, type Density } from "./density";
+import "./motion.css";
 
 export interface TooltipProps {
   /** The element the tooltip is anchored to — typically a disabled button
@@ -48,7 +49,18 @@ export function Tooltip({ children, content, side = "top", density }: TooltipPro
             className={clsx(
               // T-3405: larger radius, subtler shadow — the tooltip stays
               // an inverted (always-dark) chip in both themes, unchanged.
-              "z-50 max-w-xs rounded-lg border text-xs shadow-md",
+              // T-4203: deliberately NOT on the surface ladder — every
+              // ladder level is redefined per-theme (that's the whole
+              // point of it), and this chip's identity is that it does
+              // NOT change with the theme, so it keeps its own explicit
+              // slate-900/slate-800 pairing instead.
+              // T-4206: `.motion-tooltip` (motion.css) fades+scales in and
+              // reverses on close. Radix Tooltip's data-state is
+              // "delayed-open"/"instant-open"/"closed" (not "open"), which
+              // is exactly why motion.css's pattern is "enter by default,
+              // override on data-state=closed" rather than keying enter
+              // off a specific open value.
+              "motion-tooltip z-50 max-w-xs rounded-lg border text-xs shadow-md",
               DENSITY_PADDING[resolvedDensity],
               "border-slate-700 bg-slate-900 text-slate-100 dark:border-slate-600 dark:bg-slate-800",
             )}

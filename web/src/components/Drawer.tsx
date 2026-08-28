@@ -4,6 +4,7 @@ import type { ComponentPropsWithoutRef } from "react";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import clsx from "clsx";
 import { useDensity, type Density } from "./density";
+import "./motion.css";
 
 // Radix has no dedicated "drawer/sheet" primitive; a drawer is a Dialog
 // anchored to an edge of the viewport instead of centered, so it's built
@@ -28,10 +29,12 @@ export type DrawerSide = "right" | "left" | "bottom";
 // viewport edge) picks up the same larger radius Dialog uses, so a
 // right/left drawer reads as a rounded panel rather than a hard-cornered
 // sheet; the outer edges stay square since they're flush with the viewport.
+// T-4206: each side's `motion-drawer-*` class (motion.css) slides in from
+// the edge it's flush with and back out on close.
 const sideClasses: Record<DrawerSide, string> = {
-  right: "inset-y-0 right-0 h-full w-full max-w-md rounded-l-xl border-l",
-  left: "inset-y-0 left-0 h-full w-full max-w-md rounded-r-xl border-r",
-  bottom: "inset-x-0 bottom-0 max-h-[80vh] w-full rounded-t-xl border-t",
+  right: "motion-drawer-right inset-y-0 right-0 h-full w-full max-w-md rounded-l-xl border-l",
+  left: "motion-drawer-left inset-y-0 left-0 h-full w-full max-w-md rounded-r-xl border-r",
+  bottom: "motion-drawer-bottom inset-x-0 bottom-0 max-h-[80vh] w-full rounded-t-xl border-t",
 };
 
 export interface DrawerContentProps extends ComponentPropsWithoutRef<typeof RadixDialog.Content> {
@@ -48,14 +51,19 @@ export function DrawerContent({ className, side = "right", density, children, ..
   const resolvedDensity = useDensity(density);
   return (
     <RadixDialog.Portal>
-      <RadixDialog.Overlay className="fixed inset-0 z-40 bg-black/50" />
+      {/* T-4206: see Dialog.tsx's identical comment — `.motion-scrim`
+       * (motion.css) needs no `useReducedMotion()` check; index.css's
+       * `prefers-reduced-motion` block already collapses it. */}
+      <RadixDialog.Overlay className="motion-scrim fixed inset-0 z-40 bg-black/50" />
       <RadixDialog.Content
         data-density={resolvedDensity}
         className={clsx(
           // T-3405: subtle shadow + hairline border, matching Dialog.
+          // T-4203: a drawer floats above the page the same way a dialog
+          // does, so it takes the same top-of-ladder `surface-overlay`.
           "fixed z-50 flex flex-col overflow-y-auto shadow-lg",
           DENSITY_PADDING[resolvedDensity],
-          "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900",
+          "border-slate-200 bg-surface-overlay dark:border-slate-800",
           "focus:outline-none",
           sideClasses[side],
           className,

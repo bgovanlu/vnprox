@@ -277,7 +277,13 @@ function IdentityChip() {
   return (
     <div
       aria-label={isDemo ? "vnprox — demo mode" : "vnprox"}
-      className="mb-2 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-2 dark:border-slate-800 dark:bg-slate-900 sm:px-2.5"
+      // T-4203: the identity chip is a card nested inside the sidebar's own
+      // `surface-raised` chrome (below) — one level further up the ladder,
+      // `surface-overlay`, so it still reads as a distinct panel rather
+      // than blending into its container (identical to `surface-raised` in
+      // light mode, where the top two levels are both white; only dark
+      // mode gets the extra lift).
+      className="mb-2 flex items-center gap-2 rounded-lg border border-slate-200 bg-surface-overlay px-2 py-2 dark:border-slate-800 sm:px-2.5"
     >
       <span
         aria-hidden
@@ -324,7 +330,11 @@ export function Sidebar() {
       // desktop-only full list mostly didn't reach. z-50 matches this
       // app's dialog/drawer tier so modals (portaled after this element in
       // the DOM, so already painting on top regardless) are unaffected.
-      className="relative z-50 flex w-16 shrink-0 flex-col border-r border-slate-200 bg-slate-50 py-3 dark:border-slate-800 dark:bg-slate-950 sm:w-56 sm:items-stretch sm:px-2"
+      // T-4203: chrome framing the page, one level up from `surface-page` —
+      // `surface-raised`, matching TopBar.tsx (see that file's comment on
+      // why "darker than the page" was the wrong direction for dark-mode
+      // elevation).
+      className="relative z-50 flex w-16 shrink-0 flex-col border-r border-slate-200 bg-surface-raised py-3 dark:border-slate-800 sm:w-56 sm:items-stretch sm:px-2"
     >
       <div className="px-1 sm:px-0">
         <IdentityChip />

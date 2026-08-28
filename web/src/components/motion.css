@@ -1,0 +1,156 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* T-4206: enter/exit keyframes for the Radix-backed overlay primitives in
+ * this directory (Dialog/Drawer/Toast/Tooltip).
+ *
+ * index.css's T-4206 tokens (`--motion-*` durations, `--ease-*` curves) are
+ * enough on their own for a plain CSS *transition*
+ * (`duration-[var(--motion-base)] ease-entrance`) — but Radix's Presence
+ * component, which every one of these primitives uses under the hood to
+ * delay unmounting a closed Content/Overlay node until its exit motion
+ * finishes, only watches for a CSS *animation* event (`animationstart` /
+ * `animationend` / `animationcancel`); it never looks at `transitionend`
+ * (see `@radix-ui/react-presence`'s `dist/index.mjs`). A transition-only
+ * exit would look right on enter and vanish instantly on close, because
+ * Presence would sample `getComputedStyle(node).animationName === "none"`
+ * and unmount immediately. These keyframes exist so `--ease-exit`'s exit
+ * curve is actually visible on close, not just declared.
+ *
+ * Deliberately not in index.css: that file's T-4206 block is the *token*
+ * layer only, per its own comment — "consumed as
+ * `duration-[var(--motion-base)]` ... or from component CSS". This file is
+ * that "component CSS", scoped to the primitives that need a real
+ * `animation-name` for Presence's exit detection instead of a bare
+ * transition.
+ *
+ * Pattern: each `.motion-*` base class plays the *enter* keyframe
+ * unconditionally (applies for as long as the element is mounted, i.e.
+ * exactly the states Radix stamps `data-state="open"` / `"delayed-open"` /
+ * `"instant-open"` on — see Tooltip's non-`open`-named states); the
+ * `[data-state="closed"]` override swaps in the *exit* keyframe, which is
+ * what Presence watches for. `animation-fill-mode: both` holds each
+ * keyframe's edge values before the animation starts and after it ends, so
+ * there is never a one-frame snap back to an unanimated static value.
+ *
+ * Every rule reads the --motion- and --ease- tokens from :root
+ * (index.css) — do not write those two names side by side with a slash
+ * between them in a comment here, because the resulting `*` + `/` closes
+ * the comment early and the next apostrophe becomes an unterminated CSS
+ * string, which fails the Tailwind build for the whole app rather than
+ * just this file. So:
+ * `prefers-reduced-motion`'s zeroing of the duration tokens there — plus
+ * that same media block's blanket `*, *::before, *::after` duration
+ * override — collapses every animation below to 0.01ms for free. No
+ * separate reduced-motion branch needed in this file, and none in the
+ * components that import it. */
+
+@keyframes vnprox-scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes vnprox-scrim-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.motion-scrim {
+  animation: vnprox-scrim-in var(--motion-fast) var(--ease-entrance) both;
+}
+.motion-scrim[data-state="closed"] {
+  animation: vnprox-scrim-out var(--motion-fast) var(--ease-exit) both;
+}
+
+/* Dialog's centered surface keeps the `-translate-x-1/2 -translate-y-1/2`
+ * centering transform inside the keyframe itself (rather than leaving it to
+ * the static Tailwind utility) so the two don't fight over the `transform`
+ * property mid-animation — without it the surface would jump to the
+ * viewport's top-left corner for the animation's duration, then snap back
+ * to centered. */
+@keyframes vnprox-dialog-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes vnprox-dialog-out {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+}
+.motion-dialog-surface {
+  animation: vnprox-dialog-in var(--motion-base) var(--ease-entrance) both;
+}
+.motion-dialog-surface[data-state="closed"] {
+  animation: vnprox-dialog-out var(--motion-fast) var(--ease-exit) both;
+}
+
+@keyframes vnprox-drawer-right-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes vnprox-drawer-right-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+.motion-drawer-right {
+  animation: vnprox-drawer-right-in var(--motion-base) var(--ease-entrance) both;
+}
+.motion-drawer-right[data-state="closed"] {
+  animation: vnprox-drawer-right-out var(--motion-fast) var(--ease-exit) both;
+}
+
+@keyframes vnprox-drawer-left-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@keyframes vnprox-drawer-left-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+.motion-drawer-left {
+  animation: vnprox-drawer-left-in var(--motion-base) var(--ease-entrance) both;
+}
+.motion-drawer-left[data-state="closed"] {
+  animation: vnprox-drawer-left-out var(--motion-fast) var(--ease-exit) both;
+}
+
+@keyframes vnprox-drawer-bottom-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes vnprox-drawer-bottom-out {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+.motion-drawer-bottom {
+  animation: vnprox-drawer-bottom-in var(--motion-base) var(--ease-entrance) both;
+}
+.motion-drawer-bottom[data-state="closed"] {
+  animation: vnprox-drawer-bottom-out var(--motion-fast) var(--ease-exit) both;
+}
+
+@keyframes vnprox-toast-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes vnprox-toast-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(16px); }
+}
+.motion-toast {
+  animation: vnprox-toast-in var(--motion-base) var(--ease-entrance) both;
+}
+.motion-toast[data-state="closed"] {
+  animation: vnprox-toast-out var(--motion-fast) var(--ease-exit) both;
+}
+
+@keyframes vnprox-tooltip-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes vnprox-tooltip-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.96); }
+}
+.motion-tooltip {
+  animation: vnprox-tooltip-in var(--motion-fast) var(--ease-entrance) both;
+}
+.motion-tooltip[data-state="closed"] {
+  animation: vnprox-tooltip-out var(--motion-fast) var(--ease-exit) both;
+}
