@@ -69,6 +69,38 @@ While looking at the one baseline that does exist, two things are worth recordin
   or directory`. That is a debugging artifact in a product surface. Worth its own card; noted
   here because a visual gate that had never run is exactly why nobody had seen it.
 
+## 2b. The harness was serving a three-day-old binary — fixed
+
+Capturing the graph view worked, and the first thing the picture showed was a violet accent that
+no longer exists in the source. `web/e2e/shards.ts`'s `command()` read:
+
+```ts
+const head = existsSync(prebuilt) ? prebuilt : `go run ./cmd/${binary}`;
+```
+
+The prebuilt binary in `test-results/e2e-bin/` was used **whenever the file existed, regardless of
+age**, and that directory is a gitignored cache nothing invalidates. The vnproxd it ran was built
+on 08-25, before Phase 42 started, and vnproxd embeds `web/dist` at compile time — so
+`npm run build` was not enough on its own. Proof: the binary contains
+`assets/index-CX813A1Z.css` while the current build emits `assets/index-CIgh2cj4.css`.
+
+**All 87 baselines from the first successful run were of an app that no longer exists**, and
+nothing in the output said so. I drew a conclusion from them (that the topology layer chips were
+still pre-T-4201 indigo) and it was wrong — the source says `bg-accent-600` and the built CSS
+resolves it to `#027a9a`.
+
+Fixed by comparing the binary's mtime against `web/dist/index.html` and falling back to `go run`
+when the SPA is newer. Falling back is always correct, just slower.
+
+The severity is not symmetric across suites, which is worth stating: a functional spec usually
+survives a stale binary by failing loudly. A visual gate cannot. A stale build yields baselines
+that are internally consistent, reproducible, and describe the wrong product — every property you
+would use to convince yourself they were trustworthy.
+
+This is the second gate in one day found green while measuring the wrong thing; the first was
+`slateContrast.test.ts` measuring against pre-T-4203 surfaces. Both had the same shape: the gate
+worked, its *referent* had moved, and nothing tied the two together.
+
 ## 3. Five routes land on `/topology` instead of themselves — open
 
 The fifteen failures are five routes x three modes, all failing the same way — `page.goto()`

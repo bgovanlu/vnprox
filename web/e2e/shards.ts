@@ -33,7 +33,7 @@
 // load (see validateManifest) — a spec that silently stops running is the
 // failure mode T-2108 spent an arc recovering from.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -447,11 +447,40 @@ function writeShardConfig(stack: StackName, shardName: string, slot: number): st
   return `web/test-results/shard-configs/${shardName}-${stack}.toml`;
 }
 
-/** `go run ./cmd/x` unless scripts/e2e-shards.sh already built it. */
+/** `go run ./cmd/x` unless scripts/e2e-shards.sh already built it AND that
+ * build is still current.
+ *
+ * T-4216: the staleness check is new, and it was not a hypothetical. This
+ * returned the prebuilt binary whenever the FILE EXISTED, with no regard for
+ * its age, and `test-results/e2e-bin/` is a gitignored cache that nothing
+ * invalidates. The visual regression suite's first successful run produced 87
+ * baselines from a vnproxd built three days earlier — a binary that embedded
+ * the SPA from before Phase 42 re-pointed the entire palette. The screenshots
+ * were of an app that no longer existed, and nothing in the output said so.
+ *
+ * vnproxd embeds `web/dist` at compile time, so rebuilding the frontend is not
+ * enough on its own; the Go binary has to be rebuilt to pick it up. Comparing
+ * against `web/dist/index.html` catches exactly that case, which is the one
+ * that bit. Falling back to `go run` is always correct, just slower.
+ *
+ * A functional spec can survive this (it usually fails loudly on a stale
+ * binary). A visual gate cannot: a stale build produces baselines that are
+ * internally consistent, reproducible, and describe the wrong product. */
 function command(binary: string, args: readonly string[]): string {
   const prebuilt = join(BIN_DIR, binary);
-  const head = existsSync(prebuilt) ? prebuilt : `go run ./cmd/${binary}`;
+  const head = existsSync(prebuilt) && !isStale(prebuilt) ? prebuilt : `go run ./cmd/${binary}`;
   return [head, ...args].join(" ");
+}
+
+/** True when the built SPA is newer than this binary, i.e. the binary embeds
+ * a frontend that is no longer the current one. Only `vnproxd` embeds it, but
+ * the check is applied to every prebuilt binary: a mock server rebuilt from
+ * fixtures has the same shape of problem, and "which binaries embed something"
+ * is not a fact this function should have to keep up to date. */
+function isStale(prebuilt: string): boolean {
+  const spa = join(REPO_ROOT, "web", "dist", "index.html");
+  if (!existsSync(spa)) return false;
+  return statSync(spa).mtimeMs > statSync(prebuilt).mtimeMs;
 }
 
 /** A Playwright webServer entry. Structurally typed rather than imported from
