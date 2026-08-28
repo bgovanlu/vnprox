@@ -3,9 +3,11 @@ package peer
 import (
 	"bytes"
 	"encoding/hex"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -534,4 +536,150 @@ func TestAuthMiddleware_RequireNonceRejectsLegacy(t *testing.T) {
 	if !spy.called {
 		t.Fatal("handler was not called for a validly nonce'd request under RequireNonce")
 	}
+}
+
+// TestAuthMiddleware_ReplayFromKnownPeerLoggedDistinctlyFromAuthFailure is
+// T-3712's second deliverable: a replay rejection from a known,
+// authenticated peer (the request's HMAC verified before the replay cache
+// ever ran) must be logged with different wording than a rejection where
+// authentication itself failed — the wording that, unchanged, let a client
+// duplicate-poll bug hide behind "someone is attacking us" for a week
+// (planning/tasks/T-3712-duplicate-peer-neighbor-polls.md). This covers
+// the legacy (no-nonce) replay path, which is exactly the path an older,
+// pre-T-3703 peer's own duplicate-poll bug lands on.
+func TestAuthMiddleware_ReplayFromKnownPeerLoggedDistinctlyFromAuthFailure(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	capture := &logCapture{}
+	srv := NewServer(ServerOptions{
+		Secrets: newStaticSecretStore(testSecret),
+		Version: "test",
+		Logger:  capture.logger(),
+		Now:     func() time.Time { return now },
+	})
+	mw := srv.authMiddleware((&handlerSpy{}).handler())
+
+	// An authentication failure: a syntactically well-formed but wrongly
+	// signed request (wrong secret) — this is the "unknown/unauthenticated
+	// source" case.
+	wrongSecret := bytes.Repeat([]byte{0x99}, secretLen)
+	badSigReq := signedRequest(t, wrongSecret, http.MethodGet, "/api/peer/host/neighbors", nil, now.Unix())
+	rec := httptest.NewRecorder()
+	mw.ServeHTTP(rec, badSigReq)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("bad-signature request status = %d, want 401", rec.Code)
+	}
+
+	// A legitimate legacy-signed request, replayed verbatim — this is the
+	// "known, authenticated peer" case: the second copy's signature
+	// verifies (proving it was signed with the real cluster secret) and is
+	// rejected only because the replay cache has already seen it. This is
+	// precisely what two independent, un-deduped consumers polling the
+	// same peer endpoint on overlapping timers produce.
+	body := []byte(`{"node":"pve1"}`)
+	req1 := signedRequest(t, testSecret, http.MethodGet, "/api/peer/host/neighbors", body, now.Unix())
+	rec1 := httptest.NewRecorder()
+	mw.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("first legitimate request status = %d, want 200 (body: %s)", rec1.Code, rec1.Body.String())
+	}
+	req2 := signedRequest(t, testSecret, http.MethodGet, "/api/peer/host/neighbors", body, now.Unix())
+	rec2 := httptest.NewRecorder()
+	mw.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusUnauthorized {
+		t.Fatalf("duplicate-poll replay status = %d, want 401", rec2.Code)
+	}
+
+	warnings := capture.at(slog.LevelWarn)
+	if len(warnings) != 2 {
+		t.Fatalf("captured %d WARN records, want 2 (one per rejection): %+v", len(warnings), warnings)
+	}
+	authFailureMsg := warnings[0].Message
+	replayMsg := warnings[1].Message
+
+	if authFailureMsg != "peer: rejected unauthorized request" {
+		t.Errorf("auth-failure log message = %q, want the unchanged auth-failure wording", authFailureMsg)
+	}
+	if replayMsg == authFailureMsg {
+		t.Fatalf("replay-from-a-known-peer log message (%q) is identical to the auth-failure message — this is exactly the wording collision T-3712 exists to fix", replayMsg)
+	}
+	if !strings.Contains(replayMsg, "authenticated peer") {
+		t.Errorf("replay log message = %q, want it to say the request came from an authenticated peer, not an unqualified rejection", replayMsg)
+	}
+
+	// The replay record must also say *which* check accepted the
+	// signature before the replay cache rejected it, so this legacy-path
+	// case (a pre-T-3703 peer's own duplicate-poll bug — see
+	// authMiddleware's doc comment for why the legacy path can't
+	// distinguish that from a genuine replay) is itself distinguishable
+	// from a genuine same-nonce replay.
+	if via := attrString(t, warnings[1], "via"); via != "legacy" {
+		t.Errorf("replay record via = %q, want %q", via, "legacy")
+	}
+}
+
+// TestAuthMiddleware_NonceReplayLoggedAsAuthenticatedPeerReplay is the
+// nonce-path sibling of the test above: a genuine same-nonce replay is
+// also a *known-peer* event (the nonce-bound signature verified), so it
+// must get the same distinct wording as the legacy-path case, tagged
+// via="nonce" rather than via="legacy".
+func TestAuthMiddleware_NonceReplayLoggedAsAuthenticatedPeerReplay(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	capture := &logCapture{}
+	srv := NewServer(ServerOptions{
+		Secrets: newStaticSecretStore(testSecret),
+		Version: "test",
+		Logger:  capture.logger(),
+		Now:     func() time.Time { return now },
+	})
+	mw := srv.authMiddleware((&handlerSpy{}).handler())
+
+	nonce, err := generateNonce()
+	if err != nil {
+		t.Fatalf("generateNonce: %v", err)
+	}
+	body := []byte(`{"node":"pve1"}`)
+	req1 := signedNonceRequest(t, testSecret, http.MethodPost, "/api/peer/host/ifreload", body, now.Unix(), nonce)
+	rec1 := httptest.NewRecorder()
+	mw.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("first request status = %d, want 200 (body: %s)", rec1.Code, rec1.Body.String())
+	}
+
+	req2 := signedNonceRequest(t, testSecret, http.MethodPost, "/api/peer/host/ifreload", body, now.Unix(), nonce)
+	rec2 := httptest.NewRecorder()
+	mw.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusUnauthorized {
+		t.Fatalf("replayed-nonce request status = %d, want 401", rec2.Code)
+	}
+
+	warnings := capture.at(slog.LevelWarn)
+	if len(warnings) != 1 {
+		t.Fatalf("captured %d WARN records, want 1: %+v", len(warnings), warnings)
+	}
+	if warnings[0].Message != "peer: rejected replayed request from an authenticated peer" {
+		t.Errorf("message = %q, want the known-peer-replay wording", warnings[0].Message)
+	}
+	if via := attrString(t, warnings[0], "via"); via != "nonce" {
+		t.Errorf("via = %q, want %q", via, "nonce")
+	}
+}
+
+// attrString extracts a string-valued top-level attribute named key from a
+// captured slog.Record, failing the test if it's absent or not a string.
+func attrString(t *testing.T, r slog.Record, key string) string {
+	t.Helper()
+	var out string
+	found := false
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == key {
+			out = a.Value.String()
+			found = true
+			return false
+		}
+		return true
+	})
+	if !found {
+		t.Fatalf("record %q has no %q attribute", r.Message, key)
+	}
+	return out
 }

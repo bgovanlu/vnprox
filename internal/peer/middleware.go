@@ -311,7 +311,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			// path below refuse a copy of this same request with its
 			// nonce headers stripped — see authMiddleware's doc comment.
 			if s.replay.seenBeforeNonce(nonceHeader, sigHeader, now) {
-				s.rejectUnauthorized(w, r, "replayed peer request")
+				s.rejectReplay(w, r, "nonce")
 				return
 			}
 		case s.opts.RequireNonce:
@@ -333,7 +333,11 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 				return
 			}
 			if s.replay.seenBefore(sigHeader, now) {
-				s.rejectUnauthorized(w, r, "replayed peer request")
+				// T-3712: this is the path an older, pre-T-3703 peer's own
+				// client-side duplicate-poll bug lands on — see
+				// rejectReplay's doc comment for why it must not be logged
+				// with rejectUnauthorized's wording.
+				s.rejectReplay(w, r, "legacy")
 				return
 			}
 		}
@@ -345,5 +349,35 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 func (s *Server) rejectUnauthorized(w http.ResponseWriter, r *http.Request, reason string) {
 	s.opts.Logger.Warn("peer: rejected unauthorized request",
 		"method", r.Method, "path", r.URL.Path, "remote_addr", r.RemoteAddr, "reason", reason)
+	writeJSONError(w, http.StatusUnauthorized, "peer_unauthorized", "invalid or missing peer signature")
+}
+
+// rejectReplay logs and answers a request that failed *only* the replay
+// check — never the signature or timestamp check — so by construction the
+// request already carried a valid HMAC over the live cluster secret
+// (verifySignature succeeded, either via the nonce-bound formula or the
+// legacy four-field one, before either call site below is reached). Its
+// origin is therefore a KNOWN, authenticated cluster peer, not an unknown
+// or unauthenticated one.
+//
+// T-3712 found that logging this exact case with rejectUnauthorized's
+// wording ("peer: rejected unauthorized request") is what let a real
+// client-side bug — nothing deduped peer reads, so two consumers on
+// overlapping timers sent the same signed request within the same replay
+// window — hide in plain sight for a week: ~2,885 rejections/day on
+// pvecube, all from an authenticated peer's own legitimate (if redundant)
+// traffic, read by every on-call skim as "someone is attacking us" and
+// dismissed as security noise rather than investigated
+// (planning/tasks/T-3712-duplicate-peer-neighbor-polls.md). via names
+// which check accepted the request's signature before the replay cache
+// rejected it: "nonce" for the T-3703 path (genuinely the same nonce
+// presented twice — the one case that actually can be an attempted
+// replay), or "legacy" for the pre-T-3703 four-field path (which cannot
+// distinguish a genuine replay from two legitimate same-second polls at
+// all — see authMiddleware's doc comment). So the two are distinguishable
+// from each other in the journal too, not just from an auth failure.
+func (s *Server) rejectReplay(w http.ResponseWriter, r *http.Request, via string) {
+	s.opts.Logger.Warn("peer: rejected replayed request from an authenticated peer",
+		"method", r.Method, "path", r.URL.Path, "remote_addr", r.RemoteAddr, "via", via)
 	writeJSONError(w, http.StatusUnauthorized, "peer_unauthorized", "invalid or missing peer signature")
 }

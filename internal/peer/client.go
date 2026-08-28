@@ -94,8 +94,23 @@ type Client struct {
 	trust      *Trust
 	statuses   *peerStatusStore
 	breakers   map[string]*circuitBreaker
-	opts       ClientOptions
-	mu         sync.Mutex
+
+	// neighborsCache/dhcpLeasesCache (T-3712) coalesce Neighbors/DHCPLeases
+	// reads that share a (peer, node) key within PeerReadCoalesceTTL, so
+	// this Client's several independent callers — internal/neighbor and
+	// internal/ipam both read Neighbors, internal/ipam reads DHCPLeases via
+	// internal/dhcp for both its enrichment merge and its GET /sdn/dhcp
+	// view — produce one upstream peer request per key per TTL window
+	// instead of one each. See resultCache's doc comment for why this is a
+	// short-TTL cache rather than a pure in-flight singleflight.
+	neighborsCache  *resultCache[[]host.Neighbor]
+	dhcpLeasesCache *resultCache[[]byte]
+
+	// opts and mu sit last: govet's fieldalignment counts bytes up to the
+	// final pointer, so pointer-free tails (sync.Mutex) belong after every
+	// pointer-bearing field.
+	opts ClientOptions
+	mu   sync.Mutex
 }
 
 // NewClient builds a Client. opts.Secrets must be non-nil.
@@ -141,12 +156,21 @@ func NewClient(opts ClientOptions) *Client {
 		trust = nil
 	}
 	return &Client{
-		opts:       opts,
-		httpClient: hc,
-		trust:      trust,
-		statuses:   newPeerStatusStore(),
-		breakers:   make(map[string]*circuitBreaker),
+		opts:            opts,
+		httpClient:      hc,
+		trust:           trust,
+		statuses:        newPeerStatusStore(),
+		breakers:        make(map[string]*circuitBreaker),
+		neighborsCache:  newResultCache[[]host.Neighbor](PeerReadCoalesceTTL, opts.Now),
+		dhcpLeasesCache: newResultCache[[]byte](PeerReadCoalesceTTL, opts.Now),
 	}
+}
+
+// peerReadKey builds a resultCache key that scopes coalescing to one peer's
+// one target node, so a read for node A never gets coalesced with a read
+// for node B even when both are routed through the same peer.
+func peerReadKey(p Peer, node string) string {
+	return p.Node + "\x00" + node
 }
 
 // Peers returns the current cluster member list (excluding this node
@@ -464,17 +488,31 @@ func (c *Client) FDB(ctx context.Context, p Peer, node string) ([]host.FDBRow, e
 // node's neighbor table" uniformly regardless of whether node is local or
 // reached through a peer — the same shape Links/FDB above already
 // establish.
+//
+// T-3712: routed through neighborsCache, so internal/neighbor's own
+// fan-out and internal/ipam's enrichment merge (and, before them,
+// cmd/vnproxd's rogueScanAdapter — all three read the *same*
+// neighbor.Service instance, see cmd/vnproxd/server.go) asking for the
+// same (p, node) within PeerReadCoalesceTTL of each other produce exactly
+// one signed request to peer, not one per caller. ctx is intentionally not
+// part of the cache key or wired into the shared call: a coalesced read
+// that outlives the first caller's ctx must still complete for the callers
+// still waiting on it, and do()'s own fn closure carries whichever ctx
+// happened to start the call — the same trade-off any singleflight-style
+// coalescing makes.
 func (c *Client) Neighbors(ctx context.Context, p Peer, node string) ([]host.Neighbor, error) {
-	path := "/api/peer/host/neighbors?node=" + url.QueryEscape(node)
-	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-	var out neighborsResponse
-	if err := decodeInto(resp, &out); err != nil {
-		return nil, err
-	}
-	return out.Neighbors, nil
+	return c.neighborsCache.do(peerReadKey(p, node), func() ([]host.Neighbor, error) {
+		path := "/api/peer/host/neighbors?node=" + url.QueryEscape(node)
+		resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, err
+		}
+		var out neighborsResponse
+		if err := decodeInto(resp, &out); err != nil {
+			return nil, err
+		}
+		return out.Neighbors, nil
+	})
 }
 
 // ContainerInterior fetches an lxc guest's raw host-side
@@ -593,17 +631,26 @@ func (c *Client) frrRequest(ctx context.Context, p Peer, path, node string) (ava
 // p (T-406). Unlike FRRBGPSummary/FRREVPNVNI there is no available/raw
 // split — an empty result is itself a clean "no leases" answer, not a
 // distinct absent condition (see HostReader.DHCPLeases' doc comment).
+//
+// T-3712: routed through dhcpLeasesCache, the same (peer, node)-keyed
+// short-TTL coalescing Neighbors above uses — internal/ipam calls
+// internal/dhcp's fan-out from both its enrichment merge and its DHCP view
+// (internal/ipam/dhcp.go), so the same duplicate-poll shape applies here
+// too (T-3712's card: "the 34 dhcp-leases rejections suggest it does, at a
+// lower rate").
 func (c *Client) DHCPLeases(ctx context.Context, p Peer, node string) ([]byte, error) {
-	path := "/api/peer/host/dhcp-leases?node=" + url.QueryEscape(node)
-	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-	var out dhcpLeasesResponse
-	if err := decodeInto(resp, &out); err != nil {
-		return nil, err
-	}
-	return []byte(out.Content), nil
+	return c.dhcpLeasesCache.do(peerReadKey(p, node), func() ([]byte, error) {
+		path := "/api/peer/host/dhcp-leases?node=" + url.QueryEscape(node)
+		resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, err
+		}
+		var out dhcpLeasesResponse
+		if err := decodeInto(resp, &out); err != nil {
+			return nil, err
+		}
+		return []byte(out.Content), nil
+	})
 }
 
 // FirewallLog fetches new pve-firewall log lines for node from peer p,
