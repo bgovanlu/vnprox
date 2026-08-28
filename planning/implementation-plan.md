@@ -152,10 +152,16 @@ above.
 | **39** | **Deepen the map** — planned, not started | [tasks/phase-39.md](tasks/phase-39.md) |
 | **40** | **Operate at scale** — planned, not started | [tasks/phase-40.md](tasks/phase-40.md) |
 | **41** | **Intelligence & envelope** — planned, not started | [tasks/phase-41.md](tasks/phase-41.md) |
+| **42–51** | **The visual product** — 100 enhancements, planned, cards not yet stubbed | [roadmap-visual.md](roadmap-visual.md) |
 
 Phases 38–41 are the 50 enhancements scoped in
 [`planning/roadmap-open-source.md`](roadmap-open-source.md), which also carries their sequencing,
 the Wave 0 debt gate that precedes them, and the owner decisions on the critical path.
+
+Phases 42–51 are the 100 visual enhancements scoped in
+[`planning/roadmap-visual.md`](roadmap-visual.md) — design language, canvas quality, and a
+picture-first counterpart for every table-first page. Their card stubs (`tasks/phase-42.md` …
+`tasks/phase-51.md`) are written when a phase is dispatched, not up front.
 
 ## Card format
 
