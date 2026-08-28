@@ -354,8 +354,8 @@ worth a round-trip before implementation starts.
 |---|---|
 | T-4201 identity | done — signal azure (OKLCH 224), literal hex, ramp solved so no call site moved |
 | T-4202 typography | done — IBM Plex Sans/Mono, self-hosted, latin + latin-ext |
-| T-4203 elevation | tokens done; primitive adoption in the same wave |
-| T-4204 status scale | tokens done; call-site adoption in the same wave |
+| T-4203 elevation | tokens done; adoption **blocked on T-4215** — no border token to point at |
+| T-4204 status scale | tokens done; status pairs sweepable, the 999 slate pairs **blocked on T-4215** |
 | T-4205 pictograms | done — 23 glyphs in `web/src/icons/`, kinds derived from `internal/inventory/ref.go` |
 | T-4206 motion | tokens done + one global reduced-motion gate; primitive adoption in the same wave |
 | T-4207 density | not started — scoped: the seam works, the new primitives just never joined it (below) |
@@ -399,7 +399,35 @@ about density, so eight primitives is what it got. The seam was three months old
 from inside that task. A component-library card should name the seams a new component is
 expected to read, or the library grows a second way of doing everything already solved.
 
-**Phase 42's largest finding is about Phase 43.** Counting hardcoded hex literals after the
+**Phase 42's largest finding is that its own sweep was never mechanical.** T-4204's commit says
+"~106 files still carry status-coloured `dark:` variants; the remainder is mechanical." Counting
+every `dark:` pair in `web/src` afterwards:
+
+| pattern | count |
+|---|---|
+| `text-slate-N dark:text-slate-M` | **999** |
+| `border-slate-N dark:border-slate-M` | 44 |
+| status-coloured pairs | 148 |
+| accent pairs (T-4214) | 21 |
+
+The slate row is eight times everything else combined, and it is the one row that **cannot** be
+swept: the design language declares an accent ramp, a status scale, surfaces, motion and fonts,
+and **no token for text or for a border**. Every foreground in the app is a raw slate step with a
+hand-written dark partner, because there is nothing to point at.
+
+The roles are already there, written longhand 999 times: `slate-900/100` headings (77),
+`slate-700/200` body (106), `slate-600/400` secondary (616), `slate-500/400` labels (172). And the
+616 row disagrees with itself — 468 sites pair slate-600 with slate-400, 148 with slate-300.
+
+It also hides a live AA failure. `text-slate-500` measures **4.39:1** on `--color-surface-sunken`,
+below the 4.5 floor, at 172 call sites. `slateContrast.test.ts` exists to catch exactly this and
+cannot, because its measurement table is written against `bg-white` and `dark:bg-slate-900` — the
+surfaces from before T-4203 introduced the ladder. **Introducing a surface ladder changed the
+denominator of every contrast measurement in the codebase, and the one guard that measures
+contrast still uses the old denominator.** Filed as **T-4215**, which now blocks both the
+remaining sweep and T-4301.
+
+**And the second-largest finding is about Phase 43.** Counting hardcoded hex literals after the
 design language landed: **155 in `web/src`, and nearly every one is in `src/topology/`** — 35 in
 `canvasDraw.ts`, 32 in `TopologyCanvasV2.tsx`, 10 in `export.ts`, ~20 across the four semantic
 overlays. Phase 42 re-pointed every Tailwind *utility*; the canvas draws with `ctx.fillStyle`, so
