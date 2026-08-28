@@ -83,6 +83,45 @@
       "why": "This is T-901's headless regression ceiling, previously the hard-coded HEADLESS_REGRESSION_CEILING_MS in scale.spec.ts and now stated here instead. Measured v2 p95 is ~50 ms in this runner (docs/performance.md section 3a), the same as v1, because both are software-rasterised. NOTE: the test that measures it is quarantined under T-2505-followup-01, so this budget is only measured on runs where that test is not skipped."
     },
     {
+      "id": "inventory.snapshot_at_envelope_us",
+      "title": "inventory graph Snapshot() at the T-4107 scale envelope",
+      "site": "internal/inventory/envelope_bench_test.go",
+      "metric": "mean microseconds per Graph.Snapshot() call on a graph built at inventory.EnvelopeProfile (50 nodes, 5,000 guests, 100 VNets, ~10,854 entities), aggregated over 50 calls per sample, one concurrent ApplyPoll writer active",
+      "unit": "us",
+      "limit": 5,
+      "direction": "max",
+      "samples": 5,
+      "scaling": "calibrated",
+      "enforcement": "gate",
+      "why": "T-4107. Snapshot() is documented (internal/inventory's Graph doc comment) as an O(1) atomic-pointer read regardless of graph size, and this budget checks that the design contract actually holds at 50 nodes/5,000 guests, not just at the 8/300 topology.md §4 target internal/inventory/bench_test.go already covers. Measured on the reference host, 2026-08-28, load average 0.3-0.75 of 32, no sibling test:ci workload: BenchmarkSnapshotAtEnvelope reports 79.8-87.9 ns/op across two runs (20 and 5 iterations), and TestSnapshotP99AtEnvelope's 5,000-sample run reports p50=87 ns / p99=88 ns / max=37.3 us over 10,854 entities under concurrent-writer contention — three orders of magnitude under the pre-existing 5 ms p99 budget TestSnapshotP99 already asserts at the smaller scale. 5 us is >50x the measured median, generous headroom precisely because this number is expected to stay flat by design: a regression here means Snapshot() stopped being O(1), which is worth catching at any multiple, not tuning close to a number that should never move."
+    },
+    {
+      "id": "topology.project_at_envelope_ms",
+      "title": "topology.Project at the T-4107 scale envelope",
+      "site": "internal/topology/envelope_bench_test.go",
+      "metric": "wall clock of one topology.Project(snap, Filter{}) call over a Snapshot taken from a graph built at inventory.EnvelopeProfile (50 nodes, 5,000 guests, 100 VNets, ~10,854 entities), Snapshot taken once outside the timed loop",
+      "unit": "ms",
+      "limit": 300,
+      "direction": "max",
+      "samples": 5,
+      "scaling": "calibrated",
+      "enforcement": "gate",
+      "why": "T-4107. Measured on the reference host, 2026-08-28, load average 0.3-2.3 of 32, no sibling test:ci workload: BenchmarkProjectAtEnvelope reports 140.6-148.7 ms/op across two runs (10 and 15 iterations) at the envelope, versus 10.6 ms/op for the same code path at an ~8-node/304-guest comparison config (BenchmarkProjectAtScale) — a ~13x wall-clock increase for a ~16x guest-count and ~12x entity-count increase, consistent with Project's O(n log n) sort of the rendered node/edge lists rather than anything superlinear in the entity count itself; this is the evidence behind T-4107's finding that server-side tiling is not warranted (see docs/development.md's Scale envelope section). Rendered output stays small regardless (1,004 nodes / 5,400 edges from 10,854 raw entities) because the existing collapse.go/collapse_physical.go server-side collapse already bounds it. 300 ms is ~2x the measured median, enough headroom to catch a genuine algorithmic regression (e.g. an accidental O(n^2) introduced into buildNodes/buildEdges) without gating on ordinary machine noise."
+    },
+    {
+      "id": "api.topology_at_envelope_ms",
+      "title": "GET /api/v1/topology round trip at the T-4107 scale envelope",
+      "site": "cmd/vnproxd/envelope_bench_test.go",
+      "metric": "wall clock of one GET /api/v1/topology HTTP round trip (real runDaemon, real pvemock server, real TLS/session/CSRF) against a daemon booted once against pvemock.EnvelopeProfile (50 nodes, 5,000 guests) with collectors converged, one warm-up request discarded",
+      "unit": "ms",
+      "limit": 1200,
+      "direction": "max",
+      "samples": 5,
+      "scaling": "cores",
+      "enforcement": "gate",
+      "why": "T-4107. Measured on the reference host, 2026-08-28, load average 0.6-1.3 of 32, no sibling test:ci workload, across three independent daemon boots (5 requests each): p50 390.4 / 396.6 / 390.9 ms, max 397.7 / 426.5 / 416.0 ms — tight spread (~9 ms across boots), so this is a stable number, not a one-off. Note this end-to-end number is dominated by the daemon's own concurrent background collector/finding/drift/QoS/PBS work sharing the host's CPUs with the request, not by data volume: the same harness against the pre-existing 8-node/300-guest scale-lab.yaml fixture (BenchmarkAPIAtScale/GetTopology) measures p50 ~333-345 ms on this same host today, i.e. ~16x fewer guests costs only ~15% less — the opposite of what a data-volume-bound (and therefore tiling-fixable) cost would show. That existing 8/300 number is itself well above docs/performance.md section 1's provisional p95<300ms bar recorded at T-607 (60.1/67.2 ms) — a real, pre-existing drift this card did not cause and does not fix (out of scope: T-4107 is the scale envelope, not a general audit of what has grown on handleTopology's request path since T-607); it is flagged here and in docs/development.md's Scale envelope section as a finding for a future card. `cores` scaling (not `calibrated`) because the dominant cost is concurrent background-work contention rather than a single CPU-bound kernel, the same reasoning topology.scale.page_render_ms already uses for a real-daemon-plus-browser path. 1200 ms is ~3x the measured median: wide enough to absorb this host's own background-load variance (the T-607 comparison above shows day-to-day daemon load is a bigger swing factor than the envelope's data volume) without being an absolute number that would fail the moment a hosted runner is slower, while still catching a genuine multiplier regression."
+    },
+    {
       "id": "topology.scale.v2_pan_zoom_p95_frame_hardware_ms",
       "title": "v2 canvas pan/zoom p95 frame time, GPU hardware target",
       "site": "web/e2e/scale.spec.ts",

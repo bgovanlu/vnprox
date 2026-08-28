@@ -388,6 +388,9 @@ cold half would report the machine as half its real speed and stretch every cali
 | `topology.scale.v1_pan_zoom_p95_frame_ms` | 90 ms | max | 3 | cores | gate | `web/e2e/scale.spec.ts` |
 | `topology.scale.v2_pan_zoom_p95_frame_ms` | 90 ms | max | 3 | cores | gate | `web/e2e/scale.spec.ts` |
 | `topology.scale.v2_pan_zoom_p95_frame_hardware_ms` | 20 ms | max | 3 | absolute | report | `web/e2e/scale.spec.ts` |
+| `inventory.snapshot_at_envelope_us` | 5 us | max | 5 | calibrated | gate | `internal/inventory/envelope_bench_test.go` |
+| `topology.project_at_envelope_ms` | 300 ms | max | 5 | calibrated | gate | `internal/topology/envelope_bench_test.go` |
+| `api.topology_at_envelope_ms` | 1200 ms | max | 5 | cores | gate | `cmd/vnproxd/envelope_bench_test.go` |
 
 <!-- perf-budgets:end -->
 

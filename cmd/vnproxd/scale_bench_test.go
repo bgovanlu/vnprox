@@ -106,11 +106,21 @@ func bootScaleDaemon(t testing.TB) *scaleDaemon {
 
 func (d *scaleDaemon) shutdown(t testing.TB) {
 	t.Helper()
+	d.shutdownWithin(t, 10*time.Second)
+}
+
+// shutdownWithin is shutdown with a caller-chosen deadline. scale-lab's 8
+// nodes return well within 10s; envelope_bench_test.go's 50-node fixture
+// has proportionally more in-flight collector polls to drain on
+// cancellation, so it calls this directly with a longer deadline rather
+// than inheriting shutdown's constant.
+func (d *scaleDaemon) shutdownWithin(t testing.TB, deadline time.Duration) {
+	t.Helper()
 	d.cancel()
 	select {
 	case <-d.daemonDone:
-	case <-time.After(10 * time.Second):
-		t.Error("runDaemon did not return within 10s of context cancellation")
+	case <-time.After(deadline):
+		t.Errorf("runDaemon did not return within %s of context cancellation", deadline)
 	}
 }
 
