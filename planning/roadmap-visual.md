@@ -358,7 +358,7 @@ worth a round-trip before implementation starts.
 | T-4204 status scale | tokens done; call-site adoption in the same wave |
 | T-4205 pictograms | done — 23 glyphs in `web/src/icons/`, kinds derived from `internal/inventory/ref.go` |
 | T-4206 motion | tokens done + one global reduced-motion gate; primitive adoption in the same wave |
-| T-4207 density | not started |
+| T-4207 density | not started — scoped: the seam works, the new primitives just never joined it (below) |
 | T-4208 component library | done — 8 primitives in `web/src/components/`, 88 tests; forced `--color-status-on-solid` |
 | T-4209 empty states | in progress — `emptystate/EmptyIllustration.tsx` + adoption across 58 call sites |
 | T-4210 visual gate | done — `web/e2e/visual.spec.ts`, route list derived from `App.tsx` |
@@ -384,6 +384,20 @@ reappears at every call site. `--color-status-on-solid` was the third instance a
 inline because a component forced it. The general lesson for the phases below: **a design token
 that cannot re-point is not a design token, it is a constant with a nice name** — and the tell is
 always a `dark:` variant surviving in code that claims not to need one.
+
+**T-4207 is smaller than the card implies.** The density seam itself is fine —
+`components/density.ts` gives both a per-instance prop and an ambient `DensityProvider`, the
+prop wins, and 19 sites already provide it. What is missing is only that the T-4208 primitives
+did not join it: of the eight new components, `SegmentedControl` and `KeyValue` read
+`useDensity`, and `Badge`, `Chip`, `Stat`, `Progress` and `Banner` do not, though all five have
+padding or type sizes that should respond. `Skeleton` is the one genuine exception — it borrows
+the dimensions of whatever it stands in for, so it has no scale of its own to compress. So
+T-4207 is five components joining an existing seam, not a system to design.
+
+Worth noticing *why* it happened: T-4208's card asked for eight primitives and said nothing
+about density, so eight primitives is what it got. The seam was three months old and invisible
+from inside that task. A component-library card should name the seams a new component is
+expected to read, or the library grows a second way of doing everything already solved.
 
 **The lesson worth carrying into Phase 43,** because it will recur on the canvas: on this phase's
 palette work the *measurement disagreed with the screen twice*. The amber that satisfied the
