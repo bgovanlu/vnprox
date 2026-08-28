@@ -304,6 +304,30 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
     seeAlso: ["path-simulator", "topology-page", "conntrack-page"],
   },
   {
+    id: "compiled-ruleset-page",
+    title: "Compiled ruleset",
+    surface: "page",
+    summary:
+      "The nftables ruleset PVE actually compiled and installed on one node — read-only, cross-linked to the vnprox-authored firewall rule that produced each rule where determinable.",
+    docRef: "docs/api.md",
+    keywords: ["nftables", "compiled", "ruleset", "firewall", "chain", "table", "iptables", "proxmox-firewall"],
+    sections: [
+      {
+        heading: "The gap between what you wrote and what PVE compiled",
+        body: "The firewall editor shows the rules you authored. This page shows what pve-firewall actually turned them into on the wire — the compiled nftables tables, chains, and rules PVE's own firewall engine installed. A rule row links back to the editor rule that produced it only when that link could be determined with confidence; everywhere else it says plainly why not, rather than guessing.",
+      },
+      {
+        heading: "Not always nftables",
+        body: "PVE 9.2.4 ships two firewall engines: a newer nftables engine (still labeled tech preview, opt-in per node) and the long-standing iptables engine, which is what most nodes still run today. An empty result here can mean the firewall is disabled, or that this node compiles to iptables instead — this page reads nftables output only, and says so rather than presenting either case as \"nothing configured.\"",
+      },
+      {
+        heading: "Never an editor",
+        body: "There is no add, delete, or edit affordance anywhere on this page. It exists to show you the compiled output, not to let you change it — every change still flows through the firewall editor and the ordinary changeset lifecycle.",
+      },
+    ],
+    seeAlso: ["firewall-page", "route-explorer-page"],
+  },
+  {
     id: "edge-page",
     title: "Edge & NAT",
     surface: "page",
@@ -346,6 +370,30 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
       },
     ],
     seeAlso: ["path-simulator", "findings-stream", "topology-page", "conntrack-page"],
+  },
+  {
+    id: "guest-ego-page",
+    title: "Guest view",
+    surface: "page",
+    summary:
+      "One guest's whole network story on one screen: its NICs and bridge/VLAN attachment, an outbound path evaluation, its firewall verdict, recent flows and live connections on its network, and any open findings — without leaving the page.",
+    docRef: "docs/features/topology.md",
+    keywords: ["guest", "vm", "container", "ego", "incident", "triage", "nic", "path", "firewall", "flows"],
+    sections: [
+      {
+        heading: "A neighborhood, not an entity",
+        body: "The map's inspector panel shows one entity's own fields. This page is different on purpose: it composes a guest's NICs, an outbound path evaluation, its resolved firewall cascade, recent flow/conntrack traffic on its network, and open findings, in the order an operator actually needs them during an incident — what it's plugged into first, then whether traffic can get in or out, then evidence of real traffic, then known problems.",
+      },
+      {
+        heading: "Every panel says when a source is off, not just empty",
+        body: "Flows and conntrack are opt-in on this cluster: no exporter/sampler configured means no flow records exist at all, and a node without conntrack support can't answer either. This page tells those two facts apart from an ordinary empty result explicitly — 'flow ingestion is not enabled' reads nothing like 'no recent flows for this guest', because they are different facts with different fixes.",
+      },
+      {
+        heading: "Nothing here stages a change",
+        body: "Every panel is read-only. Each one deep-links to the full page that owns its data — Guests, the Path simulator, Firewall, Flows, Conntrack, Findings — so acting on what you see always happens on that page's own terms, through the normal stage/validate/diff/apply/confirm flow.",
+      },
+    ],
+    seeAlso: ["guests-page", "path-simulator", "firewall-page", "flows-page", "conntrack-page", "findings-stream"],
   },
   {
     id: "ports-page",
@@ -506,17 +554,21 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
     title: "Tools & Findings",
     surface: "page",
     summary:
-      "The unified findings stream plus the power tools: path simulator, raw interfaces editor, firewall log viewer, MAC/FDB browser, and documentation export.",
+      "The unified findings stream plus the power tools: path simulator, raw interfaces editor, firewall log viewer, MAC/FDB browser, multicast/MDB browser, neighbor binding timeline, and documentation export.",
     docRef: "docs/features/firewall.md",
-    keywords: ["tools", "findings", "simulator", "raw editor", "export", "fdb", "mac"],
+    keywords: ["tools", "findings", "simulator", "raw editor", "export", "fdb", "mac", "neighbor", "arp", "binding", "flap"],
     sections: [
       {
         heading: "Findings first",
         body: "The stream merges every producer — health checks, drift, LLDP mismatches, IPAM conflicts, rogue-service detection, posture checks — into one source-tagged list with severity, a plain-English explanation, the affected objects as map links, and a fix where one is computable.",
       },
       {
+        heading: "Neighbor binding timeline",
+        body: "Turns the ARP/IPv6-neighbor table from a snapshot into a history: every recorded IP<->MAC transition, grouped per address, across the cluster. A binding that flaps — one IP cycling between MACs, or one MAC claiming many IPs in a short window — is called out distinctly from a single clean rebind, and backed by the always-on `neighbor_binding_flap` finding in the stream above.",
+      },
+      {
         heading: "Available on a phone",
-        body: "This is one of the two screens reachable at a narrow viewport, restricted there to the read-only findings view. The simulator, raw editor, MAC/FDB browser, firewall log viewer and doc export all need a desktop-sized screen and say so rather than rendering badly.",
+        body: "This is one of the two screens reachable at a narrow viewport, restricted there to the read-only findings view. The simulator, raw editor, MAC/FDB browser, multicast/MDB browser, neighbor binding timeline, firewall log viewer and doc export all need a desktop-sized screen and say so rather than rendering badly.",
       },
       {
         heading: "The escape hatch",

@@ -515,6 +515,16 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		neighborPeers = peerClient
 	}
 	neighborSvc := neighbor.NewService(neighbor.Config{Host: realHost, Peers: neighborPeers, LocalNode: localNode, Logger: logger})
+	// T-3905: neighborHistory records this node's own local IP<->MAC
+	// binding transitions (never a peer's — see internal/neighbor/
+	// history.go's package doc comment for why this deliberately does NOT
+	// call neighborSvc.Neighbors, the cluster-fanned-out method above) into
+	// the app-owned neighbor_bindings ring, and computes flap detection
+	// over it. realHost is the identical nodeNeighborReader instance
+	// neighborSvc.Config.Host already wraps — no second host-reading path.
+	neighborHistory := neighbor.NewHistoryRecorder(neighbor.HistoryConfig{
+		Host: realHost, Store: store.NewNeighborBindingRepo(db), LocalNode: localNode, Logger: logger,
+	})
 
 	// T-405/T-406: GET /ipam/subnets(/{cidr}/allocations) and GET /sdn/dhcp
 	// read PVE's IPAM plugin(s) directly and live, for the same "never
@@ -823,7 +833,8 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// finding-triggered rollback it serves) — its change-service reference is
 	// late-bound below, the same convention mgmtAdapter/scheduleAdapter use.
 	findingsGuardVal := newFindingsGuard(time.Now, logger.With("component", "findings-guard"))
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, storeCapacitySvc, certFindings, gitSyncFindings, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, findingsGuardVal.observe, logger)
+	neighborFlapAdapterVal := neighborFlapAdapter{baseCtx: ctx, recorder: neighborHistory, logger: logger}
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, storeCapacitySvc, certFindings, gitSyncFindings, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, neighborFlapAdapterVal, findingsGuardVal.observe, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -1374,16 +1385,17 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		// own change-engine safety validation (with snapshot provenance
 		// exempting legitimate distributed rollbacks) and audits every host
 		// write locally — a peer call is not a shortcut past the interlocks.
-		WriteGuard:    hostWriteGuardAdapter{change: changeSvc, snapshots: snapshotRepo, logger: logger},
-		WriteAudit:    hostWriteAuditAdapter{repo: auditRepo, logger: logger},
-		Timers:        localTimers,
-		LLDPInstaller: realHost,
-		FirewallLog:   fwLogReader,
-		Flows:         flowPeerAdapter{repo: flowRepo},
-		Capture:       capturePeerAdapter{coord: captureCoord},
-		Replication:   replicationSink,
-		Version:       version,
-		Logger:        logger,
+		WriteGuard:             hostWriteGuardAdapter{change: changeSvc, snapshots: snapshotRepo, logger: logger},
+		WriteAudit:             hostWriteAuditAdapter{repo: auditRepo, logger: logger},
+		Timers:                 localTimers,
+		LLDPInstaller:          realHost,
+		FirewallLog:            fwLogReader,
+		Flows:                  flowPeerAdapter{repo: flowRepo},
+		NeighborBindingHistory: neighborHistoryPeerAdapter{recorder: neighborHistory},
+		Capture:                capturePeerAdapter{coord: captureCoord},
+		Replication:            replicationSink,
+		Version:                version,
+		Logger:                 logger,
 	})
 
 	// T-303: peerClient also backs GET /audit and GET /snapshots' cluster
@@ -1410,6 +1422,14 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// peerMDB backs GET /mdb's cluster fan-out (T-3902), the same
 	// peerClient every other cluster-wide read route above uses.
 	var peerMDB api.PeerMDBSource
+	// peerNftRuleset backs GET /firewall/compiled's cross-node routing
+	// (T-3904), the same peerClient every other node-observability route
+	// above uses.
+	var peerNftRuleset api.PeerNftRulesetSource
+	// peerNeighborHistory backs GET /neighbors/history's cluster fan-out
+	// (T-3905), the same peerClient every other node-observability route
+	// above uses.
+	var peerNeighborHistory api.PeerNeighborHistorySource
 	if peerClient != nil {
 		peerAudit = peerClient
 		peerSnapshots = peerClient
@@ -1419,6 +1439,8 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		guestInteriorPeers = peerClient
 		peerConntrack = peerClient
 		peerMDB = peerClient
+		peerNftRuleset = peerClient
+		peerNeighborHistory = peerClient
 	}
 
 	// T-404: GET /sdn/evpn/status fans FRR/BGP state across the cluster
@@ -1737,6 +1759,8 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		PeerSnapshots:       peerSnapshots,
 		Flows:               flowRepo,
 		PeerFlows:           peerFlows,
+		NeighborHistory:     neighborHistory,
+		PeerNeighborHistory: peerNeighborHistory,
 		FlowClassifier:      flowClassifier,
 		LatMesh:             latMeshSvc,
 		MTUProbe:            mtuProbeSvc,
@@ -1753,6 +1777,15 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		ConntrackGuests:     conntrackGuests,
 		MDB:                 realHost,
 		PeerMDB:             peerMDB,
+		// T-3904: the compiled-ruleset inspector's live node-routed read —
+		// realHost (local node) and peerNftRuleset (peers), the same
+		// local/peer seam MDB/PeerMDB above use. Firewall (already wired
+		// above) doubles as the attribution source: GET /firewall/compiled
+		// cross-links a compiled rule back to the vnprox-authored rule
+		// that (best-effort) produced it using the same live inventory
+		// graph GET /firewall/rulesets itself reads.
+		NftRuleset:     realHost,
+		PeerNftRuleset: peerNftRuleset,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see
@@ -1933,6 +1966,11 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 			logger.Error("store: finding_events prune failed", "error", err)
 		})
 	})
+	// T-3905: neighbor_bindings' own poll (record local binding transitions)
+	// and prune (retention window + hard row cap) loops — separate cadences,
+	// same "log and keep going" contract every prune loop above uses.
+	g.add(neighborHistory.RunPollLoop)
+	g.add(neighborHistory.RunPruneLoop)
 	// T-1606: the capacity forecasting daily rollup job and its aggregate
 	// prune loop. The rollup computes yesterday's downsampled utilization
 	// bucket (restart-safe/idempotent); the prune loop enforces

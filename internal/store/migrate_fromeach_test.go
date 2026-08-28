@@ -176,6 +176,7 @@ var versionSeeds = map[int]versionSeed{
 	46: {seedV46, assertV46},
 	47: {seedV47, assertV47},
 	48: {seedV48, assertV48},
+	49: {seedV49, assertV49},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1779,25 +1780,34 @@ func assertV48(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 49 (0049_sdn_foreign_pending_ack.sql,
-// changeset_sdn_pending_acks table — T-3101-followup-01) has no
-// versionSeeds entry because it is the current latest, not a "prior"
-// version any fixture in this file freezes at — its own forward
-// application (as part of every case's migrate() call to latest) is
-// exercised by every case above, and TestOpen_CreatesAllTables
-// (store_test.go) exercises it from a fresh database. store.
-// SeededVersionsAvailable() (export_test.go) — consumed by
-// TestBackupRestore_AC3_AcrossASchemaUpgrade in this package — asserts its
-// return value stays strictly below the live latest schema version for the
-// identical reason: registering 49 here before some future migration
-// supersedes it would break that check, not just leave this version
-// un-exercised by it. The next migration to land becomes the new latest
-// and picks up a version 49 entry in versionSeeds at that time — see
-// version 48's identical treatment in this file, immediately above, once
-// it stopped being the latest.
-//
-// TestChangesetSDNPendingAckRepo_* (changesetsdnpendingacks_test.go) and
-// apply_sdn_foreign_test.go's own Service-level coverage (internal/change)
-// are this migration's test coverage for now — this file only freezes/
-// seeds/asserts PRIOR versions being carried forward, and 49 is never
-// prior to anything yet.
+func seedV49(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// A recorded SDN foreign-pending-state acknowledgement
+	// (0049_sdn_foreign_pending_ack.sql — T-3101-followup-01), against
+	// the changeset seeded at v1 (cs-v1 persists cumulatively through
+	// every later version's seed, per freezeAndSeed's doc comment).
+	mustExec(t, db, `INSERT INTO changeset_sdn_pending_acks (changeset_id, acknowledged_by, entries_json, acknowledged_at)
+	      VALUES ('cs-v1', 'root@pam', '[{"type":"zone","id":"zone-v49"}]', 1790000000)`)
+}
+
+func assertV49(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+
+	var ackedBy, entries string
+	var ackedAt int64
+	if err := db.QueryRowContext(ctx, `SELECT acknowledged_by, entries_json, acknowledged_at FROM changeset_sdn_pending_acks WHERE changeset_id = 'cs-v1'`).
+		Scan(&ackedBy, &entries, &ackedAt); err != nil {
+		t.Errorf("changeset_sdn_pending_acks row (v49) lost across migration: %v", err)
+	} else {
+		if ackedBy != "root@pam" {
+			t.Errorf("changeset_sdn_pending_acks (v49) acknowledged_by = %q, want root@pam", ackedBy)
+		}
+		if ackedAt != 1790000000 {
+			t.Errorf("changeset_sdn_pending_acks (v49) acknowledged_at = %d, want 1790000000", ackedAt)
+		}
+		if entries != `[{"type":"zone","id":"zone-v49"}]` {
+			t.Errorf("changeset_sdn_pending_acks (v49) entries_json = %q, unexpected", entries)
+		}
+	}
+}

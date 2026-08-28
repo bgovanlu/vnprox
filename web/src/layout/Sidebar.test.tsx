@@ -3,7 +3,7 @@
 // T-3402: replaces NavRail.test.tsx (retired alongside NavRail.tsx). Keeps
 // AC1's "Home entry highlights when active" case (NavRail.test.tsx's own
 // origin, T-904) and adds this task's own acceptance criteria: every
-// routed nav entry (22 as of T-3903's "Route explorer" addition) renders
+// routed nav entry (23 as of T-3906's "Guest view" addition) renders
 // exactly once, active-route auto-expand, collapse state
 // round-tripping through localStorage (the store's own persistence is
 // covered in isolation by sidebarGroupsStore.test.ts; this file covers the
@@ -29,7 +29,7 @@ vi.mock("../api/findings", () => ({
 /** Every route this task's card names, by group — the source of truth this
  * file checks the rendered sidebar against, independent of Sidebar.tsx's
  * own internal shape. */
-const FLAT_LABELS = ["Home", "Topology", "Guests", "Management"];
+const FLAT_LABELS = ["Home", "Topology", "Guests", "Guest view", "Management"];
 const NETWORK_LABELS = ["SDN", "Firewall", "IPAM", "Ports", "Edge", "Route explorer", "Flows", "Conntrack"];
 const OPERATE_LABELS = ["History", "Incidents", "Audit", "Analysis", "Tools"];
 const AUTOMATE_LABELS = ["Config as code", "Governance", "Blueprints", "Hub"];

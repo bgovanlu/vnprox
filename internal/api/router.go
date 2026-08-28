@@ -172,6 +172,8 @@ type Options struct {
 	PeerSnapshots        PeerSnapshotSource
 	Flows                FlowLocalSource
 	PeerFlows            PeerFlowSource
+	NeighborHistory      NeighborHistoryLocalSource
+	PeerNeighborHistory  PeerNeighborHistorySource
 	LatMesh              LatMeshService
 	MTUProbe             MTUProbeService
 	Ceph                 CephService
@@ -188,12 +190,17 @@ type Options struct {
 	// MDB/PeerMDB (T-3902) back GET /mdb: the bridge multicast/MDB
 	// browser's live cluster fan-out, the same local/peer seam shape
 	// Conntrack/PeerConntrack use above.
-	MDB         MDBLocalSource
-	PeerMDB     PeerMDBSource
-	TenantStore TenantAdminStore
-	DocExport   DocExportService
-	Capacity    CapacityService
-	Posture     PostureService
+	MDB     MDBLocalSource
+	PeerMDB PeerMDBSource
+	// NftRuleset/PeerNftRuleset (T-3904) back GET /firewall/compiled: the
+	// compiled nftables ruleset inspector's node-routed live read, the
+	// same local/peer seam shape MDB/PeerMDB use above.
+	NftRuleset     NftRulesetLocalSource
+	PeerNftRuleset PeerNftRulesetSource
+	TenantStore    TenantAdminStore
+	DocExport      DocExportService
+	Capacity       CapacityService
+	Posture        PostureService
 	// Compliance (T-2706) backs the read-only compliance profile/report surface
 	Compliance ComplianceService
 	Plugins    PluginService
@@ -420,6 +427,7 @@ func NewRouter(opts Options) http.Handler {
 		mountIPv6Routes(r, opts.IPv6, opts.Auth)
 		mountDHCPRoutes(r, opts.DHCP, opts.Auth)
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
+		mountNftRulesetRoutes(r, opts.NftRuleset, opts.PeerNftRuleset, opts.Firewall, opts.LocalNode, opts.Auth)
 		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
 		mountBlueprintBundleRoutes(r, opts.Blueprints, opts.BlueprintSigningKey, opts.BlueprintTrust, opts.BlueprintSignersAudit, opts.Auth)
 		mountSpecRoutes(r, opts.Spec, opts.Changesets, opts.Auth)
@@ -441,6 +449,7 @@ func NewRouter(opts Options) http.Handler {
 		mountMDBRoutes(r, opts.MDB, opts.PeerMDB, opts.LocalNode, opts.Auth)
 		mountDiagnoseRoutes(r, opts, opts.Auth)
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows, opts.FlowClassifier, scopeMW)
+		mountNeighborHistoryRoutes(r, opts.NeighborHistory, opts.Auth, opts.PeerNeighborHistory)
 		mountTenantRoutes(r, opts.TenantStore, opts.Tenant, opts.Changesets, opts.TenantNotifier, opts.Auth)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountCapacityRoutes(r, opts.Capacity, opts.Auth)

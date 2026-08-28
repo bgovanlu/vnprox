@@ -147,6 +147,13 @@ func (r nodeRestrictedReader) MDB(ctx context.Context, node string) ([]byte, err
 	return r.inner.MDB(ctx, node)
 }
 
+func (r nodeRestrictedReader) NftRuleset(ctx context.Context, node string) ([]byte, error) {
+	if node != r.node {
+		return nil, host.ErrNotFound
+	}
+	return r.inner.NftRuleset(ctx, node)
+}
+
 func (r nodeRestrictedReader) IPv6RA(ctx context.Context, node string) ([]host.IPv6RAObservation, error) {
 	if node != r.node {
 		return nil, host.ErrNotFound

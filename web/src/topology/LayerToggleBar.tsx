@@ -59,6 +59,14 @@ export interface LayerToggleBarProps {
    * output. */
   k8sLayerActive?: boolean;
   onToggleK8s?: () => void;
+  /** T-3908: an 11th "Recency" toggle, same optional-pair convention as
+   * k8sLayerActive/onToggleK8s above — a client-only overlay painting each
+   * entity's config-change recency as a corner badge
+   * (topology/recencyOverlay.ts), not one of the server-emitted entity
+   * layers either. Both props must be provided together to render the
+   * button; omitted keeps this bar's exact prior output. */
+  recencyLayerActive?: boolean;
+  onToggleRecency?: () => void;
 }
 
 /** The `1`-`4` layer toggle rail (docs/features/topology.md §1), plus an
@@ -79,6 +87,8 @@ export function LayerToggleBar({
   onToggleCeph,
   k8sLayerActive,
   onToggleK8s,
+  recencyLayerActive,
+  onToggleRecency,
 }: LayerToggleBarProps) {
   return (
     <div className="flex gap-1 rounded-md border border-slate-200 bg-white/90 p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900/90">
@@ -192,6 +202,21 @@ export function LayerToggleBar({
           )}
         >
           Kubernetes
+        </button>
+      )}
+      {onToggleRecency && (
+        <button
+          type="button"
+          aria-pressed={recencyLayerActive ?? false}
+          onClick={onToggleRecency}
+          className={clsx(
+            "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
+            recencyLayerActive
+              ? "bg-amber-600 text-white"
+              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+          )}
+        >
+          Recency
         </button>
       )}
     </div>

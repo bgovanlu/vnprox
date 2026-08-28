@@ -674,6 +674,25 @@ func (c *Client) MDB(ctx context.Context, p Peer, node string) ([]byte, error) {
 	return []byte(out.Content), nil
 }
 
+// NftRuleset fetches node's raw `nft -j list ruleset` output from peer p
+// (T-3904's compiled-ruleset inspector) — the remote-node counterpart of
+// a local host.Reader.NftRuleset call, GET /firewall/compiled's cross-node
+// routing dependency. Like MDB, there is no available/raw split: an empty
+// result is itself a clean (if ambiguous, per HostReader.NftRuleset's doc
+// comment) answer, not a distinct absent condition.
+func (c *Client) NftRuleset(ctx context.Context, p Peer, node string) ([]byte, error) {
+	path := "/api/peer/host/nftables?node=" + url.QueryEscape(node)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out nftRulesetResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return []byte(out.Content), nil
+}
+
 // RouteTableV4/RouteTableV6 fetch node's raw kernel FIB (`ip -j route
 // show table all` / its `-6` counterpart) from peer p (T-3903's route
 // explorer) — the remote-node counterpart of a local internal/route.
@@ -832,6 +851,41 @@ func (c *Client) Flows(ctx context.Context, p Peer, filter FlowFilter, cursor st
 		return nil, "", err
 	}
 	var out flowPageResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, "", err
+	}
+	return out.Items, out.NextCursor, nil
+}
+
+// NeighborBindingHistory fetches one page of peer p's own local
+// neighbor_bindings ring (T-3905), filtered exactly like docs/api.md's
+// GET /neighbors/history, for internal/api's cluster fan-out
+// (fetchClusterNeighborBindings).
+func (c *Client) NeighborBindingHistory(ctx context.Context, p Peer, filter NeighborBindingFilter, cursor string, limit int) ([]NeighborBindingRecord, string, error) {
+	q := url.Values{}
+	if filter.IP != "" {
+		q.Set("ip", filter.IP)
+	}
+	if filter.MAC != "" {
+		q.Set("mac", filter.MAC)
+	}
+	if filter.FromTs != 0 {
+		q.Set("fromTs", strconv.FormatInt(filter.FromTs, 10))
+	}
+	if filter.ToTs != 0 {
+		q.Set("toTs", strconv.FormatInt(filter.ToTs, 10))
+	}
+	if cursor != "" {
+		q.Set("cursor", cursor)
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	resp, err := c.do(ctx, p, http.MethodGet, "/api/peer/host/neighbors/history?"+q.Encode(), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	var out neighborBindingPageResponse
 	if err := decodeInto(resp, &out); err != nil {
 		return nil, "", err
 	}

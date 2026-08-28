@@ -700,6 +700,34 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
     seeAlso: ["history-page", "topology-page", "drift", "incidents-page"],
   },
   {
+    id: "topology-recency-overlay",
+    title: "Recency overlay",
+    surface: "panel",
+    summary:
+      "Paints every entity on the map by how long ago it last changed — a corner badge, hottest for the most recent — so incident triage can start with \"what moved last\" at a glance instead of hunting through History.",
+    docRef: "docs/features/topology.md",
+    keywords: ["recency", "what changed", "heat", "last changed", "drift", "unattributed", "triage"],
+    sections: [
+      {
+        heading: "No range to pick",
+        body: "Unlike the point-in-time diff overlay, Recency needs no From/To — toggle it on from the layer bar and it shows the most recent change history vnprox has, right away. It reuses the exact same `GET /topology/diff` route the diff overlay does, anchored at the oldest snapshot in the most recent page of snapshot history rather than a fixed calendar window, so a young cluster still gets a useful answer instead of an out-of-range error.",
+      },
+      {
+        heading: "Five states, not a plain gradient",
+        body: "Four buckets are time-based — just now, today, this week, older — running hottest to coolest. The fifth, drift, is not a point on that scale: it means an entity changed and no vnprox changeset explains it, so the exact moment is genuinely unknown rather than merely unrecorded. Drift gets its own color and glyph off the heat gradient entirely, and it is the signal worth investigating first, not a lesser one.",
+      },
+      {
+        heading: "Never changed looks different from changed long ago",
+        body: "An entity with no badge at all has no recorded change in the lookback window — visually distinct from the older bucket's muted badge, which still marks a real, dated change. Confusing the two would hide exactly the contrast an incident triage needs.",
+      },
+      {
+        heading: "Colour is never the only signal",
+        body: "Every badge carries a letter glyph (m/h/d/w/?) in addition to its color, and the legend spells out each bucket's full phrase in text below the map — reading the legend or a screen reader gets the same answer a sighted user reads from color alone.",
+      },
+    ],
+    seeAlso: ["topology-page", "topology-point-in-time-diff", "topology-paint-modes", "history-page"],
+  },
+  {
     id: "post-apply-preview",
     title: "Post-apply preview",
     surface: "panel",

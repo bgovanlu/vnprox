@@ -20,6 +20,7 @@ import { DemoBanner } from "../demo/DemoBanner";
 import { GuidedTour } from "../tour/GuidedTour";
 import { OfflineShellBanner } from "./OfflineShellBanner";
 import { PushNavigationBridge } from "../push/PushNavigationBridge";
+import { GuestEgoPaletteHost } from "../guest/GuestEgoPaletteHost";
 
 /** Top-level layout for every authenticated route: Sidebar + top bar
  * around a routed <Outlet/>, with the keyboard-shortcut framework wired
@@ -121,6 +122,11 @@ export function AppShell() {
        * web/public/sw.js's notificationclick handler to an already-open
        * tab) into an in-app navigation, rather than a full page reload. */}
       <PushNavigationBridge />
+      {/* T-3906: registers "Open guest view for <ref>" in the command
+       * palette whenever a guest is the map's current selection — see this
+       * component's own doc comment for why the palette, not an
+       * InspectorPanel button, is this task's map entry point. */}
+      <GuestEgoPaletteHost />
     </div>
   );
 }

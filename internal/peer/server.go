@@ -150,6 +150,16 @@ type HostReader interface {
 	// rather than a Links()-derived route, mirroring FRRBGPSummary/
 	// DHCPLeases' own exec-then-forward shape.
 	MDB(ctx context.Context, node string) ([]byte, error)
+
+	// NftRuleset returns node's raw `nft -j list ruleset` output (T-3904's
+	// compiled-ruleset inspector) — the remote-node counterpart of a local
+	// host.Reader.NftRuleset call, GET /firewall/compiled's cross-node
+	// routing dependency. Same no-{available}-envelope shape as MDB/
+	// DHCPLeases above: an empty result (no PVE-authored tables) is a
+	// clean, real, and — per that method's own doc comment — genuinely
+	// ambiguous answer (disabled firewall vs. legacy iptables engine),
+	// not a distinct absent/error condition this route tries to resolve.
+	NftRuleset(ctx context.Context, node string) ([]byte, error)
 }
 
 // FirewallLogReader is the peer-server-side dependency for
@@ -197,6 +207,19 @@ type SnapshotReader interface {
 // internal/flow's) for the same import-direction reason as AuditReader.
 type FlowReader interface {
 	ListFlowPage(ctx context.Context, filter FlowFilter, cursor string, limit int) ([]FlowRecord, string, error)
+}
+
+// NeighborBindingHistoryReader is the peer-server-side dependency for
+// GET /api/peer/host/neighbors/history (T-3905): one node's own local
+// neighbor_bindings ring, filtered and cursor-paginated exactly like
+// docs/api.md's GET /neighbors/history. internal/api's cluster fan-out
+// (fetchClusterNeighborBindings) re-queries every peer with the same
+// filter+cursor and merges the returned pages with its own local page,
+// mirroring FlowReader exactly. Declared against this package's own
+// NeighborBindingFilter/NeighborBindingRecord (not internal/store's), same
+// import-direction reason as AuditReader/FlowReader.
+type NeighborBindingHistoryReader interface {
+	ListNeighborBindingPage(ctx context.Context, filter NeighborBindingFilter, cursor string, limit int) ([]NeighborBindingRecord, string, error)
 }
 
 // HostWriter is the write-side dependency for the documented
@@ -302,9 +325,15 @@ type ServerOptions struct {
 	// 503-not-panic treatment as every other optional ServerOptions
 	// dependency): a daemon that hasn't wired flow ingestion at all simply
 	// has nothing to serve peers here yet.
-	Flows         FlowReader
-	Timers        TimerAgent
-	LLDPInstaller LLDPInstaller
+	Flows FlowReader
+	// NeighborBindingHistory backs GET /api/peer/host/neighbors/history
+	// (T-3905). Optional (nil-safe, the same 503-not-panic treatment as
+	// every other optional ServerOptions dependency): a daemon that
+	// hasn't wired internal/neighbor's history recorder yet simply has
+	// nothing to serve peers here yet.
+	NeighborBindingHistory NeighborBindingHistoryReader
+	Timers                 TimerAgent
+	LLDPInstaller          LLDPInstaller
 	// FirewallLog backs GET /api/peer/firewall/log (T-505). Optional
 	// (nil-safe, the same 503-not-panic treatment as every other optional
 	// ServerOptions dependency): a daemon that hasn't wired a firewall log
@@ -393,6 +422,7 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Get("/host/links", s.handleLinks)
 		r.Get("/host/fdb", s.handleFDB)
 		r.Get("/host/neighbors", s.handleNeighbors)
+		r.Get("/host/neighbors/history", s.handleNeighborBindingHistory)
 		r.Get("/host/container-interior", s.handleContainerInterior)
 		r.Get("/host/container-ping", s.handleContainerPing)
 		r.Get("/host/conntrack", s.handleConntrack)
@@ -401,6 +431,7 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Get("/host/frr/evpn-vni", s.handleFRREVPNVNI)
 		r.Get("/host/dhcp-leases", s.handleDHCPLeases)
 		r.Get("/host/mdb", s.handleMDB)
+		r.Get("/host/nftables", s.handleNftRuleset)
 		r.Get("/host/route/fib-v4", s.handleRouteTableV4)
 		r.Get("/host/route/fib-v6", s.handleRouteTableV6)
 		r.Get("/host/route/rules-v4", s.handleRouteRulesV4)
@@ -861,6 +892,28 @@ func (s *Server) handleMDB(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, mdbResponse{Content: string(data)})
 }
 
+// handleNftRuleset implements GET /api/peer/host/nftables (T-3904): node's
+// raw `nft -j list ruleset` output, the peer-routed counterpart of a local
+// host.Reader.NftRuleset call. Same {content: string}, no-{available}-
+// envelope convention as handleMDB — an empty-but-successfully-read
+// ruleset is a clean, unremarkable (if genuinely ambiguous — see
+// HostReader.NftRuleset's doc comment) result, not a distinct absent/
+// error condition; a genuine read failure is a real error here, reported
+// via writeHostError exactly like handleMDB does.
+func (s *Server) handleNftRuleset(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	data, err := s.opts.Reader.NftRuleset(r.Context(), node)
+	if err != nil {
+		s.writeHostError(w, "reading nftables ruleset", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, nftRulesetResponse{Content: string(data)})
+}
+
 // handleRouteTableV4/V6 implement GET /api/peer/host/route/fib-v4 and
 // fib-v6 (T-3903's route explorer): node's raw `ip -j route show table
 // all` / `ip -j -6 route show table all` output, the remote-node
@@ -1143,6 +1196,48 @@ func (s *Server) handleFlows(w http.ResponseWriter, r *http.Request) {
 		items = []FlowRecord{}
 	}
 	writeJSON(w, http.StatusOK, flowPageResponse{Items: items, NextCursor: next})
+}
+
+// handleNeighborBindingHistory implements GET /api/peer/host/neighbors/
+// history (T-3905), the same filter query params as docs/api.md's GET
+// /neighbors/history (?ip=&mac=&fromTs=&toTs=&limit=&cursor=).
+func (s *Server) handleNeighborBindingHistory(w http.ResponseWriter, r *http.Request) {
+	if s.opts.NeighborBindingHistory == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "neighbor binding history not configured")
+		return
+	}
+	limit, ok := parsePeerPageLimit(w, r)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	filter := NeighborBindingFilter{IP: q.Get("ip"), MAC: q.Get("mac")}
+	if v := q.Get("fromTs"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "fromTs must be a unix-seconds integer")
+			return
+		}
+		filter.FromTs = n
+	}
+	if v := q.Get("toTs"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "toTs must be a unix-seconds integer")
+			return
+		}
+		filter.ToTs = n
+	}
+
+	items, next, err := s.opts.NeighborBindingHistory.ListNeighborBindingPage(r.Context(), filter, q.Get("cursor"), limit)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal_error", "listing neighbor binding history page: "+err.Error())
+		return
+	}
+	if items == nil {
+		items = []NeighborBindingRecord{}
+	}
+	writeJSON(w, http.StatusOK, neighborBindingPageResponse{Items: items, NextCursor: next})
 }
 
 func (s *Server) handleStageInterfaces(w http.ResponseWriter, r *http.Request) {

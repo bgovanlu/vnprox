@@ -24,6 +24,7 @@ import { diffMarkColor, diffMarkGlyph, type DiffMark } from "./diffOverlay";
 import { findingChipText, hasOpenFinding, parseFindingBadge, shouldPulse } from "./findingBadges";
 import { formatMTUBadgeLabel, type MTUOverlayBadge } from "./mtuOverlay";
 import { jackKindForEntity, speedMarking, type PortBodyKind } from "./portMedia";
+import { recencyMarkColor, recencyMarkGlyph, type RecencyMark } from "./recencyOverlay";
 import { trafficEdgeStyle } from "./trafficMode";
 
 // T-3501: severity fill/text colours for a "finding:<source>:<severity>"
@@ -713,6 +714,69 @@ export function drawDiffOverlay(ctx: CanvasRenderingContext2D, params: DrawDiffO
     ctx.fillStyle = "#ffffff";
     const glyphWidth = ctx.measureText(glyph).width;
     ctx.fillText(glyph, x + w + 2 - glyphWidth / 2, y - 1);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// --- T-3908: the "what changed" recency overlay -----------------------------
+// A fifth, independent overlay pass: for every entity a config-change diff
+// covers, a small filled corner badge naming how long ago it last changed
+// (or, for drift, that vnprox does not know when).
+//
+// DELIBERATELY NOT A RING. drawDiffOverlay above rings the whole node
+// border (top-right corner glyph) — this overlay paints only a single
+// filled badge, in the OPPOSITE corner (bottom-left), specifically so the
+// diff overlay and this one can both be active at once without their marks
+// visually stacking into an unreadable double-outline (T-3908 AC2: "composes
+// with, does not visually collide with, the diff and Ceph overlays"). An
+// entity with no recency mark at all is left with no badge — the visually
+// distinct "no change in the lookback window" state this task's card asks
+// for, exactly mirroring drawDiffOverlay's own "no ring = no difference"
+// convention.
+//
+// Every badge carries a letter glyph (recencyMarkGlyph) in addition to its
+// heat color, so the signal never depends on color alone (T-3908's WCAG
+// requirement) — the same non-color-channel precedent diffMarkGlyph already
+// established above.
+
+export interface DrawRecencyOverlayParams {
+  nodes: FlowNode<EntityNodeData, "entity">[];
+  marks: readonly RecencyMark[];
+  viewport: Viewport;
+  nodeSize: Size;
+  dragTopLeft?: DrawSceneParams["dragTopLeft"];
+}
+
+export function drawRecencyOverlay(ctx: CanvasRenderingContext2D, params: DrawRecencyOverlayParams): void {
+  const { nodes, marks, viewport: vp, nodeSize, dragTopLeft } = params;
+  if (marks.length === 0) return;
+  const size = nodeSize.width > 0 ? nodeSize : DEFAULT_NODE_SIZE;
+  const byId = new Map<string, FlowNode<EntityNodeData, "entity">>();
+  for (const n of nodes) byId.set(n.id, n);
+
+  ctx.save();
+  ctx.font = "700 11px ui-sans-serif, system-ui, sans-serif";
+  ctx.textBaseline = "middle";
+  for (const mark of marks) {
+    const node = byId.get(mark.nodeId);
+    if (!node) continue;
+    const center = nodeCenterScreen(node, vp, size, dragTopLeft);
+    const w = size.width * vp.zoom;
+    const h = size.height * vp.zoom;
+    const x = center.x - w / 2;
+    const y = center.y - h / 2;
+    const color = recencyMarkColor(mark.bucket);
+    const glyph = recencyMarkGlyph(mark.bucket);
+
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x - 2, y + h + 2, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    const glyphWidth = ctx.measureText(glyph).width;
+    ctx.fillText(glyph, x - 2 - glyphWidth / 2, y + h + 3);
     ctx.restore();
   }
   ctx.restore();

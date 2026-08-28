@@ -483,7 +483,7 @@ type findingsBroadcaster interface {
 // disabling the notification hook entirely — the P1 half of this task's
 // deliverable is present but harmless to omit if, say, the PVE client
 // failed to construct).
-func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, breakGlassSvc findings.BreakGlassProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, wgSvc findings.WGProvider, wanSvc findings.WanProvider, flowSvc findings.FlowProvider, k8sPoller *k8s.Poller, cephSvc findings.CephProvider, rogueSvc findings.RogueProvider, protectedSegments []string, capacitySvc findings.CapacityProvider, baselineSvc findings.BaselineProvider, federationSvc findings.FederationProvider, peerTrustSvc findings.PeerTrustProvider, storeCapacitySvc findings.StoreCapacityProvider, certSvc findings.CertProvider, gitSyncSvc findings.GitSyncProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, thresholds findings.HealthThresholds, haSvc findings.HAReplicationProvider, onCycle func(context.Context, []findings.Finding), logger *slog.Logger) *findings.Engine {
+func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, breakGlassSvc findings.BreakGlassProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, wgSvc findings.WGProvider, wanSvc findings.WanProvider, flowSvc findings.FlowProvider, k8sPoller *k8s.Poller, cephSvc findings.CephProvider, rogueSvc findings.RogueProvider, protectedSegments []string, capacitySvc findings.CapacityProvider, baselineSvc findings.BaselineProvider, federationSvc findings.FederationProvider, peerTrustSvc findings.PeerTrustProvider, storeCapacitySvc findings.StoreCapacityProvider, certSvc findings.CertProvider, gitSyncSvc findings.GitSyncProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, thresholds findings.HealthThresholds, haSvc findings.HAReplicationProvider, neighborFlapSvc findings.NeighborFlapProvider, onCycle func(context.Context, []findings.Finding), logger *slog.Logger) *findings.Engine {
 	return findings.New(findings.Config{
 		Graph:       graph,
 		Drift:       driftSvc,
@@ -563,9 +563,14 @@ func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc finding
 		// store's own on-disk size, backing store_near_capacity — nil-safe,
 		// same degradation convention as every other producer here uses.
 		StoreCapacity: storeCapacitySvc,
-		Thresholds:    thresholds,
-		Logger:        logger,
-		Notifier:      notifier,
+		// T-3905: neighborFlapAdapter (neighborhistory.go) reports the
+		// persisted binding-flap detector's currently-over-threshold
+		// bindings, backing neighbor_binding_flap — nil-safe, same
+		// degradation convention as every other producer here uses.
+		NeighborFlap: neighborFlapSvc,
+		Thresholds:   thresholds,
+		Logger:       logger,
+		Notifier:     notifier,
 		OnChange: func(count int) {
 			data, err := json.Marshal(findingsChangedEvent{Event: "findings.changed", Count: count})
 			if err != nil {

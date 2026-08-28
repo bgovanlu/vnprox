@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bgovanlu/vnprox/internal/change"
+	"github.com/bgovanlu/vnprox/internal/neighbor"
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
@@ -77,6 +78,35 @@ func (a flowPeerAdapter) ListFlowPage(ctx context.Context, filter peer.FlowFilte
 			SrcRef: s.SrcRef, DstRef: s.DstRef, Source: s.Source,
 			Bytes: s.Bytes, Packets: s.Packets, SrcPort: s.SrcPort, DstPort: s.DstPort,
 			Proto: s.Proto, VLAN: s.VLAN, IngressIfIndex: s.IngressIf, EgressIfIndex: s.EgressIf,
+		}
+	}
+	return out, next, nil
+}
+
+// neighborHistoryPeerAdapter adapts *neighbor.HistoryRecorder to
+// peer.NeighborBindingHistoryReader (T-3905, GET /api/peer/host/neighbors/
+// history) — the same wiring-layer bridge shape as flowPeerAdapter above,
+// converting internal/store's NeighborBindingFilter/NeighborBinding to
+// internal/peer's own duplicate wire types.
+type neighborHistoryPeerAdapter struct {
+	recorder *neighbor.HistoryRecorder
+}
+
+func (a neighborHistoryPeerAdapter) ListNeighborBindingPage(ctx context.Context, filter peer.NeighborBindingFilter, cursor string, limit int) ([]peer.NeighborBindingRecord, string, error) {
+	bindings, next, err := a.recorder.Query(ctx, store.NeighborBindingFilter{
+		IP: filter.IP, MAC: filter.MAC, FromTs: filter.FromTs, ToTs: filter.ToTs,
+	}, cursor, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	out := make([]peer.NeighborBindingRecord, len(bindings))
+	for i, b := range bindings {
+		out[i] = peer.NeighborBindingRecord{
+			ID: b.ID, At: b.At, Node: b.Node, IP: b.IP, MAC: b.MAC,
+			Iface: b.Iface, State: b.State,
+		}
+		if b.PrevMAC.Valid {
+			out[i].PrevMAC = b.PrevMAC.String
 		}
 	}
 	return out, next, nil

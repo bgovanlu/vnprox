@@ -23,6 +23,7 @@ import {
   House,
   LayoutTemplate,
   Network,
+  Radar,
   Route,
   Router,
   Scale,
@@ -65,6 +66,10 @@ const FLAT_ITEMS: NavItem[] = [
   { path: "/", label: "Home", icon: House },
   { path: "/topology", label: "Topology", icon: Waypoints },
   { path: "/guests", label: "Guests", icon: Server },
+  // T-3906: one guest's whole network story on one screen — NICs, path
+  // evaluation, firewall verdict, flows, findings. With no ref picked yet
+  // it renders its own picker, so this entry always lands somewhere real.
+  { path: "/guest", label: "Guest view", icon: Radar },
   { path: "/management", label: "Management", icon: SlidersHorizontal },
 ];
 

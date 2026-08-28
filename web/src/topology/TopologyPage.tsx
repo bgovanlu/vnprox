@@ -41,6 +41,9 @@ import { computeLatencyOverlayEdges } from "./latencyMode";
 import { useLatMeshHeatmapQuery } from "./latMeshQueries";
 import { computeDiffOverlay, summarizeDiffOverlay } from "./diffOverlay";
 import { useTopologyDiffQuery } from "./topologyDiffQuery";
+import { computeRecencyOverlay, summarizeRecencyOverlay } from "./recencyOverlay";
+import { useRecencyOverlayQuery } from "./recencyQuery";
+import { RecencyLegend } from "./RecencyLegend";
 import { HelpAnchor } from "../help/HelpAnchor";
 import { buildPreviewScene, summarizePreviewScene, summarizeUnprojectable } from "./previewOverlay";
 import { useChangesetPreviewQuery } from "./previewQuery";
@@ -223,6 +226,8 @@ function TopologyPageContent() {
   const toggleWGLayer = useTopologyStore((s) => s.toggleWGLayer);
   const k8sLayerActive = useTopologyStore((s) => s.k8sLayerActive);
   const toggleK8sLayer = useTopologyStore((s) => s.toggleK8sLayer);
+  const recencyLayerActive = useTopologyStore((s) => s.recencyLayerActive);
+  const toggleRecencyLayer = useTopologyStore((s) => s.toggleRecencyLayer);
   const toggleLayer = useTopologyStore((s) => s.toggleLayer);
   const setActiveLayers = useTopologyStore((s) => s.setActiveLayers);
   const setVlanFilter = useTopologyStore((s) => s.setVlanFilter);
@@ -651,6 +656,18 @@ function TopologyPageContent() {
     return computeDiffOverlay(topologyDiff, (ref) => onMap.has(ref));
   }, [topologyDiff, elements.nodes]);
 
+  // T-3908 "Recency" ("what changed") overlay: unlike the diff overlay
+  // above, there is no user-selected range in the URL — it always shows
+  // "what changed most recently", the triage question this layer exists to
+  // answer, the moment it's toggled on. v2-canvas-only, same scope note as
+  // every other client-only overlay above (recencyPaintable).
+  const recencyPaintable = recencyLayerActive && viewMode === "graph" && rendererVersion === "v2";
+  const { data: recencyDiffResult, isLoading: recencyLoading } = useRecencyOverlayQuery(recencyPaintable);
+  const recencyOverlay = useMemo(() => {
+    const onMap = new Set(elements.nodes.map((n) => n.id));
+    return computeRecencyOverlay(recencyDiffResult?.diff, (ref) => onMap.has(ref));
+  }, [recencyDiffResult, elements.nodes]);
+
   // AC4: the empty-state hint is purely data-driven (zero records
   // cluster-wide, once the initial fetch has actually completed — never
   // flashed during the brief initial loading window) and disappears the
@@ -1045,6 +1062,10 @@ function TopologyPageContent() {
             // (k8sPaintable).
             k8sLayerActive={k8sLayerActive}
             onToggleK8s={toggleK8sLayer}
+            // T-3908: same v2-canvas-only scope note as Kubernetes above
+            // (recencyPaintable).
+            recencyLayerActive={recencyLayerActive}
+            onToggleRecency={toggleRecencyLayer}
           />
           {viewMode === "graph" && (
             <>
@@ -1158,6 +1179,34 @@ function TopologyPageContent() {
               {diffOverlay.unattributedCount} unattributed
             </span>
           )}
+        </div>
+      )}
+
+      {/* T-3908: the recency overlay's own status line + legend — WCAG:
+          colour alone must not carry the signal, so every bucket's full
+          phrase is real text here (RecencyLegend), not just a ring color on
+          the canvas. Shown for every state the layer can be in (loading, no
+          snapshot history yet, or a resolved diff) rather than only the
+          happy path, matching the diff overlay's own "the map must SAY what
+          it's showing" rule above. */}
+      {recencyPaintable && (
+        <div className="flex flex-col gap-2 print:hidden">
+          <div
+            className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
+            role="status"
+          >
+            <span className="inline-flex items-center gap-1.5 font-medium">
+              What changed
+              <HelpAnchor topic="topology-recency-overlay" />
+            </span>{" "}
+            —{" "}
+            {recencyLoading
+              ? "Loading recent change history…"
+              : recencyDiffResult
+                ? `${summarizeRecencyOverlay(recencyOverlay)} Since ${new Date(recencyDiffResult.oldestSnapshotAt * 1000).toLocaleString()}.`
+                : "No snapshot history yet — enable scheduled snapshots or take a manual one to populate this layer."}
+          </div>
+          {!recencyLoading && recencyDiffResult && <RecencyLegend />}
         </div>
       )}
 
@@ -1341,6 +1390,7 @@ function TopologyPageContent() {
             latencyEdges={latencyOverlayEdges}
             mtuBadges={mtuOverlayBadges}
             diffMarks={previewActive ? previewScene.marks : diffOverlay.marks}
+            recencyMarks={recencyOverlay.marks}
             onFlowEdgeClick={(id) => {
               setSelectedFlowEdgeId(id);
             }}

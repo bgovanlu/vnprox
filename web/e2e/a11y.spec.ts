@@ -394,6 +394,7 @@ const SWEEP_ROUTES: SweepRoute[] = [
   { path: "/conntrack", heading: /^Conntrack explorer$/ },
   { path: "/edge", heading: /^Edge & NAT cockpit$/ },
   { path: "/route-explorer", heading: /^Route explorer$/ },
+  { path: "/firewall/compiled", heading: /^Compiled ruleset$/ },
   { path: "/diagnose", heading: /^No target selected$/, level: 2 },
   { path: "/analysis", heading: /^Analysis/ },
   { path: "/ports", heading: /^Ports$/ },

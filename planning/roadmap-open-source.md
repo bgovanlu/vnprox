@@ -40,7 +40,7 @@ order, with the dates that force it:
 | T-3713 simulator trace-path flake | quarantine expires; root cause known (`waitForLayout` weak settle condition) | **2026-09-22** |
 | ~~Tenant mutation routes not scoped to membership~~ | **CLOSED — was already fixed.** Re-derived 2026-08-27: commit `4713d72c` scoped all five routes 35 min after the debt sweep filed the finding; the sweep doc was never updated, so it read as open for eight days. Carded retroactively as T-3714. No code change needed. | ✅ done |
 | T-3712 duplicate peer-neighbor polls | 401-per-cycle noise; masks real replay alarms | hygiene |
-| T-3101-followup-01 `sdn.apply` surfaces foreign pending changes | owner already decided "surface and confirm" on 2026-08-19; unimplemented; must not be inherited by new SDN work | decided, open |
+| ~~T-3101-followup-01 `sdn.apply` surfaces foreign pending changes~~ | **CLOSED — already implemented.** Found 2026-08-28 while reading `internal/apidoc`: `internal/change/apply_sdn_foreign.go` names the card in its own header, with `GET /changesets/{id}/sdn-foreign-pending`, the `/ack` route, `web/src/changesets/sdnForeignPendingGate.ts`, the review-screen gate and tests. The debt sweep recorded it as open and was never corrected. | ✅ done |
 | T-3406-followup-02 badge-class consolidation (5 duplicated definitions) | third recurrence of the same defect class | prevention |
 | ~~`AlertRules.tsx` local filter union (12-of-17 sources defect twin)~~ | **CLOSED — already fixed.** Re-derived 2026-08-27: `AlertSourceFilterValue = FindingSource` and `SOURCE_LABELS: Record<FindingSource, string>` make a missing source a compile error, not a silent `undefined`. Test strengthened to derive expectations exhaustively so it stays that way. | ✅ done |
 | `planning/implementation-plan.md` stops at Phase 6 | this roadmap makes the staleness worse unless fixed; fold phases 7–41 into the index | docs |
@@ -78,11 +78,16 @@ ADR/docs site at `docs.vnprox.com`, and a working `security@` mailbox).
 > Until this is answered, **T-3808 is contested rather than blocked**, and T-4108 (nightly lab
 > burndown) and the first genuine Sigstore keyless signature inherit the same uncertainty.
 
-> **Wave 0 audit result (2026-08-27).** Executing this gate found that **three of its eight items
-> were already fixed** and had survived only as uncorrected records: the tenant privilege gap
+> **Wave 0 audit result (2026-08-27, amended 2026-08-28).** Executing this gate found that **four
+> of its eight items were already done** and had survived only as uncorrected records: the tenant
+> privilege gap
 > (closed by `4713d72c` thirty-five minutes after the sweep filed it), the AlertRules source union,
-> and — from the Phase 38 grounding pass — the premise that the repo still needed publishing. Each
-> was caught by the "re-derive before you fix" rule; without it, three agents would have spent
+> — from the Phase 38 grounding pass — the premise that the repo still needed publishing, and
+> T-3101-followup-01's foreign-SDN-pending confirmation, found on 2026-08-28 only because an
+> unrelated read of `internal/apidoc` happened to show its routes. That last one is the
+> uncomfortable case: nothing in the workflow would have caught it, because nobody was going to
+> re-derive an item until an agent was dispatched to "fix" it. Each of the others
+> was caught by the "re-derive before you fix" rule; without it, four agents would have spent
 > their run "fixing" working code, and the diffs would have looked like progress. The generalised
 > lesson, now on its third instance after the SDN-fabric fixtures and the five-day-stale
 > `CLAUDE.md` cluster line: **this project's documents outlive their accuracy, and a backlog is a

@@ -3508,6 +3508,31 @@ export interface FlowsPage {
   failedNodes?: string[];
 }
 
+/** GET /neighbors/history's `items` shape (docs/api.md's "Neighbor binding
+ * history" section, T-3905): one IP<->MAC binding transition. `prevMac` is
+ * omitted and `firstSeen` true when this is the (node, ip) pair's
+ * first-ever recorded row (a discovery, not a rebind). `state` mirrors
+ * internal/host.Neighbor's kernel neighbor-cache-state vocabulary. */
+export interface NeighborBinding {
+  node: string;
+  ip: string;
+  mac: string;
+  prevMac?: string;
+  iface?: string;
+  state?: "REACHABLE" | "STALE" | "PERMANENT";
+  at: number;
+  firstSeen: boolean;
+}
+
+/** GET /neighbors/history response envelope — the same cluster-fan-out
+ * shape GET /flows uses. */
+export interface NeighborHistoryPage {
+  items: NeighborBinding[];
+  nextCursor?: string;
+  partial?: boolean;
+  failedNodes?: string[];
+}
+
 /** The `flow.batch` WS event (docs/api.md's WebSocket section): pushed by
  * internal/flow.Service.Ingest whenever a listener decodes new records,
  * already rate-capped per push — the same "keep the newest N, count the
@@ -4618,4 +4643,90 @@ export interface RouteLookupResult {
   trace?: string[];
   ambiguous?: string[];
   rulesSkipped?: string[];
+}
+
+// --- Compiled ruleset (nftables), T-3904 ------------------------------------
+//
+// GET /firewall/compiled: a read-only view of the nftables ruleset PVE
+// actually compiled and installed on one node. Never an editor — no
+// mutation call exists anywhere in web/src/api/nftables.ts, matching the
+// permanent boundary docs/features.md documents ("vnprox ... never
+// installs its own nftables ruleset").
+
+/** One nftables table (internal/host.NftTable). `pveAuthored` is true only
+ * for the two table names planning/reports/evidence/
+ * pve-9.2.4-nftables-firewall-engine-2026-08-28.txt confirms
+ * proxmox-firewall itself creates — any other table is still listed but
+ * never treated as PVE's compiled output. */
+export interface NftTable {
+  family: string;
+  name: string;
+  pveAuthored: boolean;
+}
+
+/** One chain within an NftTable (internal/host.NftChain). `hook`/
+ * `priority`/`policy` are set only for a base chain (attached to a
+ * netfilter hook). `builtin` is true for one of proxmox-firewall's fixed
+ * protection/plumbing chains — present whether or not the operator
+ * authored any rule at all. */
+export interface NftChain {
+  name: string;
+  table: NftTable;
+  builtin: boolean;
+  type?: string;
+  hook?: string;
+  priority?: string;
+  policy?: string;
+}
+
+/** A compiled rule's best-effort link back to the vnprox-authored FwRule
+ * that produced it, or an honest statement that none could be determined
+ * (T-3904 AC2). `determined: false` always carries a specific `reason` —
+ * never render a link when `determined` is false, and always show
+ * `reason` to the operator rather than a bare placeholder. `scope`/`ref`/
+ * `pos`/`origin` (set only when `determined`) identify the matched rule
+ * using the same identity triple web/src/firewall/focusRule.ts's deep-link
+ * contract already uses. */
+export interface NftRuleAttribution {
+  determined: boolean;
+  scope?: string;
+  ref?: string;
+  origin?: string;
+  pos?: number;
+  reason?: string;
+}
+
+/** One compiled nftables rule (internal/host.NftRule). Match fields other
+ * than `table`/`chain`/`handle`/`attribution` are best-effort extractions
+ * from the rule's nft JSON expression (upstream nft's own generic wire
+ * format) — an omitted field means this reader did not recognize a
+ * corresponding match, not necessarily that the rule has none. */
+export interface NftRule {
+  table: NftTable;
+  chain: string;
+  handle: number;
+  attribution: NftRuleAttribution;
+  comment?: string;
+  verdict?: string;
+  proto?: string;
+  srcAddr?: string;
+  dstAddr?: string;
+  srcPort?: string;
+  dstPort?: string;
+  iifname?: string;
+  oifname?: string;
+  log?: boolean;
+}
+
+/** `GET /firewall/compiled`'s response. `empty` is true when no
+ * PVE-authored table was found at all — genuinely ambiguous between "this
+ * scope's firewall is disabled" and "this node compiles the legacy
+ * iptables engine instead of nftables" (see the evidence file); render
+ * both possibilities, never guess which. */
+export interface NftRulesetResponse {
+  node: string;
+  tables: NftTable[];
+  chains: NftChain[];
+  rules: NftRule[];
+  empty: boolean;
 }

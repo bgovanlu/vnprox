@@ -30,6 +30,7 @@ import { useNarrowViewport } from "../lib/useNarrowViewport";
 import { SimulatorPage } from "../simulator/SimulatorPage";
 import { MacFdbBrowser } from "../tools/MacFdbBrowser";
 import { MulticastMdbBrowser } from "../tools/MulticastMdbBrowser";
+import { NeighborHistoryTimeline } from "../tools/NeighborHistoryTimeline";
 import { useTopologyQuery } from "../topology/queries";
 
 export function ToolsPage() {
@@ -68,7 +69,7 @@ export function ToolsPage() {
          * "go to Findings" link. */}
         <EmptyState
           title="The rest of Tools needs a larger screen"
-          description="The path simulator, raw interfaces editor, MAC/FDB search, multicast/MDB browser, firewall log viewer, and documentation export need a desktop-sized screen. Creating a fixing changeset or launching a redundancy wizard from a finding does too — a pending changeset's confirm/roll back controls still work from here."
+          description="The path simulator, raw interfaces editor, MAC/FDB search, multicast/MDB browser, neighbor binding timeline, firewall log viewer, and documentation export need a desktop-sized screen. Creating a fixing changeset or launching a redundancy wizard from a finding does too — a pending changeset's confirm/roll back controls still work from here."
           density="compact"
         />
       </div>
@@ -87,8 +88,9 @@ export function ToolsPage() {
         description={
           <>
             Path simulator, the raw <code>/etc/network/interfaces</code> editor, drift findings, MAC/FDB search,
-            multicast/MDB browser, and the firewall log viewer. The node picker below applies to the raw editor
-            only — saving there still goes through the normal changeset review/apply flow, never a bypass.
+            multicast/MDB browser, the neighbor binding timeline, and the firewall log viewer. The node picker below
+            applies to the raw editor only — saving there still goes through the normal changeset review/apply flow,
+            never a bypass.
           </>
         }
         actions={
@@ -145,6 +147,10 @@ export function ToolsPage() {
       <hr className="border-slate-200 dark:border-slate-800" />
 
       <MulticastMdbBrowser />
+
+      <hr className="border-slate-200 dark:border-slate-800" />
+
+      <NeighborHistoryTimeline />
 
       <hr className="border-slate-200 dark:border-slate-800" />
 

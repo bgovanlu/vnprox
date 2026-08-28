@@ -401,6 +401,60 @@ func fetchClusterAudit(ctx context.Context, local AuditService, peers PeerAuditS
 	return items, next, partial, failed, nil
 }
 
+// --- Neighbor binding history fan-out (T-3905) ---
+//
+// Mirrors fetchClusterFlows exactly (see its own doc comment): the
+// neighbor_bindings ring is node-local app data, same as flow_samples, so a
+// cluster-wide view re-queries every peer and merges the pages.
+
+func toPeerNeighborBindingFilter(f store.NeighborBindingFilter) peer.NeighborBindingFilter {
+	return peer.NeighborBindingFilter{IP: f.IP, MAC: f.MAC, FromTs: f.FromTs, ToTs: f.ToTs}
+}
+
+// fetchClusterNeighborBindings merges the local node's neighbor_bindings
+// ring with every reachable peer's, for GET /neighbors/history.
+func fetchClusterNeighborBindings(ctx context.Context, local NeighborHistoryLocalSource, peers PeerNeighborHistorySource, filter store.NeighborBindingFilter, cursor string, limit int) ([]neighborBindingResponse, string, bool, []string, error) {
+	nodes, byNode, discoveryFailed := clusterSources(ctx, peers)
+	peerFilter := toPeerNeighborBindingFilter(filter)
+
+	fetch := func(ctx context.Context, node, cur string, lim int) ([]keyed[neighborBindingResponse], string, error) {
+		if node == localSourceKey {
+			bindings, next, err := local.Query(ctx, filter, cur, lim)
+			if err != nil {
+				return nil, "", err
+			}
+			out := make([]keyed[neighborBindingResponse], len(bindings))
+			for i, b := range bindings {
+				out[i] = keyed[neighborBindingResponse]{item: toNeighborBindingResponse(b), at: b.At, tie: strconv.FormatInt(b.ID, 10)}
+			}
+			return out, next, nil
+		}
+		p, ok := byNode[node]
+		if !ok {
+			return nil, "", fmt.Errorf("api: peer %s: %w", node, peer.ErrPeerUnreachable)
+		}
+		recs, next, err := peers.NeighborBindingHistory(ctx, p, peerFilter, cur, lim)
+		if err != nil {
+			return nil, "", err
+		}
+		out := make([]keyed[neighborBindingResponse], len(recs))
+		for i, rec := range recs {
+			out[i] = keyed[neighborBindingResponse]{item: peerNeighborBindingRecordToResponse(rec), at: rec.At, tie: strconv.FormatInt(rec.ID, 10)}
+		}
+		return out, next, nil
+	}
+
+	items, next, partial, failed, err := mergeClusterPage(ctx, nodes, fetch, cursor, limit)
+	if err != nil {
+		return nil, "", false, nil, err
+	}
+	if discoveryFailed {
+		partial = true
+		failed = append(failed, "<cluster peer discovery>")
+	}
+	return items, next, partial, failed, nil
+}
+
 // --- Snapshot fan-out ---
 
 func snapshotRecordToSummary(r peer.SnapshotRecord) change.SnapshotSummary {

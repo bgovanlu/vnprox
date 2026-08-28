@@ -9,11 +9,13 @@ import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { GlobalTopologyGate } from "./topology/federation/GlobalTopologyGate";
 import { GuestsPage } from "./pages/GuestsPage";
+import { GuestEgoPage } from "./pages/GuestEgoPage";
 import { SdnPage } from "./pages/SdnPage";
 import { FirewallPage } from "./pages/FirewallPage";
 import { FlowExplorerPage } from "./pages/FlowExplorerPage";
 import { ConntrackPage } from "./pages/ConntrackPage";
 import { EdgePage } from "./pages/EdgePage";
+import { CompiledRulesetPage } from "./pages/CompiledRulesetPage";
 import { RouteExplorerPage } from "./pages/RouteExplorerPage";
 import { DiagnosePage } from "./pages/DiagnosePage";
 import { AnalysisPage } from "./pages/AnalysisPage";
@@ -134,6 +136,17 @@ export function App() {
                 </DesktopOnlyRoute>
               }
             />
+            {/* T-3906: the guest ego view. Not wrapped by a picker-only
+              * assumption — with no `?ref=` it renders its own picker, so a
+              * direct nav-rail/bookmark hit always lands somewhere useful. */}
+            <Route
+              path="/guest"
+              element={
+                <DesktopOnlyRoute pageLabel="Guest view">
+                  <GuestEgoPage />
+                </DesktopOnlyRoute>
+              }
+            />
             <Route
               path="/sdn"
               element={
@@ -190,6 +203,14 @@ export function App() {
               element={
                 <DesktopOnlyRoute pageLabel="Route explorer">
                   <RouteExplorerPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/firewall/compiled"
+              element={
+                <DesktopOnlyRoute pageLabel="Compiled ruleset">
+                  <CompiledRulesetPage />
                 </DesktopOnlyRoute>
               }
             />

@@ -103,6 +103,14 @@ export interface TopologyUIState {
    * mtuLayerActive/latencyLayerActive. Same per-session (not
    * persisted-layout) lifetime and v2-renderer-only scope as those three. */
   k8sLayerActive: boolean;
+  /** T-3908 "Recency" layer ("what changed" heat): paints every entity a
+   * point-in-time topology diff covers with a corner badge colored by how
+   * long ago it last changed, or, for a change no changeset explains, a
+   * distinct drift badge (topology/recencyOverlay.ts) — a second,
+   * independent overlay from k8sLayerActive/wgLayerActive/mtuLayerActive/
+   * latencyLayerActive. Same per-session (not persisted-layout) lifetime
+   * and v2-renderer-only scope as those four. */
+  recencyLayerActive: boolean;
 
   toggleLayer: (layer: Layer) => void;
   /** T-907: sets the whole active-layer set at once (as opposed to
@@ -120,6 +128,7 @@ export interface TopologyUIState {
   toggleMTULayer: () => void;
   toggleWGLayer: () => void;
   toggleK8sLayer: () => void;
+  toggleRecencyLayer: () => void;
   setVlanFilter: (vlan: number | undefined) => void;
   select: (id: string | undefined) => void;
   hover: (id: string | undefined) => void;
@@ -151,6 +160,7 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   mtuLayerActive: false,
   wgLayerActive: false,
   k8sLayerActive: false,
+  recencyLayerActive: false,
 
   toggleLayer: (layer) => {
     set((state) => {
@@ -187,6 +197,9 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   },
   toggleK8sLayer: () => {
     set((state) => ({ k8sLayerActive: !state.k8sLayerActive }));
+  },
+  toggleRecencyLayer: () => {
+    set((state) => ({ recencyLayerActive: !state.recencyLayerActive }));
   },
   setVlanFilter: (vlan) => {
     set({ vlanFilter: vlan });

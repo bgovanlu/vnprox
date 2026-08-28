@@ -130,6 +130,9 @@
       "name": "mtuprobe"
     },
     {
+      "name": "neighbors"
+    },
+    {
       "name": "nodes"
     },
     {
@@ -1386,6 +1389,100 @@
       "get": {
         "operationId": "getPeerHostNeighbors",
         "summary": "Return the peer's neighbour table.",
+        "tags": [
+          "peer"
+        ],
+        "security": [
+          {
+            "peerSignature": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Response body; see docs/api.md for this route's shape."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or the credential is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is valid but lacks the required capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/peer/host/neighbors/history": {
+      "get": {
+        "operationId": "getPeerHostNeighborsHistory",
+        "summary": "Return the peer's IP\u003c-\u003eMAC binding transition history.",
+        "tags": [
+          "peer"
+        ],
+        "security": [
+          {
+            "peerSignature": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Response body; see docs/api.md for this route's shape."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or the credential is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is valid but lacks the required capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/peer/host/nftables": {
+      "get": {
+        "operationId": "getPeerHostNftables",
+        "summary": "Return the peer's compiled nftables ruleset.",
         "tags": [
           "peer"
         ],
@@ -8433,6 +8530,53 @@
         }
       }
     },
+    "/api/v1/firewall/compiled": {
+      "get": {
+        "operationId": "getFirewallCompiled",
+        "summary": "Return the nftables ruleset the node has actually installed, cross-linked to the vnprox rules that produced it where attribution is reliable.",
+        "tags": [
+          "firewall"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Response body; see docs/api.md for this route's shape."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or the credential is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is valid but lacks the required capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/firewall/effects": {
       "get": {
         "operationId": "getFirewallEffects",
@@ -11733,6 +11877,53 @@
         "summary": "Return path-MTU probe results.",
         "tags": [
           "mtuprobe"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Response body; see docs/api.md for this route's shape."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or the credential is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is valid but lacks the required capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/neighbors/history": {
+      "get": {
+        "operationId": "getNeighborsHistory",
+        "summary": "Return IP\u003c-\u003eMAC binding transition history across the cluster.",
+        "tags": [
+          "neighbors"
         ],
         "security": [
           {

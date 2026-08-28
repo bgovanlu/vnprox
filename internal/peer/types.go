@@ -173,6 +173,15 @@ type mdbResponse struct {
 	Content string `json:"content"`
 }
 
+// nftRulesetResponse is GET /api/peer/host/nftables' body (T-3904): node's
+// raw `nft -j list ruleset` output, the same "{content: string}" shape
+// mdbResponse uses above — an empty Content is itself a clean (if, per
+// HostReader.NftRuleset's doc comment, genuinely ambiguous) "no compiled
+// ruleset" result, not a distinct absent/error state to distinguish here.
+type nftRulesetResponse struct {
+	Content string `json:"content"`
+}
+
 // routeContentResponse is GET /api/peer/host/route/{fib-v4,fib-v6,
 // rules-v4,rules-v6}'s shared body shape (T-3903): node's raw
 // `ip -j ...` output, passed straight through as JSON (unlike
@@ -295,6 +304,43 @@ type FlowRecord struct {
 type flowPageResponse struct {
 	NextCursor string       `json:"nextCursor,omitempty"`
 	Items      []FlowRecord `json:"items"`
+}
+
+// NeighborBindingFilter narrows GET /api/peer/host/neighbors/history
+// exactly like docs/api.md's GET /neighbors/history query params. This is
+// peer's own copy of that filter shape (rather than importing
+// internal/store's store.NeighborBindingFilter), same reasoning as
+// FlowFilter's doc comment.
+type NeighborBindingFilter struct {
+	IP     string `json:"ip,omitempty"`
+	MAC    string `json:"mac,omitempty"`
+	FromTs int64  `json:"fromTs,omitempty"`
+	ToTs   int64  `json:"toTs,omitempty"`
+}
+
+// NeighborBindingRecord is one row of GET /api/peer/host/neighbors/history'
+// page (T-3905): mirrors docs/api.md's neighborBinding shape field-for-
+// field, plus ID — a peer-wire-only field, the same cluster-merge sort
+// tiebreak role FlowRecord.ID plays.
+type NeighborBindingRecord struct {
+	Node    string `json:"node"`
+	IP      string `json:"ip"`
+	MAC     string `json:"mac"`
+	PrevMAC string `json:"prevMac,omitempty"`
+	Iface   string `json:"iface,omitempty"`
+	State   string `json:"state,omitempty"`
+	ID      int64  `json:"id"`
+	At      int64  `json:"at"`
+}
+
+// neighborBindingPageResponse is GET /api/peer/host/neighbors/history'
+// body: one page of this node's own local neighbor_bindings ring, same
+// envelope shape as flowPageResponse — no partial/failedNodes (a peer only
+// ever reports its own node-local page; the fan-out/merge happens on the
+// calling daemon).
+type neighborBindingPageResponse struct {
+	NextCursor string                  `json:"nextCursor,omitempty"`
+	Items      []NeighborBindingRecord `json:"items"`
 }
 
 // installLLDPRequest is POST /api/peer/host/lldp/install's body: an

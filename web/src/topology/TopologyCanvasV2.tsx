@@ -43,9 +43,10 @@ import { buildA11yProxies } from "./a11yBridge";
 import { TopologyA11yLayer } from "./TopologyA11yLayer";
 import { AnnotationLayer, type AnnotationAnchor } from "./AnnotationLayer";
 import type { Annotation, MapRegion } from "../api/types";
-import { drawScene, drawFlowOverlay, drawLatencyOverlay, drawMTUOverlay, drawDiffOverlay, pulseAlphaForPhase, type FlowOverlayEdge, type SceneTheme } from "./canvasDraw";
+import { drawScene, drawFlowOverlay, drawLatencyOverlay, drawMTUOverlay, drawDiffOverlay, drawRecencyOverlay, pulseAlphaForPhase, type FlowOverlayEdge, type SceneTheme } from "./canvasDraw";
 import type { LatencyOverlayEdge } from "./latencyMode";
 import type { DiffMark } from "./diffOverlay";
+import type { RecencyMark } from "./recencyOverlay";
 import type { MTUOverlayBadge } from "./mtuOverlay";
 import { applyLod, parseLodId, zoomBandFor } from "./lod";
 import { Minimap } from "./Minimap";
@@ -123,6 +124,13 @@ export interface TopologyCanvasV2Props {
    * undefined/empty (the default) draws nothing extra, so every call site
    * that has not selected a range is unaffected. */
   diffMarks?: readonly DiffMark[];
+  /** T-3908 "what changed" recency overlay marks (topology/recencyOverlay.ts)
+   * — drawn after the diff overlay as a small filled corner badge (opposite
+   * corner from the diff ring's own glyph, so both can be active at once
+   * without visually colliding), colored by elapsed time since each
+   * entity's last recorded change. undefined/empty (the default) draws
+   * nothing extra, so every pre-T-3908 call site is unaffected. */
+  recencyMarks?: readonly RecencyMark[];
   /** Fires when a Flows-layer overlay edge is clicked — takes priority
    * over the plain-pane click (onPaneClick) when both could apply, so a
    * click that lands on a flow edge always opens its drill-down rather
@@ -208,6 +216,7 @@ export function TopologyCanvasV2({
   latencyEdges,
   mtuBadges,
   diffMarks,
+  recencyMarks,
   onFlowEdgeClick,
   regions,
   notes,
@@ -401,6 +410,7 @@ export function TopologyCanvasV2({
   const hasLatencyEdges = (latencyEdges?.length ?? 0) > 0;
   const hasMTUBadges = (mtuBadges?.length ?? 0) > 0;
   const hasDiffMarks = (diffMarks?.length ?? 0) > 0;
+  const hasRecencyMarks = (recencyMarks?.length ?? 0) > 0;
   const [flowDashOffset, setFlowDashOffset] = useState(0);
   useEffect(() => {
     if (reducedMotion || !hasFlowEdges) {
@@ -491,12 +501,27 @@ export function TopologyCanvasV2({
       });
     }
 
-    // T-2704: the point-in-time diff overlay, drawn last of all — its rings
-    // surround the node box, so nothing else may paint over them.
+    // T-2704: the point-in-time diff overlay, drawn before the recency
+    // overlay — its rings surround the node box, so nothing except the
+    // recency badge (a different corner, see drawRecencyOverlay's doc
+    // comment) may paint over them.
     if (hasDiffMarks && diffMarks) {
       drawDiffOverlay(ctx, {
         nodes: lodElements.nodes,
         marks: diffMarks,
+        viewport,
+        nodeSize: DEFAULT_NODE_SIZE,
+        dragTopLeft,
+      });
+    }
+
+    // T-3908: the "what changed" recency overlay, drawn last of all — a
+    // small corner badge, deliberately in the opposite corner from the diff
+    // ring's own glyph so the two can both be active without colliding.
+    if (hasRecencyMarks && recencyMarks) {
+      drawRecencyOverlay(ctx, {
+        nodes: lodElements.nodes,
+        marks: recencyMarks,
         viewport,
         nodeSize: DEFAULT_NODE_SIZE,
         dragTopLeft,
@@ -522,6 +547,8 @@ export function TopologyCanvasV2({
     mtuBadges,
     hasDiffMarks,
     diffMarks,
+    hasRecencyMarks,
+    recencyMarks,
   ]);
 
   // --- Pointer helpers -----------------------------------------------------
