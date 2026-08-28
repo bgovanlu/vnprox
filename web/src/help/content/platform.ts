@@ -29,6 +29,10 @@ export const PLATFORM_TOPICS: readonly HelpTopic[] = [
         heading: "The boundary",
         body: "Federation never changes another cluster's configuration for you. A changeset always belongs to exactly one cluster and is rejected if an edit would reach across the boundary. It federates views and workflows, not ownership.",
       },
+      {
+        heading: "Interconnect edges on the global map",
+        body: "A cluster with a linked WireGuard tunnel draws as an edge from this vnprox instance to that cluster's capsule, in one of three states: up (a fresh handshake), down (the tunnel is configured but not currently passing traffic — the single most useful thing this view can show), or unknown (this node has no live reading for that tunnel right now). State is always shown as text, never colour alone. A cluster with no linked tunnel simply has no edge — nothing is misconfigured, there is just no WireGuard interconnect to report on.",
+      },
     ],
     seeAlso: ["settings-federation-page", "cluster-awareness", "ipam-cross-cluster", "wireguard-connect-clusters"],
   },

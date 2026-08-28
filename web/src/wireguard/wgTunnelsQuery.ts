@@ -17,13 +17,15 @@ export const wireGuardTunnelsKey = ["wireguard-tunnels"] as const;
  * "stale" transition reasonably prompt without hammering the read route. */
 const REFETCH_MS = 30_000;
 
-export function useWireGuardTunnelsQuery(enabled: boolean): { data: WireGuardTunnel[] | undefined; isLoading: boolean } {
-  const { data, isLoading } = useQuery({
+export function useWireGuardTunnelsQuery(
+  enabled: boolean,
+): { data: WireGuardTunnel[] | undefined; isLoading: boolean; isError: boolean } {
+  const { data, isLoading, isError } = useQuery({
     queryKey: wireGuardTunnelsKey,
     queryFn: fetchWireGuardTunnels,
     enabled,
     staleTime: 10_000,
     refetchInterval: enabled ? REFETCH_MS : false,
   });
-  return { data, isLoading };
+  return { data, isLoading, isError };
 }

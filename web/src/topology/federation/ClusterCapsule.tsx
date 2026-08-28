@@ -9,13 +9,34 @@
 // cluster level).
 import clsx from "clsx";
 import type { ClusterSummary } from "../../api/federation";
+import type { ClusterInterconnect } from "./interconnects";
+
+const INTERCONNECT_BADGE_CLASS: Record<ClusterInterconnect["state"], string> = {
+  up: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
+  down: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200",
+  unknown: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+};
+
+/** Text-only labels — the badge's colour is never the sole carrier of which
+ * of the three states applies (WCAG 1.4.1), matching the "findings"/"drift"
+ * badges above it, which are text + colour, never colour alone. */
+const INTERCONNECT_LABEL: Record<ClusterInterconnect["state"], string> = {
+  up: "WG interconnect: up",
+  down: "WG interconnect: down",
+  unknown: "WG interconnect: unknown",
+};
 
 export interface ClusterCapsuleProps {
   summary: ClusterSummary;
   onDrill: (clusterId: string) => void;
+  /** T-3909: this cluster's WireGuard interconnect state, if it has one
+   * (clusters with no linked tunnel get no badge at all — undefined here
+   * means "not tunnel-linked", not "unknown state"). Optional so every
+   * existing caller/test that doesn't pass one is unaffected. */
+  interconnect?: ClusterInterconnect;
 }
 
-export function ClusterCapsule({ summary, onDrill }: ClusterCapsuleProps) {
+export function ClusterCapsule({ summary, onDrill, interconnect }: ClusterCapsuleProps) {
   const { reachable, drift } = summary;
   return (
     <button
@@ -76,9 +97,27 @@ export function ClusterCapsule({ summary, onDrill }: ClusterCapsuleProps) {
               </span>
             )}
           </div>
+          {interconnect && (
+            <span
+              className={clsx("w-fit rounded px-1.5 py-0.5 text-xs font-medium", INTERCONNECT_BADGE_CLASS[interconnect.state])}
+              title={`WireGuard tunnel ${interconnect.tunnelId} (${interconnect.tunnelSource})`}
+            >
+              {INTERCONNECT_LABEL[interconnect.state]}
+            </span>
+          )}
         </>
       ) : (
-        <p className="text-xs">Last aggregation could not reach this cluster.</p>
+        <>
+          <p className="text-xs">Last aggregation could not reach this cluster.</p>
+          {interconnect && (
+            <span
+              className={clsx("w-fit rounded px-1.5 py-0.5 text-xs font-medium", INTERCONNECT_BADGE_CLASS[interconnect.state])}
+              title={`WireGuard tunnel ${interconnect.tunnelId} (${interconnect.tunnelSource})`}
+            >
+              {INTERCONNECT_LABEL[interconnect.state]}
+            </span>
+          )}
+        </>
       )}
     </button>
   );

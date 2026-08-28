@@ -60,4 +60,32 @@ describe("ClusterCapsule", () => {
     render(<ClusterCapsule summary={{ ...reachable, findings: 1, drift: true }} onDrill={vi.fn()} />);
     expect(screen.getByText("1 finding")).toBeInTheDocument();
   });
+
+  it("renders no interconnect badge when the cluster has no WireGuard linkage", () => {
+    render(<ClusterCapsule summary={reachable} onDrill={vi.fn()} />);
+    expect(screen.queryByText(/WG interconnect:/)).not.toBeInTheDocument();
+  });
+
+  it("renders a text interconnect badge on a reachable cluster (T-3909)", () => {
+    render(
+      <ClusterCapsule
+        summary={reachable}
+        onDrill={vi.fn()}
+        interconnect={{ clusterId: "cl-a", clusterName: "east", tunnelId: "tun-1", tunnelSource: "explicit", state: "down" }}
+      />,
+    );
+    expect(screen.getByText("WG interconnect: down")).toBeInTheDocument();
+  });
+
+  it("still renders the interconnect badge on an unreachable (PVE-side) capsule — the two signals are independent", () => {
+    render(
+      <ClusterCapsule
+        summary={unreachable}
+        onDrill={vi.fn()}
+        interconnect={{ clusterId: "cl-b", clusterName: "west", tunnelId: "tun-2", tunnelSource: "peer", state: "up" }}
+      />,
+    );
+    expect(screen.getByText("unreachable")).toBeInTheDocument();
+    expect(screen.getByText("WG interconnect: up")).toBeInTheDocument();
+  });
 });
