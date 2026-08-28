@@ -749,6 +749,12 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// measured upgrade) directly below and api.Options.MTUProbe further
 	// down; mtuProbeActors joins the same run group.
 	mtuProbeSvc, mtuProbeActors := setupMTUProbe(cfg, latMeshDiscoverer, logger)
+	// T-4106: overlay-readiness preflight (change.OverlayReadinessPreflighter).
+	// mtuProbeSvc is available now; evpnSvc is built later in this function
+	// (it needs peerClient/sdnSvc) and wired in via overlayAdapterVal.set()
+	// once constructed, the same late-bind pattern failsimAdapter's own
+	// changeSvc field uses in the other direction.
+	overlayAdapterVal := newOverlayAdapter(mtuProbeSvc)
 	// T-1401: WireGuard. The read service (store config + live wg-show-dump
 	// status) backs both the findings engine's wg_handshake_stale/
 	// wg_endpoint_drift checks and the api.Options.WireGuard read routes; the
@@ -1153,6 +1159,9 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		// the scheduler consults this at windowStart on top of (never instead
 		// of) its existing touchesMgmtPath exclusion.
 		ImpactPreflight: failsimSvc,
+		// T-4106: overlay-readiness preflight seam — see overlayAdapterVal's
+		// own construction comment above for the evpnSvc late-bind.
+		OverlayPreflight: overlayAdapterVal,
 		// T-1704: single-writer fence. haGuard.IsLeader gates the unattended
 		// auto-rollback timer and the scheduler tick on this daemon holding the
 		// HA leader lease; nil-until-set / HA-disabled reports leader=true, so
@@ -1529,6 +1538,11 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		LocalNode: localNode,
 		SDN:       evpnSDN,
 	})
+	// T-4106: late-bind the overlay-readiness preflight's BGP signal onto
+	// this now-constructed evpnSvc — see overlayAdapterVal's own
+	// construction comment (near mtuProbeSvc, above) for why this can't be
+	// wired at changeSvc construction time.
+	overlayAdapterVal.set(evpnSvc)
 
 	// T-3903: the route explorer's cluster-aware Service, same
 	// realHost/peerClient/localNode dependencies and typed-nil-safety

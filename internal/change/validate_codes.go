@@ -338,6 +338,17 @@ const (
 	// the zone that gives it its type created in the same changeset are
 	// resolved together.
 	codeSDNVNIRequired = "sdn.vni_required"
+	// codeSDNOverlayReadiness is T-4106's composed overlay-readiness
+	// verdict: one finding per touched vxlan/evpn zone combining BGP
+	// session state (internal/evpn), VTEP reachability, and measured MTU
+	// headroom (internal/mtuprobe) — a single code so a client sees one
+	// thing per zone to correlate, not three; the message text itself
+	// names which sub-signal(s) failed or could not be determined (see
+	// zoneOverlayFinding, validate_overlay.go). SeverityError when BGP is
+	// confirmed down or VTEP is confirmed unreachable (blocks, like any
+	// other sdn-class error above); SeverityWarning when a signal could
+	// not be determined at all, or the MTU headroom check fails.
+	codeSDNOverlayReadiness = "sdn.overlay_readiness"
 	// codeSNATRequiresGateway is T-701 acceptance criterion 2: a subnet
 	// whose *effective* state (this changeset's own net effect, folded
 	// over the base snapshot — see effectiveSubnets) has snat=true but no

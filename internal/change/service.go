@@ -115,25 +115,31 @@ type MetricsRecorder interface {
 // Now/Logger default sensibly when zero, mirroring internal/auth.Config's
 // same conventions.
 type Config struct {
-	Metrics              MetricsRecorder
-	Timers               NodeTimerAgent
-	Qos                  QosGateway
-	TcMirror             TcMirrorGateway
-	WG                   WGGateway
-	Sealer               SecretSealer
-	Canary               CanaryHealthChecker
-	Clock                Clock
-	RevertGateways       RevertGatewayFactory
-	WgCarriers           WgCarrierSource
-	Switches             SwitchGateway
-	SwitchScope          SwitchScopeSource
-	Nodes                NodeAgent
-	Refresher            InventoryRefresher
-	WS                   Broadcaster
-	Inventory            InventorySource
-	Allocations          AllocationsSource
-	ClusterMembership    ClusterMembershipSource
-	ImpactPreflight      ImpactPreflighter
+	Metrics           MetricsRecorder
+	Timers            NodeTimerAgent
+	Qos               QosGateway
+	TcMirror          TcMirrorGateway
+	WG                WGGateway
+	Sealer            SecretSealer
+	Canary            CanaryHealthChecker
+	Clock             Clock
+	RevertGateways    RevertGatewayFactory
+	WgCarriers        WgCarrierSource
+	Switches          SwitchGateway
+	SwitchScope       SwitchScopeSource
+	Nodes             NodeAgent
+	Refresher         InventoryRefresher
+	WS                Broadcaster
+	Inventory         InventorySource
+	Allocations       AllocationsSource
+	ClusterMembership ClusterMembershipSource
+	ImpactPreflight   ImpactPreflighter
+	// OverlayPreflight (T-4106) is the seam onto internal/evpn +
+	// internal/mtuprobe backing the overlay-readiness preflight
+	// (validate_overlay.go) — nil is the documented "feature not wired"
+	// degraded mode (overlayReadinessValidate skips entirely, exactly like
+	// a nil ImpactPreflight never vetoes).
+	OverlayPreflight     OverlayReadinessPreflighter
 	LeaderGuard          func() bool
 	FreezeOverrides      *store.ChangesetFreezeOverrideRepo
 	Comments             *store.ChangesetCommentRepo
@@ -204,6 +210,7 @@ type Service struct {
 	switchScope          SwitchScopeSource
 	membership           ClusterMembershipSource
 	impactPreflight      ImpactPreflighter
+	overlayPreflight     OverlayReadinessPreflighter
 	metrics              MetricsRecorder
 	canary               CanaryHealthChecker
 	tcMirrorSess         *store.TcMirrorSessionRepo
@@ -317,7 +324,8 @@ func NewService(cfg Config) (*Service, error) {
 		guards: map[string]*autoRollbackGuard{}, autoRollbackDefault: cfg.AutoRollbackOnError,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
 		localClusterID: cfg.LocalClusterID, membership: cfg.ClusterMembership, impactPreflight: cfg.ImpactPreflight,
-		nodes: cfg.Nodes, nodeTimers: cfg.Timers, qos: cfg.Qos, wg: cfg.WG, sealer: cfg.Sealer, revertGateways: cfg.RevertGateways, wgCarriers: cfg.WgCarriers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
+		overlayPreflight: cfg.OverlayPreflight,
+		nodes:            cfg.Nodes, nodeTimers: cfg.Timers, qos: cfg.Qos, wg: cfg.WG, sealer: cfg.Sealer, revertGateways: cfg.RevertGateways, wgCarriers: cfg.WgCarriers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
 		tcMirror: cfg.TcMirror, tcMirrorSess: cfg.TcMirrorSessions, tcMirrorLimits: defaultTcMirrorLimits(cfg.TcMirrorLimits),
 		switches: cfg.Switches, switchScope: cfg.SwitchScope, switchPushEnabled: cfg.SwitchPushEnabled,
 		confirmTimeout:     clampConfirmTimeout(confirmTimeout),

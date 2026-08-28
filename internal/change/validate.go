@@ -44,8 +44,20 @@ type SafetyOptions struct {
 	// OverriddenTags (T-4006) is threaded straight into
 	// PolicyInput.OverriddenTags — see that field's own doc comment.
 	OverriddenTags map[string]string
-	Switches       SwitchSafetyInput
-	Allocations    []DHCPRangeAllocation
+	// Overlay (T-4106) is the already-fetched overlay-readiness signal set
+	// — BGP session state, VTEP reachability, and measured MTU headroom —
+	// for every vxlan/evpn zone this changeset's own zone.create/update
+	// ops touch, keyed by zone ID. Assembled once per validate call by
+	// Service.overlayReadinessInput via the injected
+	// OverlayReadinessPreflighter seam (validate_overlay.go), the same
+	// "Service reads live state, the pure validator only compares against
+	// what it's given" shape Allocations/TcMirror/Switches below already
+	// follow. A nil map means the seam is not wired at all (feature off),
+	// which overlayReadinessValidate treats as "skip entirely" — exactly
+	// TcMirror's zero-ceilings convention, never "every zone fails".
+	Overlay     map[string]ZoneOverlaySignals
+	Switches    SwitchSafetyInput
+	Allocations []DHCPRangeAllocation
 	// TcMirror (T-4014) carries the server-enforced tc.mirror.* ceilings
 	// (max concurrent sessions / aggregate declared bandwidth per node /
 	// max duration) plus each node's current active-session usage, both
@@ -135,6 +147,12 @@ func ValidateWithSafety(ops []Op, snap inventory.Snapshot, safety SafetyOptions)
 	// safety (a zone that can't even apply shouldn't also be evaluated for
 	// interlocks against inconsistent state).
 	sdnFindings := sdnValidate(ops, snap)
+	// T-4106's overlay-readiness preflight is a sibling of sdnValidate above
+	// (validate_overlay.go), folded into the same SDN pre-apply class — one
+	// composed BGP/VTEP/MTU verdict per touched vxlan/evpn zone rather than
+	// a separate class with its own ordering/short-circuit rules to reason
+	// about.
+	sdnFindings = append(sdnFindings, overlayReadinessValidate(ops, snap, safety.Overlay)...)
 	findings = append(findings, sdnFindings...)
 	if hasError(sdnFindings) {
 		return findings

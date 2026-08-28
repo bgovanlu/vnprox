@@ -130,6 +130,9 @@ func (s *Service) validationInputs(ctx context.Context, clusterID, changesetID s
 	safety.Allocations = s.dhcpAllocations(ctx)
 	safety.TcMirror = s.tcMirrorUsage(ctx)
 	safety.Switches = s.switchSafetyInput(ctx)
+	// T-4106: overlay-readiness preflight signals for this ops' own
+	// touched vxlan/evpn zones (validate_overlay.go).
+	safety.Overlay = s.overlayReadinessInput(ctx, ops)
 	policy, policyFindings := s.policyForValidation(ctx, clusterID)
 	safety.Policy = policy
 	safety.PolicyReport = report

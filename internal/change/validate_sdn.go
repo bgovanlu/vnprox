@@ -166,6 +166,13 @@ type effectiveZone struct {
 	bridge    string
 	nodes     []string
 	exitNodes []string
+	// MTU (T-4106) is the zone's effective configured MTU (0 = unset, PVE
+	// applies its own default) — added alongside the pre-existing fields
+	// above so overlayReadinessValidate (validate_overlay.go) can resolve
+	// a zone's MTU by ID without a second net-effect fold of its own,
+	// mirroring how vniRequiredFindings above already reuses this same
+	// resolved-once-per-zone convention for tag/type.
+	MTU int
 }
 
 // effectiveZones resolves every zone's effective (type, bridge, nodes,
@@ -178,12 +185,12 @@ func effectiveZones(ops []Op, snap inventory.Snapshot) map[string]effectiveZone 
 		if !ok {
 			continue
 		}
-		zones[z.ID] = effectiveZone{typ: z.Type, bridge: z.Bridge, nodes: z.Nodes, exitNodes: z.ExitNodes}
+		zones[z.ID] = effectiveZone{typ: z.Type, bridge: z.Bridge, nodes: z.Nodes, exitNodes: z.ExitNodes, MTU: z.MTU}
 	}
 	for _, op := range ops {
 		switch p := op.Params.(type) {
 		case *SdnZoneCreateParams:
-			zones[op.Target.ID] = effectiveZone{typ: p.Type, bridge: p.Bridge, nodes: p.Nodes, exitNodes: p.ExitNodes}
+			zones[op.Target.ID] = effectiveZone{typ: p.Type, bridge: p.Bridge, nodes: p.Nodes, exitNodes: p.ExitNodes, MTU: p.MTU}
 		case *SdnZoneUpdateParams:
 			z := zones[op.Target.ID]
 			if p.Bridge != nil {
@@ -194,6 +201,9 @@ func effectiveZones(ops []Op, snap inventory.Snapshot) map[string]effectiveZone 
 			}
 			if p.ExitNodes != nil {
 				z.exitNodes = *p.ExitNodes
+			}
+			if p.MTU != nil {
+				z.MTU = *p.MTU
 			}
 			zones[op.Target.ID] = z
 		case *SdnZoneDeleteParams:
