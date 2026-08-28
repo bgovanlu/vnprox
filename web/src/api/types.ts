@@ -56,6 +56,35 @@ export interface AuthUser {
   realm: string;
 }
 
+/** One PVE privilege a denied capability still needs, per
+ * internal/auth.PrivilegeRequirement — carried inside PermissionExplanation.
+ * `path` is the PVE ACL path granting `privilege` there would satisfy for
+ * this request's own scope: `/nodes/{node}` or cluster-wide `/`. `confirmed`
+ * is false when the daemon names this privilege as required but cannot
+ * confirm its current absence from already-derived data alone (T-4105:
+ * `capture`'s `Sys.Console` has no dedicated capability flag) — still shown,
+ * just not asserted as certain. */
+export interface PermissionRequirement {
+  privilege: string;
+  path: string;
+  confirmed: boolean;
+}
+
+/** T-4105's "why can't I?" answer, mirroring internal/auth.Explanation.
+ * Present as `details.explanation` on a `403 forbidden` from a
+ * capability-gated route (docs/api.md's error-envelope conventions) — never
+ * a separate round trip. `missing` names the PVE privilege(s) still absent;
+ * `reason` replaces it entirely for a capability that isn't PVE-privilege
+ * derived at all, or for a session shape (OIDC, an API token, a
+ * `read_only` daemon) where naming one privilege would leak or mislead — see
+ * docs/api.md's error-envelope section for the full list. */
+export interface PermissionExplanation {
+  capability: string;
+  granted: boolean;
+  missing?: PermissionRequirement[];
+  reason?: string;
+}
+
 /** POST /auth/login request body. `otp` is only present for realms that
  * require a second factor. */
 export interface LoginRequest {

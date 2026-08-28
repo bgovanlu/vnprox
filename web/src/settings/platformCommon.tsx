@@ -20,6 +20,7 @@
 import type { ReactNode } from "react";
 import clsx from "clsx";
 import { ApiError } from "../api/client";
+import { explainPermission, permissionExplanation } from "../api/permissionExplain";
 import { HelpAnchor } from "../help/HelpAnchor";
 
 export function PlatformSection({
@@ -80,6 +81,14 @@ export function RefusalNotice({
 
   const hint = kind === "forbidden" ? forbiddenHint : kind === "unavailable" ? unavailableHint : undefined;
 
+  // T-4105: "why can't I?" — the daemon's own precise answer (which PVE
+  // privilege, at which path, is missing) rather than the caller's own
+  // guesswork. Only ever present on a genuine capability denial, so this
+  // is `undefined` (and renders nothing) for every other 403 shape and
+  // for the 404/unknown cases above.
+  const explanation = kind === "forbidden" ? permissionExplanation(error) : undefined;
+  const explanationText = explanation !== undefined ? explainPermission(explanation) : undefined;
+
   return (
     <div
       role="status"
@@ -117,6 +126,15 @@ export function RefusalNotice({
        * render — the same blind spot that hid the disabled/enabled Delete
        * button asymmetry from the original T-3406 sweep. Dark mode's
        * amber-100/80 is on a dark surface and already passes. */}
+      {/* T-4105: "why can't I?" — same contrast treatment as `hint` just
+       * below (both are supplementary detail under the daemon's primary
+       * message), reusing its already-checked colors rather than a bare
+       * slate-400/500 that would fail the contrast gate. */}
+      {explanationText !== undefined && (
+        <p data-testid={`${testId}-explanation`} className="mt-2 text-xs text-amber-900 dark:text-amber-100/80">
+          {explanationText}
+        </p>
+      )}
       {hint !== undefined && <div className="mt-2 text-xs text-amber-900 dark:text-amber-100/80">{hint}</div>}
     </div>
   );

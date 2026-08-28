@@ -284,7 +284,13 @@ func (s *Service) RequireCap(cap Cap) func(http.Handler) http.Handler {
 			}
 			node := chi.URLParam(r, "node")
 			if !id.HasCap(node, cap) {
-				writeJSONError(w, http.StatusForbidden, "forbidden", "missing required capability: "+string(cap), nil)
+				// T-4105: the same denial, but naming exactly which PVE
+				// privilege (and where) would grant it — see explain.go.
+				// Read-only over the Capabilities id.Caps already holds;
+				// no extra derivation or PVE round trip.
+				explanation := id.Explain(cap, node, s.readOnly)
+				writeJSONError(w, http.StatusForbidden, "forbidden", "missing required capability: "+string(cap),
+					map[string]any{"explanation": explanation})
 				return
 			}
 			next.ServeHTTP(w, r)
