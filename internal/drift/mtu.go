@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // mtu.go implements docs/features/topology.md §6's second check family:
 // "MTU consistency along each L2 path (NIC->bond->bridge->VNet)". Two
 // sub-checks share the CheckMTUConsistency name:

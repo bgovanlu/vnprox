@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-607: E2E coverage for the docs/user-guide.md §3 "Common tasks" table,
 // the five rows not already covered end-to-end by an existing spec:
 //   - changesets.spec.ts already covers "Make a bridge VLAN-aware and

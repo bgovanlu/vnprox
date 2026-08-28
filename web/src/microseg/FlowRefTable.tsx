@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The flow table for one dry-run bucket. Renders a MicrosegFlowRef list in
 // the same column shape FlowExplorer's flow rows use (Time / Direction /
 // Peer / Proto / Port / Bytes) so a would-have-blocked flow reads

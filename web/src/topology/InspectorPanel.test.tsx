@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Inspector panel: the F-08 "Raw source" tab now renders GET
 // /inventory/{ref}'s real `rawSource` map (docs/api.md), provenance moved
 // to its own tab, and the fields view applies the tri-state `*Set` rule

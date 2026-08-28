@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package topology_test
 
 // Shared test scaffolding: spinning up internal/pvemock (T-004) behind an

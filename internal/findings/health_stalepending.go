@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_stalepending.go implements docs/features/monitoring.md §5's
 // "interfaces.new pending >1h" check.
 //

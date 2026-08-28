@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Minimal Prometheus text-exposition parser (T-1706 Grafana metrics panel).
 // It parses the subset of the exposition format vnprox's own exporter
 // (T-1001, internal/api/metrics_exporter.go) emits: `# HELP`/`# TYPE`

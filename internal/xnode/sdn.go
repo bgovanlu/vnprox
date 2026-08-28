@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // sdn.go: docs/features/topology.md §6's third check family — an SDN zone
 // lists a node as a member (SdnZone.Nodes), but that node has no bridge named
 // SdnZone.Bridge, so real PVE's per-node GET /nodes/{node}/sdn/zones

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // neighbors.go backs T-805's internal/host.Reader.Neighbors for fixture
 // tests: FixtureHostReader.Neighbors returns a node's fixture-declared ARP/
 // IPv6-neighbor table verbatim (NodeSpec.Neighbors — see that field's doc

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-602's unified findings-stream API calls (docs/api.md's `GET /findings`
 // / `POST /findings/{id}/fix` entries; the exact contract is
 // internal/findings.Finding + internal/api/findings.go). Mirrors

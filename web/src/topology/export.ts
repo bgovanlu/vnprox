@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Map export serialization (T-906, closing the T-607-flagged "export the
 // physical layer" gap — docs/features/topology.md §4). Deliberately
 // framework-free — no React, no @xyflow/react rendering, no DOM/Canvas API

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002: what the cluster's installed policy set says about THIS changeset,
 // kept out of the component so the properties that matter are directly
 // testable.

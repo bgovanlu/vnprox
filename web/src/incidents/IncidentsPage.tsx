@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2804 — Incidents. One window, one timeline, five sources plus the
 // operator's own notes.
 //

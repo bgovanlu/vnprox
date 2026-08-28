@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Tools → MAC/FDB browser (docs/features/lldp-discovery.md §4): query any
 // MAC/partial → per-node bridge/port hits + owning guest deep-link. GET
 // /fdb does the actual list-vs-search branching (blank ?mac= lists

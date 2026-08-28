@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-907 AC3 (Vitest half): "pinning a sticky note to an entity ref
 // persists it; reloading the topology page re-renders the note at the same
 // entity; deleting it removes it." The e2e half (web/e2e/saved-views.spec.ts)

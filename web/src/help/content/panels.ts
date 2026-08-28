@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Panel, dialog and wizard topics — the surfaces inside a screen that carry
 // their own vocabulary or their own risk. Each is reachable from the screen
 // it belongs to via <HelpAnchor topic="…">, and the coverage gate requires

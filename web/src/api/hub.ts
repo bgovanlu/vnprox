@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Blueprint & plugin hub API calls (T-1705; docs/api.md's Hub section).
 // The exact contract is internal/hub + internal/api/hub.go.
 import { apiFetch } from "./client";

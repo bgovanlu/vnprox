@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // cipher.go implements the session-secret encryption-at-rest helpers
 // described in docs/security.md "Authentication": sessions.pve_ticket_enc
 // and sessions.csrf_token_enc are AES-256-GCM ciphertext, keyed from a

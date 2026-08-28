@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // bundlecmd.go implements `vnproxctl support-bundle` (T-1902).
 //
 // It joins the *daemon-independent* command family this binary's package

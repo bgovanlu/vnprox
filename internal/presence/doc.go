@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package presence implements T-2805: advisory entity locks on staged
 // drafts, and per-changeset/per-entity presence over the existing /api/ws
 // event stream.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2804's incident view: `GET/POST /incidents` and friends.
 //
 // An incident is a VIEW, not a mode — opening one starts no collection and

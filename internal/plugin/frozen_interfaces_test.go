@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package plugin_test
 
 // T-3204: field-removal-style regression guards existed for none of the

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1003 AC1: filter application, sort, and conversation aggregation
 // against a seeded flow fixture set — network and WS are mocked at the
 // ./flowsQueries seam (mirrors fwlog/FwLogViewer.test.tsx's identical

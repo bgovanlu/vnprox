@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command pvemock runs the mock PVE API server (internal/pvemock) standalone,
 // for local development and manual curl exploration. This is the entry
 // point the Makefile's `mockpve` target (T-004) invokes; see

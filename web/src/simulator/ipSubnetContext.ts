@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // "IP entry with subnet context" (T-504 deliverable): as the user types a
 // literal IP endpoint, name which known SDN subnet (if any) contains it —
 // purely client-side, over topology nodes already fetched for the map

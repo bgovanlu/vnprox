@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // neighbors.go implements T-805's ARP/neighbor-table read: Reader.Neighbors
 // (docs/features/ipam.md §1's "known gap" — internal/ipam.NeighborSource had
 // no host-level data source until this task). The real, per-node collection

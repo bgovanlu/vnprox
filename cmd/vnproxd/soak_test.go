@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // soak_test.go is T-2504's nightly soak and resource-leak gate: the real
 // production runDaemon path, booted in-process against a real in-process
 // pvemock server, driven by a seeded churn generator, with goroutines, live

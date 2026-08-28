@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2003's shareable review link: a stable, bookmarkable/copyable URL that
 // opens a changeset directly in review mode (ChangesetReviewPage.tsx, routed
 // at /changesets/:id/review in App.tsx). Opening it still requires an

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package vitestgate turns vitest's JSON reporter output into the report
 // shape internal/e2egate already knows how to gate, quarantine and trend.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package pvemock
 
 // Regression coverage for T-2502-followup-01: pvemock's list endpoints were

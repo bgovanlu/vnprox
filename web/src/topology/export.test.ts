@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-906 acceptance criterion 5: Vitest coverage on the export-serialization
 // logic, independent of the browser download mechanism (exportDownload.ts
 // is deliberately untested here — see that file's header comment).

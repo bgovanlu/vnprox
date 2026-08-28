@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1202 AC3/AC5: with >=2 clusters attached, the palette fans search out
 // across clusters (GET /federation/search), groups the namespaced hits by
 // cluster, and offers a "Switch to <cluster>" action that changes the active

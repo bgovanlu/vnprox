@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // spec.go implements T-1101's declarative-spec routes (docs/api.md's Spec
 // section):
 //

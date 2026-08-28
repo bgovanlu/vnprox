@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // EmbedPosture (T-1706): a read-only embed of the network posture score &
 // report (T-1607). Fetches GET /posture and renders the overall score plus
 // the per-factor breakdown — every field the report already exposes, with no

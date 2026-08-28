@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // digests.go implements T-2807's scheduled-digest storage (migration
 // 0043_digest_schedules.sql): the schedule the digest runner re-reads on every
 // tick, and the previous digest's summary the next digest computes its deltas

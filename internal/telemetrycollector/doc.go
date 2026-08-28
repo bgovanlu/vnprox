@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package telemetrycollector implements the receiving half of T-2503's
 // opt-in compatibility report (T-3710).
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-903 AC5: the ⌘K/Ctrl+K command palette, driven end-to-end against the
 // real stack (pvemock three-node-vlan fixture -> vnproxd -> the production
 // SPA build) — opened via keyboard only, merges a registered page verb with

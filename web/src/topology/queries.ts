@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for the topology page: the full topology fetch, one
 // entity's detail, spotlight search, guest-group expansion, saved-layout
 // persistence, and the WS bridge that keeps the topology query fresh on

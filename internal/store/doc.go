@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package store implements vnproxd's SQLite-backed app store: schema
 // migrations and typed repositories for every table documented in
 // docs/data-model.md §2 ("App store (SQLite)").

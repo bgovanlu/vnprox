@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package docexport_test
 
 // Golden test for T-605 acceptance criterion 3: "Export golden test on the

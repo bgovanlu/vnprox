@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Data wiring for the VLAN zone wizard's LLDP trunk cross-check
 // (lldpTrunkCheck.ts has the pure logic). Reuses the already-cached
 // GET /topology response (no extra fetch for the graph itself) and issues

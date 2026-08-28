@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-909: the explicit affordance every desktop-only page shows on a narrow
 // viewport instead of a broken/cramped attempt at the full UI (the task
 // card's own wording). Deliberately actionable, not just "not available

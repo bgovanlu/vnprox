@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package migration implements T-1507's migration network planner: a
 // purely advisory, read-only pre-flight check for live migrations and
 // evacuations — bandwidth headroom on the migration network versus a

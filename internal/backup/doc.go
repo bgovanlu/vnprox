@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package backup implements vnprox's backup, restore and disaster-recovery
 // path (T-1901): a versioned, integrity-checked archive of the daemon's own
 // app-owned state, and an atomic, defensively-parsed restore of it.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Help panel state. A store rather than React context because <HelpAnchor>
 // is placed deep inside feature modules that have no reason to know a help
 // provider exists above them — the same reasoning the topology store and

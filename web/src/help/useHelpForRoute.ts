@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { useHelpStore } from "./store";

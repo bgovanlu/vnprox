@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // blueprint_bundle.go implements T-1107's blueprint sharing bundles
 // (docs/features/blueprints.md §5, docs/api.md's Blueprint bundles
 // section):

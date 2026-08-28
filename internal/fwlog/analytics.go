@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // analytics.go implements T-1006's firewall log analytics
 // (docs/features/firewall.md §4, docs/features/monitoring.md §5): per-rule
 // hit counts, top-N blocked sources/destinations, and an unused-rule

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2001 AC1-4: attach/edit/detach form logic, credential write-only-ness,
 // wgTunnelSource display, and netWrite capability gating — mocked-API unit
 // tests mirroring AlertRules.test.tsx's pattern of mocking this feature's

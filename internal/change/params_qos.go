@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change
 
 // params_qos.go defines T-1505's QoS op parameter structs. Every qos.* op

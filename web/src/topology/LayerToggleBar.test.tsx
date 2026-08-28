@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1003 AC3: the "Flows" overlay toggle (rendered by LayerToggleBar, see
 // its own doc comment for why it lives here rather than as a 5th `Layer`)
 // and the pre-existing "Traffic" paint-mode button (a sibling control in

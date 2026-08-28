@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1402's "connect two clusters" wizard: turns the wizard's finished form
 // values into the ONE changeset's worth of ops it stages — wg.tunnel.create
 // + wg.peer.add (this node's own side) + fw.rule.create (the firewall

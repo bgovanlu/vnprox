@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package oidcmock is a self-contained mock OpenID Connect provider for
 // exercising internal/auth's OIDC SSO flow (T-1207) without a live IdP. It
 // serves the discovery document, a JWKS, and a token endpoint over an

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2808: the model backend — configurable, and ABSENT BY DEFAULT.
 //
 // vnprox ships no model backend and no credential for one. Until an

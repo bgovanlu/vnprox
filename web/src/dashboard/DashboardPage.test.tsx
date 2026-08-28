@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-904 acceptance criteria 2-4: per-tile rendering against a
 // three-node-vlan-shaped fixture (AC2), deep-link navigation out of each
 // tile (AC3), and explicit "all clear" empty states against a

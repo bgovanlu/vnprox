@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // preview.go implements T-2605's post-apply topology preview: the map an
 // operator would see if this changeset were applied, computed in memory from
 // the ops plus the live inventory graph.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package latmesh implements T-1303's continuous latency & loss mesh:
 // low-rate ICMP/TCP probes between cluster nodes over every shared fabric
 // it can identify, a bounded history ring (mirroring internal/flow's

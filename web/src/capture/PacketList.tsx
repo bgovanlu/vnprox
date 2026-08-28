@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The decoded-packet list + detail pane (Wireshark-lite) for one capture
 // session (T-1302). Purely presentational over CaptureDecoder.ts's output —
 // it never fetches or decodes anything itself.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Plugin lifecycle API calls (T-1702; docs/api.md's Plugins section,
 // internal/api/plugins.go).
 //

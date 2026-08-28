@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package pvemock
 
 // Tests for the auth-surface features added after the T-004 baseline:

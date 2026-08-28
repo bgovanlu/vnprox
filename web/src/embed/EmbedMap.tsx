@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // EmbedMap (T-1706): a read-only projection of GET /topology for embedding.
 // It reuses the same topology read API the full map uses, but renders a
 // static, grouped, non-interactive view — no context menus, no inspector

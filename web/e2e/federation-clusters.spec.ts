@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2001 AC1/AC2/AC3: the federation cluster editor UI end to end against
 // the real stack — /federation/clusters has had full CRUD, audit coverage,
 // and capability gating since T-1201 with no UI at all until this task.

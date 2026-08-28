@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // SDN zone editor (docs/features/sdn.md §1/§4): type (create-only — changing
 // a zone's type is a delete+create in real PVE too, params_sdn.go's doc
 // comment), bridge, controller, member nodes, MTU, VRF VXLAN.

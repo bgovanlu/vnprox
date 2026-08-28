@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // signingkey.go implements the on-disk Ed25519 signing identity T-1107's
 // bundle export uses (docs/features/blueprints.md §5): a keypair generated
 // at first use and stored at /etc/vnprox/keys/blueprint-signing.key,

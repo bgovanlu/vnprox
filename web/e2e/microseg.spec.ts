@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1603 acceptance criteria 4 + 5's e2e half: the microsegmentation
 // review/dry-run UX, against the real stack (pvemock three-node-vlan
 // fixture -> vnproxd -> the production SPA build).

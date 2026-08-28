@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // In-browser decode of a fetched pcap session file (T-1302): classic-pcap
 // framing (internal/capturemock/pcap.go writes exactly this format — magic
 // 0xa1b2c3d4 LE, 24-byte global header, then a 16-byte record header +

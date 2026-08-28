@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package e2egate turns the Playwright suite's per-shard JSON reports into a
 // single build verdict.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package wireguard is T-1401's WireGuard tunnel engine core: the app-owned
 // tunnel/peer intent model, X25519 key generation, on-node wg-quick config
 // rendering, and the live `wg show <if> dump`-equivalent observed-state

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared "is this entity diagnosable, and what URL opens its Diagnose
 // page" helper — reused by both of T-1307's map entry points
 // (topology/TopologyPage.tsx's right-click menu and

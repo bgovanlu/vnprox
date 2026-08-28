@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { QueryClient } from "@tanstack/react-query";
 import { ApiError } from "../api/client";
 

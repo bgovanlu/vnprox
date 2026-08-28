@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // frr.go implements T-404's FRR/BGP EVPN observability reader: parsing
 // `vtysh -c "show bgp summary json"` and `vtysh -c "show evpn vni json"`
 // output into typed Go values. Like lldp.go's ParseLLDP, these are pure

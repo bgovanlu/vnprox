@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Custom edge renderer: a smoothstep path colored/dashed by status, with
 // its badges (VLAN ranges, enslavement active/backup, ...) rendered as a
 // small label at the midpoint (docs/features/topology.md §1: "VLAN-aware

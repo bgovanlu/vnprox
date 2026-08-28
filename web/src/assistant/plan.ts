@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2808: which of the mirrored MCP read tools a question needs.
 //
 // Deliberately a small, deterministic, testable rule set rather than a

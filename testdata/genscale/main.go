@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command genscale generates testdata/clusters/scale-lab.yaml: the T-607
 // scale fixture at exactly docs/features/topology.md §4's target — 8 nodes
 // x 6 NICs, 4 bridges/node, 300 guests, 40 VNets. It is not hand-written

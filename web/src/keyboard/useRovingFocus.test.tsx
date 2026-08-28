@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-903 AC4's DOM-wiring half: arrow keys move real focus between
 // `data-entity-ref` elements in visual-adjacency order, and Enter activates
 // the focused one the same way a click would (TopologyPage wires

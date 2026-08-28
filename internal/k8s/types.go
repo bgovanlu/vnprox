@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package k8s
 
 // The types below are a deliberately minimal subset of the real Kubernetes

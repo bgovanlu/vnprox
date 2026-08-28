@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Platform topics — the v2.0/v3.0 opt-ins. Every one of these is dormant
 // until an administrator configures it, so the help has to answer "what
 // would this do if I turned it on" as much as "how do I use it". The

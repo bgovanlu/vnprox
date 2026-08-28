@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Derives, per node, what the management-redundancy wizard can offer —
 // purely from T-702's GET /protected-interfaces/status (the carrier + its
 // resolved physical path + redundancy) plus GET /topology (the node's full

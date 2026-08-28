@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2805 — the UI half of advisory entity locks.
 //
 // The card's rule, twice stated: **a lock never prevents an emergency change;

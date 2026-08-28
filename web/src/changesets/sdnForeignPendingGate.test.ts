@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import { describeSdnPendingEntry, sdnForeignPendingBlocksApply, sdnPendingSetKey } from "./sdnForeignPendingGate";
 import type { SdnPendingEntry } from "../api/types";

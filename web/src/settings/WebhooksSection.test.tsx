@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3003 AC2: registering a webhook at a private address in the default
 // configuration is refused with the daemon's own reason, naming the policy
 // and the knob that would permit it.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package collect_test
 
 // T-407 acceptance criterion 1: against internal/pvemock's ovs-lab fixture

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1003's Flow Explorer: a filterable/sortable/aggregatable table over
 // GET /flows (docs/api.md's Flows section, T-1002) — read-only, no
 // mutation. Filter state, sort, and aggregation mode all round-trip

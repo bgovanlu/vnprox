@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-909 acceptance criterion 3: "Navigating to a desktop-only route ... at
 // phone width shows the explicit 'desktop only' affordance with actionable
 // copy, not a broken layout — Vitest test on the route-guard component".

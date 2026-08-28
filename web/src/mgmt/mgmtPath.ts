@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared plain-English description of a management path's redundancy, used
 // by both the topology inspector's "Management path" section and the
 // dedicated Management page (issue #1). `path` is the resolved physical

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // topodiff.go implements T-2704's point-in-time topology diff — the half that
 // needs the store: resolving the two ends of the range, and attributing each
 // difference to the changeset that explains it, or honestly marking it as

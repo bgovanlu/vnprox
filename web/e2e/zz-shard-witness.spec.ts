@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2505 AC4, second half: the shard that did NOT corrupt anything proves it
 // cannot see the corruption.
 //

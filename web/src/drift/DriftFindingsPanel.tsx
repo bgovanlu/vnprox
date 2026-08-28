@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-305's drift findings stream: fetches GET /drift, stays live via the
 // drift.changed WS bridge, and wires "Create fixing changeset" to
 // POST /drift/{id}/fix + opening the resulting draft in the changeset

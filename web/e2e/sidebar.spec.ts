@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3402: end-to-end verification of the Stripe-style grouped Sidebar
 // against the real stack (pvemock three-node-vlan fixture + vnproxd + the
 // production SPA build) — specifically the one behavior NavRail never had:

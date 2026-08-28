@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure computation for the Home dashboard's "service-network traffic" tile
 // (T-1504's deliverable: "New home-dashboard tile ... per-serviceClass
 // bytes/sec breakdown over the retained flow window"). Deliberately

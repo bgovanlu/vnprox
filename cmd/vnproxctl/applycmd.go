@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // applycmd.go implements `vnproxctl apply spec.yaml --plan|--apply`
 // (T-1105): the GitOps entry point over T-1101's `POST /spec/import` — a
 // Terraform-`plan`-style dry run, or a full create→apply→poll→auto-confirm

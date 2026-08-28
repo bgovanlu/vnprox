@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002: the emergency break-glass affordance on the two-person rule
 // (T-2604's `POST /changesets/{id}/break-glass`, which had no caller in
 // web/src at all).

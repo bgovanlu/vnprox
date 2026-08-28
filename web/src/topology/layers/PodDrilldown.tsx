@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1502: the "why is this pod unreachable" panel — opened when a
 // Kubernetes-layer overlay entity (a pod, its pod-CIDR region, or a
 // service) is selected on the map. Traces the correlated k8s node's PVE

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for T-907's sticky-note annotations
 // (internal/api/annotations.go, docs/api.md's Saved views & annotations
 // section). There is one cluster-wide list (GET /annotations, no

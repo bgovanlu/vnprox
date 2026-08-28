@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Edge & NAT cockpit API calls (docs/api.md's "Edge & NAT cockpit" section;
 // internal/api/edge.go, T-1403). Read-only — this file adds no mutation
 // call: every nat.*/route.static.* write flows through the ordinary

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Deep-link construction from a correlated log line to its rule (T-505
 // AC2). Deliberately its own tiny module rather than living in
 // web/src/firewall/ (T-501/T-502's rule-table pages, concurrently under

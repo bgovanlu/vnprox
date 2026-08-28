@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Bridge editor (docs/features/change-management.md §5): kind (Linux/OVS),
 // ports multi-select with conflict hints, VLAN-aware toggle with VID range
 // editor, addresses, MTU, STP, comment.

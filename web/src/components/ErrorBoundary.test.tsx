@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-905: the built-in default fallback panel (used when a caller doesn't
 // supply its own `fallback`) and its density variant.
 import { render, screen } from "@testing-library/react";

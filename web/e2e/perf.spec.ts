@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // F-07: T-107 acceptance criterion 5's pan/zoom frame-rate measurement,
 // executed against the real stack at three-node-vlan scale and written up
 // in docs/testing/topology-performance.md (method, environment caveats,

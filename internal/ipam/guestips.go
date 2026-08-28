@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // guestips.go implements T-1305's guest->IP resolution seam:
 // Service.GuestIPs, the dependency GET /conntrack's `guest=` filter resolves
 // through (docs/architecture.md's InventorySource is guest-IP-blank by

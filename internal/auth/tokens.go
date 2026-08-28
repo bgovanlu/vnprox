@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // tokens.go implements T-1104's automation-token machinery: raw-token
 // generation/hashing, scope parsing/validation against caps.go's
 // capability vocabulary, and building the Capabilities a bearer-token-

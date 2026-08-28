@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 // Finding 1 (T-1401 adversarial review) API coverage: a wg.peer.add op's

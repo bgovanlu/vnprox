@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package incident implements T-2804's incident mode: one timeline that
 // stitches the diagnosis ladder, captures, findings, recent flows, the
 // changeset history and the T-2704 point-in-time diff into a single

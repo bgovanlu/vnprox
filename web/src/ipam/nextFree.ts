@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure IPv4 gateway pre-fill helper for the SDN subnet wizard step
 // (docs/features/ipam.md §3). Framework-free (no React import) so it's
 // directly Vitest-able. The live "lowest free address" suggestion now comes

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command k8smock runs the mock Kubernetes API server (internal/k8smock)
 // standalone, on a fixed address — the Playwright e2e harness's own
 // stand-in for a real k8s cluster (web/e2e/k8s-overlay.spec.ts, T-1502),

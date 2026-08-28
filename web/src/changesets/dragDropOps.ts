@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure translation of a map drag-drop gesture into a drafted Op (docs/
 // features/change-management.md §5 walkthrough: "create bond from two NICs
 // via drag"; topology feature spec §2's drag-drop edits: "NIC->bond/bridge,

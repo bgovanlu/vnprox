@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hook for T-1305's Conntrack explorer
 // (docs/development.md's TypeScript standards: "server state via TanStack
 // Query only — no fetch in components"). Unlike the Flow Explorer

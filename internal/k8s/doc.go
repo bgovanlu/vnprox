@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package k8s implements T-1501's Kubernetes overlay mapping engine:
 // a deliberately minimal, hand-rolled kubeconfig parser + net/http REST
 // client that correlates k8s cluster nodes to PVE guests, models pod/

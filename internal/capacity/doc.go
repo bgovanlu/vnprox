@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package capacity implements T-1606's capacity forecasting: it trends
 // link/segment utilization and IPAM pool consumption against a downsampled
 // long-term history and projects when a growth curve will cross capacity

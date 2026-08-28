@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // A small, generic debounced-value hook — the wizard preview pane's "live
 // but not janky" update (T-403 acceptance criterion 4: "Preview pane
 // updates live as parameters change (<100ms perceived; debounced)").

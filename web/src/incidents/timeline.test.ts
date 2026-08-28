@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2804's presentation logic. The two assertions that matter are the two
 // the feature exists for: one chronological order ACROSS sources (not five
 // blocks), and honesty about what the view could not see.

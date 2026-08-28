@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package compat (T-2103) builds vnprox's PVE compatibility matrix: vnprox
 // version × PVE version, populated by driving a small set of representative
 // integration checks against internal/pvemock, once per registered

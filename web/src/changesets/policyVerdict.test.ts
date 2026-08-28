@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002 AC1's logic half: what the review screen is allowed to conclude
 // about a policy refusal, and — more to the point — what it is not.
 import { describe, expect, it } from "vitest";

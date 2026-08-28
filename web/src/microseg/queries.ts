@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query mutations for the microsegmentation planner (T-1602's
 // `POST /microseg/propose` + `POST /microseg/dry-run`). Both are modelled
 // as mutations rather than queries because each is an explicit, on-demand,

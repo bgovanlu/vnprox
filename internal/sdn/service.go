@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package sdn builds docs/api.md's GET /sdn response: the zone -> vnet ->
 // subnet tree with per-node apply/health status, plus the staged-vs-running
 // pending diff docs/features/sdn.md §1 calls for ("vnprox surfaces

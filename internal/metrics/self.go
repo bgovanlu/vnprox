@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package metrics
 
 // self.go implements T-1903's self-observability registry: RED-shaped

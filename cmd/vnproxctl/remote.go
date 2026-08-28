@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // remote.go implements `vnproxctl remote <subcommand>` (T-1105): the
 // HTTP-backed command family with parity for the UI's read and changeset
 // surfaces, requiring the daemon up and a T-1104 bearer token.

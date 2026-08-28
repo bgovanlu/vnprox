@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package qos implements T-1505's bridge-level per-service traffic shaping:
 // a pure renderer from a named Shape (bridge, optional match CIDR/VLAN,
 // rate/ceil/priority) to the ordered `tc` command-line invocations that

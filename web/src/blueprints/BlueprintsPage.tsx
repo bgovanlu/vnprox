@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-603's blueprint list/detail/param-form page: browse the five bundled
 // starters plus any saved blueprints, view a preview diagram + param form,
 // instantiate (-> opens the resulting draft in the changeset drawer for

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // IPAM cockpit (docs/features/ipam.md §2): subnet list with utilization,
 // the address list for whichever subnet is selected, and CSV export.
 import { useEffect, useState } from "react";

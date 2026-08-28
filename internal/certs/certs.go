@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package certs is vnprox's view of the PVE cluster's TLS certificates.
 //
 // Why this needs no peer fan-out. Unlike almost every other per-node read in

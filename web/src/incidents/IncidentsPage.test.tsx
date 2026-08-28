@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2804's page. The assertions are about the claims the UI makes: one
 // interleaved timeline, an honest account of a source that contributed
 // nothing, and a diff refusal shown as a refusal rather than as "nothing

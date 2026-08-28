@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Rate-formatting helper shared between the Inspector's Metrics tab
 // (MetricsTab.tsx) and the Home dashboard's top-talkers tile
 // (dashboard/TopTalkersTile.tsx, T-904) — split into its own module rather

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002 AC3: a tenant-scoped session cannot see an out-of-scope guest
 // anywhere in the new screens, asserted on the RENDERED DOM rather than on an
 // API response.

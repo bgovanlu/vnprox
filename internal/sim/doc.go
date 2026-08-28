@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package sim implements the path simulator (T-503): a pure, static
 // reachability + firewall engine answering docs/features/firewall.md §5's
 // question — "Can A reach B on proto/port X, and if not, what stops it?" —

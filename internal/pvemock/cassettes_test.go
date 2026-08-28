@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // cassettes_test.go is T-2502's end of the loop: it records the mock PVE
 // server through the real internal/pve client's record mode, replays the
 // result, and compares two independently-produced cassette sets field by

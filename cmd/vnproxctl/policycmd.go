@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // policycmd.go implements `vnproxctl policy` (T-2601): developing a
 // declarative policy rule set against a real changeset without staging
 // anything.

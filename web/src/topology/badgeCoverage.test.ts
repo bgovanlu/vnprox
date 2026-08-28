@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3406-followup-02's "revised scope for the second guard": the opacity
 // defect that recurred four times (findingBadges.ts's `findingBadgeClass`
 // doc comment has the full history) was never visible in the source — a

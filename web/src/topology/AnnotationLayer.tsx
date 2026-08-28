@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2806's on-canvas half of the map annotation layer: labelled regions
 // drawn behind the graph, and a marker per annotated entity carrying the
 // note text.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hook (initial page) + WS bridge (live follow) for T-1003's
 // Flow Explorer / map painting — the same "REST for the initial snapshot,
 // WS for live increments over the one shared /api/ws connection" split

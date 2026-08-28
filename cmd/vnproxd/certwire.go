@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // certwire.go wires T-2301..T-2303's certificate service into the daemon:
 // the cluster facts it needs, the findings adapter, and the peer-TLS
 // verification-name resolver that fixes T-1906-bug-01.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1305's own end-to-end verification, against the real stack (pvemock
 // testdata/clusters/three-node-vlan.yaml -> vnproxd -> the production SPA
 // build) on the DEFAULT webServer pair (web/playwright.config.ts, ports

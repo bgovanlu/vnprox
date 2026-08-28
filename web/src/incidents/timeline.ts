@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure presentation logic for T-2804's incident timeline. Kept free of React
 // so it is directly unit-testable — and because the two things worth asserting
 // about this feature's UI are both pure: that events are rendered in one

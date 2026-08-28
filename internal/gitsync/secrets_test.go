@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package gitsync_test
 
 // T-2701 AC6: "Credentials never appear in logs, findings, audit entries, or

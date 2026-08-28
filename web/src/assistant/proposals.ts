@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2808 AC4: what the assistant may propose, and how that becomes a draft.
 //
 // The assistant NEVER accepts free-form ops from a model. It accepts a

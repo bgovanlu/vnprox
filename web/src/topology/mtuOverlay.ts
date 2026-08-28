@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Verified-MTU map-edge annotation (docs/features/monitoring.md §6, T-1306):
 // a second, independent overlay from latencyMode.ts's "Latency" heatmap
 // layer (T-1303) — this one renders each probed link's measured path MTU

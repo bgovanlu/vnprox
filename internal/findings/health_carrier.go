@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_carrier.go implements docs/features/monitoring.md §5's "bridge
 // with no carrier uplink" check: a bridge that declares one or more uplink
 // ports (directly, or through an enslaving bond) but every one of them

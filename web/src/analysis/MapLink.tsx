@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // A Ref rendered as a link into the topology inspector — the same
 // select-then-navigate pair tools/MacFdbBrowser.tsx's owner badge uses, kept
 // here as one component because three panels on this page need it.

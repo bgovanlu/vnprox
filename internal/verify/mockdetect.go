@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package verify
 
 // mockdetect.go answers one question at the door: is the thing on the other

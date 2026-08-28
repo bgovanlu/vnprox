@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The product's own three-way vocabulary — spec, config, live — and the
 // phrasings the cockpit renders it with.
 //

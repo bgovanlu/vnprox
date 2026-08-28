@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Polls T-1501's Kubernetes read routes while the "Kubernetes" map layer
 // (or the flow explorer's k8sService attribution — k8sFlowAttribution.ts)
 // needs them. Mirrors web/src/wireguard/wgTunnelsQuery.ts's shape: no WS

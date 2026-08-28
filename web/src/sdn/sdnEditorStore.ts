@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Which SDN editor (if any) is currently open, and with what target — the
 // SDN cockpit's own counterpart of changesets/editorLauncherStore.ts, kept
 // separate (not reusing that store) because SDN entities are cluster-scoped

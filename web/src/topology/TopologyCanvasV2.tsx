@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Topology renderer v2 (T-901): a canvas engine for the Graph view, behind
 // the `rendererVersion` feature flag, replacing the v1 React Flow DOM/SVG
 // node-link canvas. It consumes the *exact same* FlowElements

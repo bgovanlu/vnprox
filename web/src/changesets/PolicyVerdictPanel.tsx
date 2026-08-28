@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002: the policy-as-code verdict, rendered where it blocks.
 //
 // Everything on screen here comes from `GET /policies` or

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // service.go implements Poller: the per-cluster cache GET
 // /k8s/{clusterId}/overlay's live poll updates and internal/findings'
 // K8sProvider seam reads from. (Named Poller, not Service, to avoid

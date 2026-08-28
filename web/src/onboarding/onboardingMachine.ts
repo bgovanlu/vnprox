@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure state machine for the first-login onboarding walkthrough
 // (docs/user-guide.md §1; T-605 AC1/AC2: "dismissible, resumable"). Mirrors
 // changesets/drawerMachine.ts's split: this module owns every transition as

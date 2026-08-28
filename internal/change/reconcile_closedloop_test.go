@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change_test
 
 // T-2703 acceptance criterion 2: "'Restore intent' produces a changeset which,

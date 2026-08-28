@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_corosync.go implements docs/features/monitoring.md §5's
 // "corosync_link_degraded" health check (T-803): a corosync ring reporting
 // faulty/no-link status right now, distinct from a ring's static configured

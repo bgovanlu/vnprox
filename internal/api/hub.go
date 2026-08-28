@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // hub.go implements T-1705's Blueprint & plugin hub — a browse/install
 // surface over T-1107's signed blueprint bundles and T-1702's capability-scoped
 // plugins (docs/features/blueprints.md's Hub subsection, docs/api.md's Hub

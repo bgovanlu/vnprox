@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The topology map's accessibility bridge (T-901 deliverable): the pure,
 // framework-free half of the "parallel DOM roving-focus layer kept in sync
 // with the canvas" that canvas v2 must carry so it is NOT a pixel blob with

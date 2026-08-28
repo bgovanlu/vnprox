@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The content model for vnprox's in-app help (planning/tasks/phase-22.md).
 //
 // Help content is typed TypeScript bundled into the SPA rather than

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package mtuprobe implements T-1306's active per-path MTU discovery:
 // binary-search DF-set (Don't Fragment) ICMP probes along each path the
 // latency & loss mesh (internal/latmesh, T-1303) already knows about,

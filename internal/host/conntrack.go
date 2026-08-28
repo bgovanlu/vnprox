@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // conntrack.go implements T-1305's live conntrack/NAT table read:
 // Reader.Conntrack (docs/architecture.md §7's "app-owned data only" rule
 // does not apply here — this is a live, ephemeral kernel read, never

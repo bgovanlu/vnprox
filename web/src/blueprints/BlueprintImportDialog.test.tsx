@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1107 AC6: BlueprintImportDialog's three signature-status states
 // (verified/trusted, signed-but-untrusted, unsigned) each render distinctly,
 // and the explicit trust step (a checkbox) gates the "Import anyway" action

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-903 AC4: pure ordering-logic coverage for roving arrow-key focus,
 // against a small synthetic topology entity list standing in for real
 // Graph-view (elk x/y) or Switch-view (DOM rect) positions — the same

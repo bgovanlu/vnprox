@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // bundle.go implements T-1107's signed blueprint sharing bundles
 // (docs/features/blueprints.md §5): an envelope wrapping an existing
 // Blueprint value plus an optional Ed25519 signature, so a blueprint

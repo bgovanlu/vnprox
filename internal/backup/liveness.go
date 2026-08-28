@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // liveness.go answers one question: is a vnprox daemon running against the
 // store this restore is about to replace?
 //

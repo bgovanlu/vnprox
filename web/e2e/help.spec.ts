@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2205: end-to-end verification of the online help surface against the
 // real stack (pvemock fixture + vnproxd + the production SPA build) — the
 // top-bar Help button, the F1 binding, contextual resolution per screen,

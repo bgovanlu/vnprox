@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Concept topics — the cross-cutting ideas the rest of the UI assumes you
 // already hold. Sourced from docs/architecture.md §4, docs/security.md, and
 // docs/features/change-management.md; each topic names its source in

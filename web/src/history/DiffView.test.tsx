@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { DiffView } from "./DiffView";

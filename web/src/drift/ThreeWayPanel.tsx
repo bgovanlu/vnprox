@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3001: the spec/config/live disagreements, and the two ways out of one.
 //
 // Both actions are staging actions. Restoring intent hands the change engine a

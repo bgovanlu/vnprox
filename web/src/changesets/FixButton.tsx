@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // One-click apply of a Finding's machine-applicable `fix` patch
 // (docs/features/change-management.md §2: "Findings carry optional
 // machine-applicable fix patches"; T-207 acceptance criterion 2: "a fix

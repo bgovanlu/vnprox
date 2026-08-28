@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_trunkvlans.go implements docs/features/monitoring.md §5's
 // "trunk_unused_vlans" health check (T-803, informational): a VLAN-aware
 // bridge's trunked VID set (inventory.Bridge.Vids, from host-netlink's

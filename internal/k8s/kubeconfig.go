@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // kubeconfig.go implements a minimal kubeconfig (v1, `apiVersion:
 // v1`/`kind: Config`) parser: just enough of the real format — clusters/
 // users/contexts/current-context, server URL, CA data, client

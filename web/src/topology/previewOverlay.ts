@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2605's post-apply preview mode: turns a projected topology plus its change
 // list into the scene the canvas paints and the marks it rings entities with.
 //

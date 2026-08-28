@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // ha.go implements T-1704's GET /ha/status: this daemon's HA role (active/
 // standby), current lease term and expiry, and replication lag. Read-only and
 // netRead-gated — HA control (promotion/demotion) is never an API action, it

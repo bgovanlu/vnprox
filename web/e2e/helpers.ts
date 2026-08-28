@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared across every spec that drives the Topology page's elk pan/zoom
 // canvas. 67fff26 landed the switch-faceplate view (SwitchView.tsx) as
 // /topology's default (store.ts: `viewMode: "switch"`), with the pre-

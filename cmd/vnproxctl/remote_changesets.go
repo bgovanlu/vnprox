@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // remote_changesets.go implements `vnproxctl remote changesets <subcommand>`
 // (T-1105): CLI parity with docs/api.md's Changesets section — the same
 // stage → validate → diff → apply → confirm/rollback lifecycle the UI

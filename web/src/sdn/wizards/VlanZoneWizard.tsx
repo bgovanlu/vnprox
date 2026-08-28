@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // VLAN zone wizard (docs/features/sdn.md §2): "picks the VLAN-aware
 // bridge, validates the physical path actually trunks the chosen VIDs
 // (cross-checks LLDP VLAN info when available)." — T-403 acceptance

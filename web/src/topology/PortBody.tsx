@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3503: the faceplate's port bodies — the small SVG jacks that make a
 // Proxmox bridge read as a switch rather than as a card with text in it.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // DHCP reservations/leases API calls (docs/features/sdn.md §5;
 // internal/api/dhcp.go's GET /sdn/dhcp).
 import { apiFetch } from "./client";

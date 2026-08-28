@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3404's shared underlined-tabs wrapper over the already-approved
 // @radix-ui/react-tabs dependency (docs/development.md "Visual language,
 // Phase 34, T-3401": "Tabs are underlined, not boxed or pill-segmented:

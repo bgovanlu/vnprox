@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3001: the config-as-code cockpit.
 //
 // Four routes' worth of machinery — the git sync, the spec document, the

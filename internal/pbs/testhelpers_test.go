@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package pbs_test
 
 // Shared test scaffolding: spin up internal/pvemock behind an httptest.Server

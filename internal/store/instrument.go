@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package store
 
 // instrument.go implements T-1903's store self-observability: a query-

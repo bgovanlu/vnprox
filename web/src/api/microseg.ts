@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Microsegmentation planner API calls (docs/api.md's Microsegmentation
 // section, T-1602's `POST /microseg/propose` + `POST /microseg/dry-run`).
 // Both routes are read-only synthesis — they READ a guest's observed flows

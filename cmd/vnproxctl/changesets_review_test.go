@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // changesets_review_test.go proves T-2003 acceptance criterion 2's second
 // required bypass: `vnproxctl remote changesets apply` — a non-browser,
 // non-UI caller entirely outside the SPA — is refused an unapproved

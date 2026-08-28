@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command e2egate decides whether a sharded Playwright run passed.
 //
 // T-2505. The e2e suite runs as N independent shards, each its own Playwright

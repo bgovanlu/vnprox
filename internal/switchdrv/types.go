@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package switchdrv is T-1205's driver abstraction for pushing a strictly
 // bounded set of configuration to a physical switch port: VLAN membership,
 // port description, and LACP settings — and nothing else. It is the

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package pvemock implements a mock Proxmox VE API server and the YAML
 // cluster fixtures that drive it. It exists so every later vnprox task
 // (the PVE client, host readers, the change engine, SDN/firewall UI, ...)

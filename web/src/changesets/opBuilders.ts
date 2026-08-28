@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure Op-construction helpers: every entity editor (BridgeEditor,
 // BondEditor, VlanEditor, InterfaceEditor) and every map drag-drop
 // interaction funnels through one of these instead of hand-building an

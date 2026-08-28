@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // `doctor --live` in the browser (`GET /doctor/live`, T-2406).
 //
 // ── THE ONE RULE ──────────────────────────────────────────────────────────

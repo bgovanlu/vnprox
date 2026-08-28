@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package reconcile executes T-2703's two symmetric answers to a drift
 // finding, and executes them ONLY when an operator asks.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package host
 
 // This file defines a lossless AST for /etc/network/interfaces(5)

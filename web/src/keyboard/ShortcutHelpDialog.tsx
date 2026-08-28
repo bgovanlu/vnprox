@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/Dialog";
 import { useAllPaletteActions } from "./actions";
 import { SHORTCUTS } from "./shortcuts";

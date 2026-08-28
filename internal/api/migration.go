@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // migration.go implements T-1507's Migration planner route
 // (docs/api.md's new Migration planner section):
 //

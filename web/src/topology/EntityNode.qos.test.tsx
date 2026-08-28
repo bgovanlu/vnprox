@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1505 acceptance criterion 5: the map renders the shaping-active badge
 // for a fixture with an active shape, absent otherwise. Mirrors
 // EntityNode.mgmt.test.tsx's exact pattern (T-702) — the badges[] array

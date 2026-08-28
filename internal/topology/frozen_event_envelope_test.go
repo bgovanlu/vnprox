@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package topology
 
 // T-3204: the WebSocket "events"/"topology" envelope (docs/api.md's

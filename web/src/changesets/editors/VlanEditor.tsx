@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // VLAN sub-interface editor (docs/features/change-management.md §5): parent
 // picker, VID, addresses, MTU (warn when exceeding parent). Re-parenting or
 // re-tagging an existing VLAN iface is out of scope (params_vlan.go's doc

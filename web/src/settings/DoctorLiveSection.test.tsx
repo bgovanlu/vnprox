@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3003 AC4, the card's single most important assertion: `doctor --live`
 // renders pass / fail / skip as three distinct states, and a skipped check is
 // neither styled nor counted as a passing one.

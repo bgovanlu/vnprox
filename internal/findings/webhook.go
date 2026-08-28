@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // webhook.go implements T-1005's alert routing: a Notifier (see notify.go's
 // interface) that delivers finding/drift transitions to arbitrary webhook
 // targets, independent of PVE's own notification-target system

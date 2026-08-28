@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // edgemarker.go backs T-1403's Edge & NAT cockpit: the encode/decode pair
 // that lets internal/change/ifaces (the mutator) and internal/edge (the
 // read view) agree on exactly one on-disk representation for a nat.*/

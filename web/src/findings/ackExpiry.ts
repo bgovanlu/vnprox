@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2402: the one place that turns "how long is this deliberate for" into the
 // unix-seconds instant the server stores.
 //

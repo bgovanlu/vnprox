@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // snapshots_scheduled.go implements T-2401's scheduled automatic config
 // snapshots.
 //

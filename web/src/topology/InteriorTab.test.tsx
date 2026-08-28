@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1304 AC5: InteriorTab.test.tsx covers the opt-in toggle copy/gating
 // and rendering of the interior data + IPAM diff against a mocked API
 // response.

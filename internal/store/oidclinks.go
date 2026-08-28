@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // oidclinks.go implements T-1207's oidc_pve_links table (migration
 // 0024_oidc.sql): the admin-configured OIDC-group→PVE-identity linkage that
 // resolves an OIDC-authenticated human to a per-cluster PVE authorization.

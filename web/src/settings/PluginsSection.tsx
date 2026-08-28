@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Installed plugins and their lifecycle (T-1702's four routes).
 //
 // THIS IS NOT AN INSTALL SURFACE, and adding one here would be a second

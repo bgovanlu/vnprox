@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shareable Conntrack Explorer state — the same "state lives in the URL"
 // convention this codebase already established for the Flow Explorer
 // (flows/urlState.ts): a plain, framework-free encode/decode pair over

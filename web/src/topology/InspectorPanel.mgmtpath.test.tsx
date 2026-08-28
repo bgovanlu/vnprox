@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-702 acceptance criterion 4: the inspector's "Management path" tab
 // renders carrier/path/redundancy-statement/source-caveat, and the
 // not-redundant plain-English wording specifically.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-907's sticky-note annotations, rendered wherever an entity's own
 // detail is shown (InspectorPanel's "Notes" tab) — there is no on-canvas
 // rendering of individual notes; per docs/api.md's Saved views &

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // redact.go is T-1902's redaction layer: the two mechanisms a support
 // bundle uses to be safe *by construction* rather than by review.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The real implementation lives in src/topology/ (the whole feature
 // module: canvas, projection logic, queries, layout, inspector, search,
 // keyboard wiring, ...) alongside its own tests — this file only wires it

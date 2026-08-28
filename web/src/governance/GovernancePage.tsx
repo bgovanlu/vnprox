@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002: the governance screen.
 //
 // Fifteen routes across four features that a `curl` could reach and an

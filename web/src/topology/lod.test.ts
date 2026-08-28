@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-902 AC2/AC3: deterministic coverage for the LOD transform (lod.ts)
 // against the real scale-lab fixture (the same fixture scaleLab.render.
 // test.tsx exercises for progressive disclosure) — no browser/canvas

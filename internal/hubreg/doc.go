@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package hubreg is T-2803's *registry* side of the T-1705 hub: the signed
 // index format, the publisher/reviewer tooling that produces it, and the
 // client-side gate that verifies it and enforces revocation.

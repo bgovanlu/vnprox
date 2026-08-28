@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // index.go is the signed registry-index document: its wire shape, its
 // canonical signing bytes, and the whole-document verification that either
 // yields a complete index or nothing (T-2803 AC5).

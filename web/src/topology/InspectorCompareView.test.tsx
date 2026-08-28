@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-908 acceptance criteria 2 & 3: compare mode for two same-kind entities
 // (matching field rows aligned column-wise, each pane's own Metrics
 // sparkline), and the mismatched-kind fallback (states why, never a broken

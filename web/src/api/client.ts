@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared fetch wrapper for the whole app. Per docs/development.md's
 // TypeScript standards ("no fetch in components"), every network call
 // goes through here (usually wrapped again in a TanStack Query

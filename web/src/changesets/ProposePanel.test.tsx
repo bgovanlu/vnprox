@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2702's client: proposing a changeset as a pull request against the spec
 // repository. The claims this file pins:
 //

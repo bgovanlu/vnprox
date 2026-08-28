@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1302 AC1: BpfBuilder.test.tsx covers building a filter from picker
 // state and submitting it, and confirms a dialog whose requested caps
 // exceed a mocked server-granted value renders the server's actual (lower)

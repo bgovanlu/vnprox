@@ -1,5 +1,7 @@
 //go:build !linux
 
+// SPDX-License-Identifier: Apache-2.0
+
 package host
 
 // platformEthtoolSpeedDuplex has no implementation outside Linux (vnprox

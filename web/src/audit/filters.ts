@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure filter-form helpers for the Audit page, in their own module (not
 // AuditPage.tsx) so the page file only exports components (react-refresh)
 // and the logic is directly unit-testable.

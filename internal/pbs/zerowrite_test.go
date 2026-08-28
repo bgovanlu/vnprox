@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // zerowrite_test.go is T-1206 AC4's regression test: PBS network awareness is
 // read-only forever — PVE owns storage.cfg and the backup schedule; vnprox
 // only reads PVE's own knowledge of them. Three independent checks:

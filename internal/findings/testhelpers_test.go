@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package findings_test
 
 // Shared graph-building helpers for the health-check golden tests — the

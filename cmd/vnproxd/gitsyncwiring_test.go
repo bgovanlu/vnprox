@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // The wiring test for T-2702's pull-request body carrying T-2605's post-apply

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Renders docs/features/sdn.md §1's "staged-vs-running as a first-class
 // diff" for one zone/vnet/subnet — the pending-state diff view T-401
 // acceptance criterion 2 asks for ("Fixture with staged-but-unapplied SDN

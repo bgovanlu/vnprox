@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Resolves a PVE node name to a stable "whole node" anchor id for the
 // node-to-node overlay layers (Latency/T-1303, MTU/T-1306, WireGuard/
 // T-1402) that want to draw one edge per cluster node rather than per

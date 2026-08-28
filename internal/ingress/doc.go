@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package ingress implements T-1406's read-only reverse-proxy discovery:
 // HAProxy, nginx, Caddy, and Traefik, polled only via their own status/
 // config endpoints, and only for targets the operator explicitly added to

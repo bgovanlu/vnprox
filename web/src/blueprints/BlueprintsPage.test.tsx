@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-605's read-only-mode UX sweep found this page's Import/Capture/Delete/
 // Instantiate affordances had no capsForNode/hasAnyCap gating at all (every
 // other write surface in the app already did) — this test pins the fix:

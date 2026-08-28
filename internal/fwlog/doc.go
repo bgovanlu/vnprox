@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package fwlog implements T-505's cluster-wide pve-firewall log viewer:
 // parsing pve-firewall's own log line format (ParseLine/ParseAll), a
 // best-effort correlator that maps a parsed line back to the configured

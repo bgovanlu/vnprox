@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package auth implements vnprox's PVE credential bridge (T-105):
 //
 //   - POST /auth/login, POST /auth/logout, GET /auth/me (docs/api.md),

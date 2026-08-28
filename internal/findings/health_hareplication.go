@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_hareplication.go implements the "ha_replication_degraded" health
 // check (T-1704): one finding when the active daemon's state replication to
 // its HA standby is degraded — the last replication push failed (the standby

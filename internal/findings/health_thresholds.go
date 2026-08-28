@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_thresholds.go implements docs/features/monitoring.md §5's
 // "interface error/drop rate thresholds" check, reading straight from
 // T-601's internal/metrics.Sampler.Live — per planning/reports/T-601.md's

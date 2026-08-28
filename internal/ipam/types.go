@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package ipam
 
 // Subnet is one row of docs/api.md's `GET /ipam/subnets`: an SDN subnet (or,

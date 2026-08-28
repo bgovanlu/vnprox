@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2704's map diff overlay: resolves a point-in-time topology diff to the
 // per-map-node marks the canvas paints for a selected range.
 //

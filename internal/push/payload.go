@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // payload.go builds the ONLY bytes this package ever sends as a push
 // payload: a small, closed-schema Notification. This exists because a push
 // notification can render on a phone's LOCK SCREEN before anyone

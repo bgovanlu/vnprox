@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package collect_test
 
 // T-303 acceptance criteria 1, 2, and 4: a three-daemon harness — three

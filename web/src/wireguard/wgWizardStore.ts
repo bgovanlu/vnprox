@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // One shared launch signal for the "connect two clusters" wizard (T-1402),
 // mirroring mgmt/mgmtWizardStore.ts's exact pattern: every entry point
 // opens the same single wizard instance (mounted once in the app shell)

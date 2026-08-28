@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // SDN Fabrics view (T-3101, docs/features/sdn.md §6): fabric list with
 // protocol badge + per-node membership status, a create/edit form whose
 // fields reveal per the selected protocol, and read-only tables for the

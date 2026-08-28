@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change_test
 
 // T-606: "mixed-version refusal behavior verified in the multi-daemon

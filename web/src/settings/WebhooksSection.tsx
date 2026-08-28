@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Webhook registrations (T-1104 routes, T-2905 destination policy).
 //
 // ── READ THIS BEFORE CHANGING THE GATING ──────────────────────────────────

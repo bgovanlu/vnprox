@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Session bootstrap: calls GET /auth/me (T-105's real route) on load via
 // TanStack Query. Any non-200 (401 not-logged-in, or a 404 from an
 // out-of-date backend) is treated uniformly as "logged out" — retry:false

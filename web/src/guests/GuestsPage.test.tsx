@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-605's read-only-mode UX sweep found the bulk "Reattach N guest(s)"
 // button was gated only on `!bulkTarget` (a target picked) with no
 // capability check at all — a read-only session could select rows and

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for the Platform panel's four route families
 // (T-3003). Server state only ever reaches a component through these — no
 // component in this feature calls `apiFetch` directly (docs/development.md's

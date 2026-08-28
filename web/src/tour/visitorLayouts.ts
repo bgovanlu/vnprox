@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2802: saved layouts, for a visitor to a public demo.
 //
 // On a normal instance a layout is app-owned data in the daemon's store,

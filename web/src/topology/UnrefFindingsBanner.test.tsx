@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3501 AC5: findings with no entity refs (health/service_down for dnsmasq
 // and frr on the reference node, pvecube — see planning/tasks/phase-35.md)
 // must not paint nothing anywhere. This is their home — mirrors

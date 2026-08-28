@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-806's "Verify live" gating logic (docs/features/firewall.md §5:
 // "enabled only for a guest-nic src resolved to a qemu guest with a
 // reachable guest agent, with plain-English grey-out copy otherwise").

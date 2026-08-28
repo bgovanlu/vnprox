@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package apidoc turns vnprox's registered HTTP routes into an OpenAPI 3.1
 // document (T-2405).
 //

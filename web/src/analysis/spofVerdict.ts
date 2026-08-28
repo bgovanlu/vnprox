@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The SPOF verdict: how one `internal/failsim.Impact` reads to an operator.
 //
 // Framework-free so it is directly Vitest-able, and separate from the panel

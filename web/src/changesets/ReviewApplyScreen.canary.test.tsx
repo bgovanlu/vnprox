@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3005 AC1/AC3/AC4: the review screen's apply-strategy picker.
 //
 // The load-bearing assertions here are about the REQUEST BODY, not about

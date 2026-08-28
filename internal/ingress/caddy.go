@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // caddy.go discovers a Caddy instance via its admin API's own read-only
 // `GET /reverse_proxy/upstreams` endpoint (Caddy's documented introspection
 // route: the currently active reverse_proxy upstreams and their live

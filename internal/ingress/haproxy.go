@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // haproxy.go discovers an HAProxy instance via its classic HTTP stats page
 // CSV export (`stats enable` + `stats uri ...` in haproxy.cfg — appending
 // `;csv` to that URI, e.g. `http://host:8404/stats;csv`, is HAProxy's own

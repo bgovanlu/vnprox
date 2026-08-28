@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package store
 
 // compact.go implements T-1905's compaction path: reclaiming the disk space

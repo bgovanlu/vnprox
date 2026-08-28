@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Inline validation for an interface rename (issue #2), mirroring the
 // change engine's own rule (internal/change.ifaceNameRe / maxIfaceNameLen):
 // a leading alphanumeric, then alphanumerics and `.-_` (dots appear in VLAN

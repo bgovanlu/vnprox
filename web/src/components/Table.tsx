@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import type { HTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from "react";
 import clsx from "clsx";
 import { DensityProvider, useDensity, type Density } from "./density";

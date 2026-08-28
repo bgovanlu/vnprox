@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // gate.go is the consumer half: the thing that makes a signed index and its
 // revocations *bind* on the existing, unmodified internal/hub client.
 //

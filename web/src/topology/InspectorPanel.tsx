@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import * as RadixDropdown from "@radix-ui/react-dropdown-menu";
 import * as RadixTabs from "@radix-ui/react-tabs";
 import { EntityHistoryTab } from "./EntityHistoryTab";

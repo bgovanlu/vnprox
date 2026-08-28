@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Auth API calls (docs/api.md §Auth) plus the CSRF-token plumbing the
 // session cookie scheme implies.
 //

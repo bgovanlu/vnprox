@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1805 (UI half): the pure logic behind the two statements the interface
 // must make about whether a changeset will undo itself — the review screen's
 // pre-apply notice and the countdown banner's live coverage line.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // autorollback.go implements T-2603's finding-triggered auto-rollback inside
 // the commit-confirm window.
 //

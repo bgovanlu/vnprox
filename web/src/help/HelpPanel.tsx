@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { useMemo } from "react";
 import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from "../components/Drawer";
 import { Button } from "../components/Button";

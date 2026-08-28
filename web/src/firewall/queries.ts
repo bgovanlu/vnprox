@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for T-501's firewall read views. Read-only (no WS
 // bridge yet — firewall config changes infrequently and T-502 owns writes;
 // a future task can add a `firewall.changed` bridge the same way

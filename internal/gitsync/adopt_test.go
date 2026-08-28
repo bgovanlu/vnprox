@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package gitsync_test
 
 // T-2703's "adopt reality" half, against the same mock git host T-2702's

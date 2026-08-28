@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // fdb.go implements T-306's MAC/FDB browser (docs/features/lldp-discovery.md
 // §4): a cluster-wide, ownership-labeled view over every Bridge entity's
 // forwarding-database table. The data itself is already cluster-wide by the

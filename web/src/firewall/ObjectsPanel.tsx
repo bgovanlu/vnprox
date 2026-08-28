@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Object usage tracking (docs/features/firewall.md §2: "this alias is
 // referenced by 9 rules — view"), the usage-guarded delete (acceptance
 // criterion 2: deleting a referenced object is blocked, with the

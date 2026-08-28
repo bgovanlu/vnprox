@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // ipv6ra.go backs T-1404's internal/host.Reader.IPv6RA for fixture tests:
 // FixtureHostReader.IPv6RA returns a node's fixture-declared per-interface
 // IPv6 Router Advertisement / DHCPv6 observation verbatim (NodeSpec.IPv6RA

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Changeset drawer UI state: which draft is currently "open" in the drawer,
 // whether the drawer/review screen is visible, and the "apply with
 // warnings" acknowledgment. Persisted to localStorage (zustand's `persist`

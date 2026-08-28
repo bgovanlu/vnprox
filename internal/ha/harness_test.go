@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package ha_test
 
 // T-1704 two-daemon failover harness with a REAL change.Service on each daemon

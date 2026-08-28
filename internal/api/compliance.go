@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // compliance.go is the HTTP surface of T-2706's compliance profiles and
 // evidence export: list the installed profiles, report one profile's
 // controls with the evidence behind each, and export that report as a

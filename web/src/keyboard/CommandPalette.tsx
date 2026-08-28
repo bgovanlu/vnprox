@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-903: the ⌘K/Ctrl+K command palette. Merges SpotlightSearch's fuzzy
 // entity search (GET /inventory/search, docs/features/topology.md §2) with
 // every currently-registered palette action (actions.ts) in one dialog —

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // correlate.go implements T-1501's node<->guest correlation: a k8s node's
 // reported InternalIP matched against addresses vnprox's own inventory
 // already knows about (IPAM allocations / guest-agent-reported addresses)

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Topology page UI state: layer visibility, VLAN filter, selection/hover,
 // expanded guest-group pills, and manual node positions. Canvas state lives
 // in zustand per docs/development.md's TypeScript standards ("canvas state

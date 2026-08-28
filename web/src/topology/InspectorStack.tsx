@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-908: the container TopologyPage mounts instead of a single
 // InspectorPanel — owns the pinned/compare pane list (inspectorStack.ts's
 // pure reducer) and decides layout:

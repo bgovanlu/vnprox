@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package pve implements a typed, minimal Go client for the subset of the
 // Proxmox VE API surface vnprox uses (docs/architecture.md §1, §6).
 //

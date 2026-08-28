@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Web-push API calls against internal/api/push.go (T-2005): the VAPID
 // public key a browser's `PushManager.subscribe()` needs, and CRUD over
 // this session's own registered push subscriptions. Mirrors annotations.ts'

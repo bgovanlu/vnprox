@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3404 acceptance criterion 2: one representative tabbed page (Firewall,
 // chosen over SDN because it's the one whose tabs already deep-link —
 // FirewallPage.tsx's scope/ref/pos/origin query params, T-504/T-2002) both

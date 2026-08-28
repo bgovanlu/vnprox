@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package baseline learns per-guest/per-segment traffic baselines from the
 // retained flow window (internal/flow.Record, sourced from flow_samples) and
 // detects statistically significant deviations from a learned baseline

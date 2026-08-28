@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The NetBox-style address list (docs/features/ipam.md §2): every occupied
 // address as a row, with the contiguous free space between them collapsed
 // into "N addresses free" range rows. This replaces the old colored-square

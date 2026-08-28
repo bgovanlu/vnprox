@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure state machine for the firewall log viewer (T-505): a bounded,
 // client-side-capped entry buffer fed by both the initial REST page and
 // the `firewall.log.batch` WS follow stream, pause/resume (freezing the

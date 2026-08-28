@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // bridge.go: the same-named-bridge presence / VLAN-awareness / VID-set
 // comparison — docs/features/topology.md §6's first check family. Only bridge
 // names that appear on two or more cluster nodes are compared (a same-named

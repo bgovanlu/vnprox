@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure timeline-grouping logic for the History page: snapshots grouped by
 // the changeset that produced them (docs/features tasks/T-206: "snapshot
 // timeline grouped by changeset"), manual/scheduled snapshots standing

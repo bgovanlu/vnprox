@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package findings_test
 
 // TestMTUPathMismatch_FlowsThroughUnifiedStream is AC1's check for "MTU

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 // T-2805's API-layer coverage: the advisory-lock warning on staging (AC1),

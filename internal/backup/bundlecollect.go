@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // bundlecollect.go holds T-1902's collectors.
 //
 // Every one of them is a bundleCollector, which — unlike backup.Collector —

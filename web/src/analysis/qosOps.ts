@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure Op-construction helpers for QoS shaping, the same seam
 // changesets/opBuilders.ts provides for the entity editors: the wire shape
 // (internal/change/params_qos.go) is honored in exactly one place, and no

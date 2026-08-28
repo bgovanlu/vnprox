@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import type { Finding } from "../api/types";
 import { editorFindingsFor, fieldForFindingCode, hasEditorErrors } from "./findingFields";

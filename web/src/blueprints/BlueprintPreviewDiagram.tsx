@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // A lightweight, framework-free-layout preview diagram (docs/features/
 // blueprints.md §1: "Each starter carries ... a preview diagram", T-603's
 // "wizard-preview machinery" — since no SDN-wizard preview canvas exists

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Topology toolbar's "New" menu: create a bridge/bond/VLAN interface on a
 // chosen node (docs/user-guide.md's common-tasks table: "Node -> Bonds ->
 // New"). Opens the corresponding entity editor via editorLauncherStore

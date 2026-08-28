@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // pending.go implements docs/features/topology.md §6's fourth check
 // family: "pending-but-unapplied interfaces.new files" — an interface PVE
 // reports as `pending` (new/changed/deleted) on GET /nodes/{node}/network

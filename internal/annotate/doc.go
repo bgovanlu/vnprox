@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package annotate is T-2806's map annotation layer: the read model over
 // the two app-owned tables that hold what an operator KNOWS about the map,
 // as opposed to what the map shows — free-text notes pinned to an entity

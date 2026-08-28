@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The dedicated "Management" surface (issue #1: "I don't see the management
 // interfaces anywhere. app needs to be able to configure all aspects of
 // management interfaces"). T-702 made a node's management path *visible* in

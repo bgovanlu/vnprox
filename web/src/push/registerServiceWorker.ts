@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Registers web/public/sw.js — called once from main.tsx. A no-op (and no
 // thrown error) in a browser without service worker support, or in a test/
 // SSR environment with no `navigator`.

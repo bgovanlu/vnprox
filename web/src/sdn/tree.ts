@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure tree-selection/formatting logic for the SDN cockpit, split out from
 // SdnPage.tsx so it's directly Vitest-able without React Testing Library
 // (docs/development.md: "Vitest + Testing Library on logic-bearing

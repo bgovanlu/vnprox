@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure BPF/pcap filter construction from picker state (T-1302's
 // BpfBuilder.tsx) — kept separate from the component so the "given this
 // picker state, what filter string comes out" logic is trivially unit

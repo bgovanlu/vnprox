@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package seed is T-2104's seeded blueprint library: the "real-world"
 // blueprints the hosted registry (docs/hub-registry.md, T-2803) ships once
 // hosting exists — homelab single-node, three-node Ceph storage, a

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1402 AC2 (preview matches submitted ops — Testing Library) and AC4
 // (regression: the wizard never calls any mutate route other than the
 // single POST /changesets it stages).

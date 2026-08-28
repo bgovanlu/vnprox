@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package findings
 
 // health_storecapacity.go implements T-1905's store_near_capacity finding:

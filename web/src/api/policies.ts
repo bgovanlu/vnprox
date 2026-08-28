@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2601's policy-as-code guardrail over the wire: `GET /policies`,
 // `PUT /policies`, `POST /policies/test` (docs/api.md §Policies).
 //

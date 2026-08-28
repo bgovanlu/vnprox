@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared "next free address" picker (docs/features/ipam.md §3: "'Next free
 // address' picker exposed everywhere an IP is entered elsewhere in the
 // UI"). This is T-405 acceptance criterion 4's reusable component: the

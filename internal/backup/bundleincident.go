@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // bundleincident.go is T-2804's export: "close and export produces one
 // artifact — the timeline plus a support bundle — through the existing
 // redaction path".

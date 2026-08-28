@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The persistent changeset drawer (docs/features/change-management.md §1;
 // docs/user-guide.md §3: "Edits collect in the change drawer (bottom
 // right)"). Deliberately NOT built on the Radix Dialog-based <Drawer/>

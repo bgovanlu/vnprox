@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // gitsynccmd.go implements `vnproxctl gitsync status` (T-2701): what the
 // git-backed spec sync last fetched, what it planned, and why the draft
 // changeset it opened exists.

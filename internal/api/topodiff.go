@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // topodiff.go serves T-2704's `GET /topology/diff` — "what is different about
 // this cluster compared to Tuesday", answered from the snapshot series T-2401
 // records on a schedule, with each difference either named to the changeset

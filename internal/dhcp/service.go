@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package dhcp implements T-406's dnsmasq lease-file reader fan-out: a
 // cluster-wide ipam.LeaseSource that reads every node's raw DHCP
 // lease-file content (locally via internal/host.Reader, and for every

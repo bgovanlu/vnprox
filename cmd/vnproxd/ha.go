@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // ha.go wires T-1704's active/standby HA manager into the daemon: the change-
 // engine coordinator adapter (re-arm/quiesce), the late-bound LeaderGuard and
 // findings provider (the manager is constructed after change.Service and the

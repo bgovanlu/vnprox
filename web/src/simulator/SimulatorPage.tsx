@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Tools -> Path simulator (docs/user-guide.md §3's task table: "Why can't
 // VM A reach VM B? -> Tools -> Path simulator"; docs/features/firewall.md
 // §5). Composes the endpoint pickers, proto/port + service presets, the

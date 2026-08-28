@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Federation global-read API calls (T-1202; docs/api.md §Federation), plus
 // the T-1201 cluster-registry CRUD (T-2001: the registry has had full
 // backend routes and no UI since T-1201 — this file's create/update/delete

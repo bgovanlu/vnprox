@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-208 raw editor API calls (docs/api.md "Raw interfaces editor"). These
 // are the only two routes the raw Monaco editor needs beyond the ordinary
 // changesets endpoints (api/changesets.ts) it saves through.

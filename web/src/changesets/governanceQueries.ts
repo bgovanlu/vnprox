@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002's server state for the review screen's governance panels: the
 // installed policy set, this changeset's standing against it, and the
 // break-glass mutation. Kept in its own module rather than folded into

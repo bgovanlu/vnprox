@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-909's route guard: every route outside the narrow-viewport reachable
 // set (Dashboard, Findings/`/tools`, and the changeset confirm/rollback
 // overlay — which is mounted app-wide in AppShell, not routed) is wrapped

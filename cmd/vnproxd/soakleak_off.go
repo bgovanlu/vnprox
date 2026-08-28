@@ -1,5 +1,7 @@
 //go:build !soakleak
 
+// SPDX-License-Identifier: Apache-2.0
+
 // soakleak_off.go is the production half of T-2504's leak-fixture seam: in
 // every build that does NOT carry the `soakleak` tag — which is every build
 // this repo ever ships, tests, lints, or packages — the two hooks below are

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // service.go owns the incident RECORD: opening, closing, reopening and
 // annotating. Everything about the timeline itself lives in timeline.go,
 // because the two halves have opposite properties and keeping them in one

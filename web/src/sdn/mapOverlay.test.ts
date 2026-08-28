@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-401 acceptance criteria 3 & 4: verifies the topology map overlay's SDN
 // layer against a real captured fixture (evpn-lab.yaml run through the
 // actual pvemock -> collect -> inventory.Graph -> topology.Project

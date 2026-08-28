@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hook for GET /ipv6/segments (docs/development.md's
 // TypeScript standards: "server state via TanStack Query only — no fetch in
 // components").

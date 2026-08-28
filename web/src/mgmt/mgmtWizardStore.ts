@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // One shared launch signal for T-703's management-redundancy wizard, so
 // every entry point — the mgmt_single_path finding, the inspector's
 // "Management path" section, and the topology New menu — opens the same

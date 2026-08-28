@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1307 acceptance criterion 6: "Diagnose" from the map on a
 // three-node-vlan fixture guest (app01, pve1/200 — the same fixture T-1304's
 // guest-interior.spec.ts already exercises) runs the guided diagnosis

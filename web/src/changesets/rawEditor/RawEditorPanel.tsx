@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-208's raw editor chrome: node picker context lives in the caller
 // (ToolsPage); this component owns one node's load/edit/lint/save/conflict
 // flow. Monaco itself is loaded lazily (React.lazy) so opening this panel

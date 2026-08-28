@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // nginx.go discovers an nginx instance via its status endpoint. Two real
 // nginx status formats exist, and this discoverer auto-detects which one a
 // target speaks from the response's Content-Type (both reachable only by a

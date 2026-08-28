@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // wireguard.go implements T-1401's WireGuard tunnel/peer storage
 // (docs/data-model.md §2, migration 0016_wireguard.sql). App-owned intent +
 // audit only per CLAUDE.md's storage rule. PrivateKeyEnc / PresharedKeyEnc are

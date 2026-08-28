@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Entity kinds internal/metrics.Sampler actually tracks (see
 // refMetasFromLinks: PhysNic/Bond/Bridge/VlanIface only — the rest of the
 // inventory graph has no interface counters at all). Shared by

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // zerowrite_test.go is T-1503 AC4's regression test: Ceph is read-only
 // forever — PVE's own Ceph tooling keeps sole ownership of Ceph
 // configuration. Three independent checks (mirroring internal/k8s's own

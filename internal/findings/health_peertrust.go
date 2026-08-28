@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_peertrust.go implements T-1906's peer-API TLS trust findings
 // (source "peer"). The peer API carries cluster-wide network mutations —
 // cross-node changeset application, distributed rollback timers, host-writer

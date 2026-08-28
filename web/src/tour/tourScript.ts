@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2802: the guided tour's script, written against T-2801's demo dataset.
 //
 // The card asks for "a scripted tour covering the six surfaces the datasheet

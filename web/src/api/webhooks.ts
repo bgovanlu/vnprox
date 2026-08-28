@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Webhook-registration API calls (T-1104/T-2905; docs/api.md's "Tokens &
 // Webhooks" section, internal/api/webhooks.go).
 //

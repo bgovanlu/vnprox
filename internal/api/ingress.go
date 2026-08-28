@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // ingress.go implements T-1406's ingress visibility routes (docs/api.md's
 // Ingress visibility section):
 //

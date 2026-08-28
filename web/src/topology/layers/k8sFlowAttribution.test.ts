@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import type { K8sOverlay } from "../../api/types";
 import { attributeK8sFlow, buildK8sAttributionIndex, formatK8sAttribution, resolveK8sAddress } from "./k8sFlowAttribution";

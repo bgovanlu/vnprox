@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // doctorlive.go wires T-2406's daemon-side self-check: the checks

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-605 acceptance criterion 4: "Read-only sweep: automated crawl
 // (Playwright) in read-only mode finds zero enabled mutating controls."
 // Generalizes changesets.spec.ts's "read-only capability user sees disabled

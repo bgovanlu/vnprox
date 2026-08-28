@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // A short, best-effort "what device is this" label offered as the default
 // for POST /push/subscriptions' deviceLabel field (display-only, capped at
 // 120 runes server-side — internal/api/push.go's maxDeviceLabelRunes). Not

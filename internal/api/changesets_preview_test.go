@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // changesets_preview_test.go covers T-2605's GET /changesets/{id}/preview at
 // the route level, and in particular AC4: the endpoint is side-effect free.
 //

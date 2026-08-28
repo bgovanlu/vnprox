@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package diagnose
 
 // StepStatus is one ladder step's outcome classification (docs/api.md's

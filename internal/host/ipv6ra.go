@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package host
 
 // IPv6RAObservation is one interface's bounded, host-local IPv6 Router

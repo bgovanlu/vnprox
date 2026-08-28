@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for the onboarding walkthrough: persisted progress
 // (GET/PUT /layouts/onboarding), the protected-interfaces suggest/confirm
 // pair, and the LLDP neighbor list + guided install. Topology (step 1) and

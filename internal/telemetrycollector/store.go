@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package telemetrycollector
 
 // store.go is the collector's entire persistence layer: one table, no

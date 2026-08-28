@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2001's federation cluster editor: `/federation/clusters` has had full
 // CRUD, audit coverage, and capability gating since T-1201 and no UI at
 // all — attaching a cluster meant hand-crafting a POST with a credential in

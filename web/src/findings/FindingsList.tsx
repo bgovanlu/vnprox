@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // A shared findings-stream list — T-305's drift findings today, T-602's
 // continuous-checks findings stream (docs/features/monitoring.md §2, "one
 // findings stream shared with drift, LLDP mismatch, IPAM conflicts") is

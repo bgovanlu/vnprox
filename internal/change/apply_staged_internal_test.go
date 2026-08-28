@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change
 
 // Unit tests for T-2602's pure staging helpers — the arithmetic and set

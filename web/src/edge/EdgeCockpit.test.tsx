@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1403 acceptance criterion 4's frontend half: the Edge layer flags a
 // port-forward rule pointing at a currently powered-off guest distinctly.
 // Network is mocked at the ./edgeQueries seam (mirrors

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Glue between the pure projection logic (projection.ts — deliberately
 // framework-free) and React Flow's Node/Edge shapes. Kept as its own module
 // so projection.ts's hover/VLAN/layer logic stays exhaustively Vitest-able

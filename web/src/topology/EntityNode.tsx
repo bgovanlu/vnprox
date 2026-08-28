@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // A single custom React Flow node component covering every rendered entity
 // kind (bridge, bond, physnic, vlan, sdn-zone/vnet, guest, guest-nic, and
 // the synthetic guest-group pill), branching its look by `data.kind` rather

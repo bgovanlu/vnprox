@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package switchmock is T-1205's in-memory SwitchDriver test double: a single
 // simulated switch whose per-port config and LLDP neighbor are scriptable, and
 // which records every write it receives so a test can assert exactly zero

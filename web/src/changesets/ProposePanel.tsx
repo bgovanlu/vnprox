@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2702: propose a changeset as a pull request against the spec repository.
 //
 // This is the mirror image of T-2703's "adopt reality"

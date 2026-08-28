@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3501 AC5: findings whose Refs are empty (health/service_down for a bare
 // service name like dnsmasq/frr on the reference node — nothing to name)
 // have nothing to paint on the map. They must not be invisible, so this

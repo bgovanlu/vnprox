@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // EmbedDashboard (T-1706): a read-only embed of the home dashboard (T-904).
 // It reuses the existing dashboard tile components verbatim — each one is
 // already read-only (docs/features/monitoring.md §1: "every tile is

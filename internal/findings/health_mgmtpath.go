@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_mgmtpath.go implements docs/features/monitoring.md §5's
 // "mgmt_single_path" health check (T-702): one finding per node whose
 // management path — the physical interface(s) ultimately carrying its

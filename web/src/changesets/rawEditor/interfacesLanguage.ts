@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // A Monarch grammar for /etc/network/interfaces(5) (ifupdown2 stanza
 // syntax), for T-208's raw editor's syntax highlighting. Monarch tokenizers
 // are plain declarative objects (regex -> token-name tables) — this module

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Audit-log API calls (docs/api.md "Audit", T-206).
 import { apiFetch } from "./client";
 

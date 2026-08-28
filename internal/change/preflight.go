@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // preflight.go wires T-1604's failure-impact simulator into the scheduler as
 // an *additive* pre-flight veto on unattended applies (the hook point the
 // T-1604 card names). At windowStart the scheduler already refuses any

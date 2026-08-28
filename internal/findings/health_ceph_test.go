@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package findings_test
 
 // health_ceph_test.go proves T-1503's Engine wiring (health_ceph.go): a

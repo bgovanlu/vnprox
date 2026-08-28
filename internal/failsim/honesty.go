@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package failsim
 
 // Dimension codes are the machine-stable keys that appear in

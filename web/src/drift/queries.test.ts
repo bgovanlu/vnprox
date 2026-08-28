@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import { DRIFT_QUERY_KEY, applyDriftChanged, isDriftChangedEvent } from "./queries";

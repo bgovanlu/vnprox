@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3503: the two pure decisions behind a drawn port — which jack to draw,
 // and what speed marking to silkscreen above it. Kept in their own module,
 // framework-free, for the same reason switchModel.ts is: they are the part

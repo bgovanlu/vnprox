@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1202 AC1 (frontend half): a reachable cluster capsule shows its name,
 // aggregate findings, and drilling fires onDrill; an unreachable cluster
 // renders degraded/greyed with an explicit indicator rather than being

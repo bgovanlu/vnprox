@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package k8smock is T-1501's hardware-free k8s API server double: an
 // httptest.Server serving the exact four read-only endpoints
 // internal/k8s.Client calls (/api/v1/nodes, /api/v1/pods,

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // k8s.go wires T-1501's Kubernetes overlay mapping engine into the daemon's
 // unified findings stream: k8sFindingsAdapter converts internal/k8s.Poller's
 // cached NodePort-exposure findings into the findings.Finding shape. The

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The reviewer-facing proof surface: renders a monitor-only dry-run's
 // four-bucket honest report (T-1602's DryRun) before anyone enforces a
 // proposed policy. The two buckets a reviewer MUST see — `wouldBlock`

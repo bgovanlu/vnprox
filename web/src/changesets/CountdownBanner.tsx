@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The commit-confirm countdown banner (docs/features/change-management.md
 // §4: "The countdown renders as a full-width banner"; docs/user-guide.md
 // §3: "A countdown banner appears (default 2 minutes)"), plus the terminal

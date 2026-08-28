@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package wan
 
 // Fabric is the internal/latmesh.Fabric value every WAN pair/sample carries

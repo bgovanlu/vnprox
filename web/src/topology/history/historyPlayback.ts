@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1007 "History playback": pure, framework-free helpers for
 // HistoryTimeline.tsx's scrubber — playback-range clamping, nearest-sample
 // lookup, and the historical-rates-to-utilization mapping. Kept separate

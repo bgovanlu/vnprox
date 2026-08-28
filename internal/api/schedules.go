@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 // schedules.go implements T-1103's scheduled-changeset routes: POST/DELETE

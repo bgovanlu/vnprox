@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1005 AC5's e2e scenario, against the real stack (pvemock
 // testdata/clusters/sim-lab.yaml -> vnproxd -> the production SPA build,
 // this task's own webServer pair — web/playwright.config.ts, ports

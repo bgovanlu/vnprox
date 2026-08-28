@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // gitsync.go wires T-2701's git-backed spec sync into the daemon.
 //
 // Three things happen here and nothing else: the [gitsync] section becomes a

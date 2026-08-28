@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure param-input validation/parsing for the blueprint instantiate param
 // form (T-603 AC4: "Param validation: bad CIDR/VID rejected at the
 // form"). Framework-free (no React import) so it's directly Vitest-able;

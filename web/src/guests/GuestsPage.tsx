@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Guest NIC list + bulk reattach (docs/features/change-management.md §6;
 // docs/user-guide.md's common-tasks table: "Move 12 VMs to another bridge |
 // Guests view -> filter by bridge -> select all -> Reattach"). Every action

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // propose.go implements T-2702's two routes: proposing a changeset as a pull
 // request against the spec repository, and reading back what was opened.
 //

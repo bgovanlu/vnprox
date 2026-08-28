@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2808 acceptance criteria 1, 3 and 6, asserted against the real engine
 // driving the real api layer (the tool calls below go through
 // api/topology.ts etc. and out through a stubbed global fetch, exactly as

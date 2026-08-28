@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package spec_test
 
 // Test helpers: build a real inventory.Graph from a pvemock cluster fixture

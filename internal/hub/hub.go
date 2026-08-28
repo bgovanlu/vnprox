@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package hub is T-1705's client for an opt-in public registry of T-1107
 // signed blueprint bundles and T-1702 SDK plugins. It is a browse/install
 // *client* and the registry-index *contract* only — this repository hosts no

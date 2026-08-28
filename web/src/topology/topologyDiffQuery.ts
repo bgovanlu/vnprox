@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2704: the point-in-time topology diff query for the map overlay.
 //
 // Kept in its own module (the mtuProbeQueries.ts / latMeshQueries.ts

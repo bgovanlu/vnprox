@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Unit tests for the §5 staleness projection (docs/features/topology.md §5,
 // docs/api.md's GET /topology staleness section). The stale fixture's
 // staleness object was captured from a live vnproxd (three-node-vlan

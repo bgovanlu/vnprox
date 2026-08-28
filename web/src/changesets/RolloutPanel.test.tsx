@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3005 AC2: the rollout view renders per-node state and the Continue
 // action mid-hold, and a reload re-derives that state from the server rather
 // than from anything this side remembered.

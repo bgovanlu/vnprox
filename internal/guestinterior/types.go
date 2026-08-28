@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package guestinterior
 
 // Source names which read path produced a View (docs/api.md's Guest

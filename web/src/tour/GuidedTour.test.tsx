@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Component-level tests for the guided tour, with the edge's visitor
 // surface mocked at its api boundary (tour/visitorApi.ts) — the same
 // convention OnboardingWalkthrough.test.tsx uses.

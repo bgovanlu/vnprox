@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-905 acceptance criterion 4: "a snapshot test asserts aria-label content
 // for every entity/badge type against three-node-vlan and evpn-lab
 // (covering the VTEP mesh/peer badges)". Runs the real projection pipeline

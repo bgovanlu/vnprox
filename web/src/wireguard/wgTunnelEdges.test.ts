@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1402 AC1: "A tunnel between two attached mock clusters renders as one
 // map edge with the correct live status badge for each of T-1401's three
 // states (healthy/stale-handshake/endpoint-drift)." Federation (T-1201) is

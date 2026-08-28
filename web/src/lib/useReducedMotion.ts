@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-905's reduced-motion seam: a single place every animated affordance in
 // the app (map pan/zoom easing, the drift/mgmt "pulse" treatment, dialog/
 // toast transitions) reads to decide whether motion is allowed, so

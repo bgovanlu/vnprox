@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import clsx from "clsx";
 import type { Layer } from "../api/types";
 

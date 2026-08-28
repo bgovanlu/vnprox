@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Issue #1: the dedicated Management page lists each node's management
 // carrier, its resolved aspects, and the edit affordances.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

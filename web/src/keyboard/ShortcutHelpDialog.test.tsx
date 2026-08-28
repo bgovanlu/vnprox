@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-903 AC3: the help dialog renders the ⌘K/Ctrl+K palette binding plus at
 // least the four named verbs' shortcuts where bound (each currently-
 // registered palette action, reachable via that same binding).

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Ingress visibility API calls (docs/api.md's "Ingress visibility" section;
 // internal/api/ingress.go, T-1406). Read-only discovery: only
 // POST/DELETE /ingress/targets mutate anything, and only the operator's own

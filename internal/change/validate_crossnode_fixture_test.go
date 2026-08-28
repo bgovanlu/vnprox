@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change_test
 
 // T-801 acceptance criteria 1–3 and 5, exercised through the public

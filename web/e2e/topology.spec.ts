@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-107 acceptance criterion 1's render-verification artifact (audit
 // finding F-06): against the real stack (pvemock three-node-vlan fixture →
 // vnproxd collectors → GET /topology → the production SPA build), log in

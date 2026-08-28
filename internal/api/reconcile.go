@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // reconcile.go implements T-2703's two symmetric routes on a drift finding,
 // plus the read that links what adopting already opened.
 //

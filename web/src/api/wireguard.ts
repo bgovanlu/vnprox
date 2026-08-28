@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // WireGuard read-view API calls (docs/api.md's WireGuard section, T-1401;
 // internal/api/wireguard.go's GET /wireguard/tunnels et al.). Every route
 // here is netRead-gated and read-only — WireGuard is mutated exclusively

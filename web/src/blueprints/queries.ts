@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for T-603's blueprint list/detail/save/delete/
 // capture/instantiate/suggest calls (docs/api.md's Blueprints section).
 // Mirrors internal/drift's queries.ts convention: one hook per API call,

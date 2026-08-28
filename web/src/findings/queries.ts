@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for T-602's unified findings stream: the list fetch,
 // the "create fixing changeset" mutation, and the WS bridge that keeps the
 // list fresh on `findings.changed` — mirrors drift/queries.ts's own

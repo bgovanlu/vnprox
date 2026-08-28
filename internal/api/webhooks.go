@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // webhooks.go implements T-1104's webhook registration routes (docs/api.md's
 // Webhooks section):
 //

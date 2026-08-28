@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package evpn implements T-404's EVPN/BGP observability: docs/api.md's
 // GET /sdn/evpn/status aggregates every cluster node's FRR state (peering
 // matrix, session detail, VNI list, exit-node health) via internal/host's

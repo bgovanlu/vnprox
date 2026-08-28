@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // policy.go implements T-2601's declarative policy-as-code guardrail: the
 // rule-set data model, its load-time validation, and its rule-set diff.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-904 acceptance criterion 6: end-to-end verification of the Home
 // dashboard against the real stack (pvemock three-node-vlan fixture +
 // vnproxd + the production SPA build) — logs in, confirms the dashboard

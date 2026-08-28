@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // tokens.go implements T-1104's automation-token routes (docs/api.md's
 // Tokens section):
 //

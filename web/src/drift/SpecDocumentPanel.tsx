@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3001: the document itself — `GET /spec` (render the live cluster as one)
 // and the pin (`GET`/`POST`/`DELETE /spec/pin`).
 //

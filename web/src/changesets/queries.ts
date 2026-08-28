@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for the changeset drawer/review/apply flow, plus the
 // WS bridge that keeps an open changeset's status (and, crucially, the
 // commit-confirm countdown) live — the same "targeted invalidation on a WS

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Renders whichever SDN editor sdnEditorStore currently requests — mounted
 // once in SdnPage, mirroring changesets/EditorLauncher.tsx's dispatcher
 // pattern for the topology editors.

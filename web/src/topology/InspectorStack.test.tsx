@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-908 acceptance criterion 1: pinning an inspector and selecting a
 // second entity shows two open inspectors simultaneously; unpinning/
 // closing one leaves the other intact. Uses two distinct bridge fixtures

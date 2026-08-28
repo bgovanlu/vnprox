@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // entityhistory.go implements T-2403's entity change history ("blame").
 //
 // THE GAP THIS CLOSES. Standing on any entity in the inspector, there was no

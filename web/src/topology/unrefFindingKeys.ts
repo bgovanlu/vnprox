@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Phase 36: the two keys UnrefFindingsBanner needs, in their own module.
 //
 // They are pure functions over a finding, and they are separate from the

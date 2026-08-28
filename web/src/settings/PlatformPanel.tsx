@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The Platform panel (T-3003): the eleven Settings-shaped routes that had no
 // client at all — tokens, webhooks, plugin lifecycle, and `doctor --live`.
 //

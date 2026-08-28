@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2002 item 3: the security-group inspector, closing T-1603's flagged
 // gap that the microsegmentation planner could only be launched per-guest.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

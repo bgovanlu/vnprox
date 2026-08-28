@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure Op-construction helpers for T-502's fw.* op family, mirroring
 // web/src/changesets/opBuilders.ts's existing pattern for bridge/bond/vlan:
 // every editor funnels through one of these instead of hand-building an

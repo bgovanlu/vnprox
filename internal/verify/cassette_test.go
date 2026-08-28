@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package verify
 
 // cassette_test.go drives this package's PVE-facing seam through T-2502's

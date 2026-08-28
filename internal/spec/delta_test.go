@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package spec_test
 
 // delta_test.go asserts the property T-2702's proposal path rests on:

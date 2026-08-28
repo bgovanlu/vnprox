@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package telemetry
 
 // guard.go is the check that runs on the payload immediately before it is

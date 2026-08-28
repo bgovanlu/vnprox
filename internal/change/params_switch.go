@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change
 
 // params_switch.go defines T-1205's switch.port.update op parameters. Every

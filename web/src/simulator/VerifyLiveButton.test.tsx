@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-806 AC1: gating (disabled with correct copy for a non-qemu/external/
 // IP-literal src and for a qemu src with no detected guest agent; enabled
 // and calls POST /simulate/verify for an eligible src).

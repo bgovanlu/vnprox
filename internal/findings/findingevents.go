@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // findingevents.go implements T-1007's "History playback" event-marker
 // feed: a Notifier (see notify.go's interface) that records every finding
 // transition Engine already detects (evaluateNotifications/

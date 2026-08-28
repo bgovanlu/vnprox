@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure scene geometry for the v2 canvas renderer (TopologyCanvasV2.tsx).
 // Deliberately framework-free — no React, no @xyflow/react, no canvas
 // context — so the viewport math, fit-to-view, hit-testing, and zoom-at-

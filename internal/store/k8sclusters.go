@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // k8sclusters.go implements T-1501's k8s_clusters table (docs/data-model.md
 // §2, migration 0019_k8s_clusters.sql). App-owned registration intent only
 // per CLAUDE.md's storage rule: which k8s clusters vnprox polls, and how to

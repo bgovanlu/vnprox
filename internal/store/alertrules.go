@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // alertrules.go implements T-1005's alert-routing rule storage
 // (docs/data-model.md §2, migration 0008_alert_rules.sql). An AlertRule
 // routes findings/drift transitions to a webhook target (generic JSON,

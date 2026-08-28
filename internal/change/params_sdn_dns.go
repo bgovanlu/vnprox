@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change
 
 // T-1204 SDN DNS op params. A DNS zone (sdn.dns.zone.*) is a forward domain

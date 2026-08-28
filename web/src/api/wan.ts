@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // WAN & upstream health API calls (docs/api.md's WAN & upstream health
 // section, T-1405; internal/api/wan.go).
 //

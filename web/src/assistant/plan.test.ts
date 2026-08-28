@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2808: the tool planner. A model never picks a tool here — these rules
 // do, from the question's own words and the caller's own capabilities.
 import { describe, expect, it } from "vitest";

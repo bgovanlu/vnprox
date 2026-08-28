@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // jsdom (this app's test environment) does not implement
 // Element.prototype.scrollIntoView at all, unlike every real browser
 // (lib.dom.d.ts types it as always present, which is why a plain

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The first-login onboarding walkthrough (docs/user-guide.md §1; T-605
 // AC1/AC2). Deliberately built on the same non-modal-overlay pattern as
 // ChangesetDrawer.tsx (see that file's doc comment) rather than a

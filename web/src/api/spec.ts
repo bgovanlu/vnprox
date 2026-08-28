@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The declarative cluster network spec: `GET /spec`, `POST /spec/import`
 // (T-1101) and the pin (T-1102, `GET`/`POST`/`DELETE /spec/pin`).
 //

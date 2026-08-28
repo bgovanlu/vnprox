@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // traefik.go discovers a Traefik instance via its API's own read-only
 // `GET /api/http/services` endpoint (Traefik's documented introspection
 // route: every currently configured HTTP service, its load-balancer

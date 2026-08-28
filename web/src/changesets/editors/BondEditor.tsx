@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Bond editor (docs/features/change-management.md §5): mode selector with
 // live guidance, slave picker showing current link state/speed of
 // candidates, LACP options (rate, hash policy), MII monitor interval.

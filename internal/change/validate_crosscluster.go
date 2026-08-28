@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change
 
 // Cross-cluster changeset scoping (T-1201, docs/architecture §1/§5). A

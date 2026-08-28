@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package gitsync_test
 
 // T-2702's acceptance tests. Every negative assertion here carries a control

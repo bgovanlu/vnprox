@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // vfop.go implements T-1506's vf.provision mutator: a post-up/post-down
 // stanza pair appended to the PF's own *existing* iface stanza (Target) —
 // the same "vnprox writes the file it will re-read" pattern this package's

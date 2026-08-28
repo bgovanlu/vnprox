@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-906 acceptance criteria 1/2/3/4: the "Export map" toolbar control (SVG +
 // PNG, on both Graph and Switch views) and the print stylesheet, against the
 // real stack (pvemock's three-node-vlan fixture, same as topology.spec.ts).

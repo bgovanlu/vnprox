@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // wan.go implements T-1405's WAN & upstream health routes (docs/api.md's
 // WAN & upstream health section):
 //

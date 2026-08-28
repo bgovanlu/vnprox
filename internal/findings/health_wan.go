@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_wan.go implements T-1405's wan_degraded health check (source
 // "wan"): one node's one configured reference target (an uplink→host pair)
 // whose *rolling* loss — not a single noisy probe — crosses

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure derivation of editor candidate lists (bridge port picker, bond slave
 // picker, VLAN parent picker) from an already-fetched TopologyResponse —
 // no extra network round trip for the common case, since the map's own

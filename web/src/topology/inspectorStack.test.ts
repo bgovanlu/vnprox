@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-908 acceptance criterion 1's core state-transition rules, tested as a
 // pure reducer (no React needed) — see inspectorStack.ts's doc comment.
 import { describe, expect, it } from "vitest";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Mounts the single "connect two clusters" wizard instance app-wide,
 // driven by wgWizardStore — mirrors mgmt/MgmtWizardHost.tsx's identical
 // one-instance pattern exactly.

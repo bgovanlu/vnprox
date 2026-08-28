@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // conntrack.go backs T-1305's internal/host.Reader.Conntrack for fixture
 // tests: FixtureHostReader.Conntrack returns a node's fixture-declared live
 // conntrack table verbatim (NodeSpec.Conntrack — already-structured data,

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The one entry point every op-producing feature (entity editors, map
 // drag-drop, bulk guest reattach) calls to land an op in the drawer —
 // "Edits collect in the change drawer" (docs/user-guide.md §3) needs a

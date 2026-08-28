@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package gitsync
 
 // propose.go implements T-2702: a changeset staged in vnprox becomes a pull

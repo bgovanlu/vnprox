@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package ipam_test
 
 // T-3104 item 3: NetBoxClient/PhpIPAMClient are modeled from each system's

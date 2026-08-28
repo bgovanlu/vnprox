@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package evpn
 
 // Status is docs/api.md's GET /sdn/evpn/status response shape. Controllers

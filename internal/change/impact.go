@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // impact.go implements T-2404's blast-radius preview: what an operator would
 // NOTICE if this changeset were applied, computed server-side from the ops plus
 // the live inventory graph.

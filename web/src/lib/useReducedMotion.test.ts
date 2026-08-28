@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-905 acceptance criterion 5: "a Vitest test mocking
 // `prefers-reduced-motion: reduce` asserts pan/zoom easing and pulse
 // animations are disabled". jsdom has no real `matchMedia` implementation

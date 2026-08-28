@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // policy_service.go is the store-backed, audited half of T-2601: reading
 // the cluster's installed policy set, replacing it (audited `policy.update`
 // with the full rule-set diff), evaluating it on demand, and keeping the

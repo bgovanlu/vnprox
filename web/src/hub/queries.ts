@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for the Blueprint & plugin hub (T-1705). One hook per
 // API call; the install mutation invalidates the installed-plugins/blueprints
 // lists a successful install affects.

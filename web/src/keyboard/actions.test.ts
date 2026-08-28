@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-903 AC2: usePaletteActions registry — two simultaneously-mounted
 // "pages" merge their actions without collision, and unmounting one only
 // removes its own.

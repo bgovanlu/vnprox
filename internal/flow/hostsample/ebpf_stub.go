@@ -1,5 +1,7 @@
 //go:build !ebpf
 
+// SPDX-License-Identifier: Apache-2.0
+
 // This file is the default build (no `-tags ebpf`): the eBPF build tag is
 // deliberately excluded from `go test ./...`/`make build`/`make check`'s
 // default matrix (see the Makefile's test target comment and this

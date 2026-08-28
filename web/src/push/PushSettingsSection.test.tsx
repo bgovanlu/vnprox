@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Component tests for T-2005's push settings surface. The backend is
 // mocked at the api/push.ts boundary (matching every other component test
 // in this codebase, e.g. FindingsStreamPanel.test.tsx); the browser Push

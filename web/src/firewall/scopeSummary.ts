@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // "What will happen" summaries for scope enable/disable (docs/features/
 // firewall.md §2: "Enable/disable firewall at each scope with an explicit
 // 'what will happen' summary ... the classic PVE footgun made visible").

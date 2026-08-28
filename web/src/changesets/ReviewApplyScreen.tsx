@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The review screen (docs/features/change-management.md §3: "four tabs:
 // Summary, File diff, Plan, Discussion. Nothing applies until the user has
 // seen this screen."). Built on the modal <Drawer/> primitive (side="right",

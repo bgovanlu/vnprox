@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Blueprints API calls (docs/api.md's Blueprints section; the exact
 // contract is internal/blueprint + internal/api/blueprints.go).
 import { apiFetch } from "./client";

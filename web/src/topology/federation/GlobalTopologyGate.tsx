@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1202: the gate that decides whether the /topology route shows the
 // global cross-cluster capsule view or a single cluster's ordinary topology.
 //

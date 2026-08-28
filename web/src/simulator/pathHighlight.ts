@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Turns a SimulateResult's hop list into the node/edge id sets
 // TopologyPage's toFlowElements.ts already knows how to paint with a
 // status color (see its `pathHighlight` param) — the same "highlight a

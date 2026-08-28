@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared editor submit flow: draft the op(s), then check the server's
 // freshly-computed findings (T-202 validates on every draft change) for
 // error-severity findings against the submitted target. Clean -> close the

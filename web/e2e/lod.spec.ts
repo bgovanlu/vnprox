@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-902 AC4 (minimap) + AC2 (LOD bands), real-browser coverage against the
 // v2 canvas renderer (TopologyCanvasV2) on the primary three-node-vlan
 // stack. web/src/topology/lod.test.ts and lod.render.test.tsx already cover

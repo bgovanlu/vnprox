@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3106: minimal i18n scaffolding. This module is the framework's single
 // initialization point — every consumer either imports it for its
 // side-effect (wiring the shared i18next instance react-i18next's

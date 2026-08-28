@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for T-1202's global (cross-cluster) surfaces: the
 // per-cluster capsule summary, one cluster's lazy drill-down topology, and
 // the cluster-namespaced global search. All three are read-only aggregates

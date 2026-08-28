@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-905 acceptance criterion 1: "a Vitest test on Table.tsx (or the shared
 // density context) asserts compact/comfortable render distinctly."
 import { render, screen } from "@testing-library/react";

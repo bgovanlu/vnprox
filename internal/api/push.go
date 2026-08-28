@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // push.go implements T-2005's web-push subscription routes:
 //
 //   - GET    /push/vapid-public-key      — this daemon's VAPID identity, the

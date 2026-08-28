@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Kubernetes read-view API calls (docs/api.md's Kubernetes section, T-1501;
 // internal/api/k8s.go's GET /k8s/clusters and GET /k8s/{clusterId}/overlay).
 // Read-only forever — T-1501's own invariant, carried forward here: this

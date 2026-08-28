@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2808 AC2: an uncited answer is not rendered.
 //
 // The enforcement is a TYPE, not a convention. `AssistantResult` has two

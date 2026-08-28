@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package config implements daemon config file parsing and validation for
 // vnproxd. The on-disk shape is the TOML file documented in
 // docs/deployment.md ("Configuration file — /etc/vnprox/vnprox.toml"):

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // apply_sdn_foreign.go implements T-3101-followup-01's fix (debt-sweep
 // 2026-08-19, item 2): PVE's PUT /cluster/sdn (sdn.apply) commits ALL
 // pending SDN state cluster-wide, not just what a changeset's own ops

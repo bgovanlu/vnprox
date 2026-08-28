@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The read model behind the rollout-state view (T-2602's `applyStage`).
 //
 // This is the load-bearing half of canary apply in the UI: a canary that

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // EventAnnotationsPanel (T-1706): the render body of the vnprox Grafana
 // live-event-annotation panel. It consumes the T-1104 WS "events" topic —
 // the same `{event, ...}` envelope api/ws.ts defines (WsServerEvent) — and

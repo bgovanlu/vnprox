@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change_test
 
 // autorollback_test.go is T-2603's acceptance suite: a NEW error finding on an

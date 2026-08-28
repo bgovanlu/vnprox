@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2003's comment thread: per-op and changeset-level review comments. Pure
 // presentation over the `comments` array GET /changesets/{id} already
 // returns (see api/types.ts's Changeset.comments) — this component owns no

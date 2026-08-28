@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_serviceclass.go implements T-1504's service_traffic_on_wrong_network
 // finding (source "flow", not "health" — see SourceFlow's doc comment):
 // storage/cluster traffic vnprox's classifier attributed to a service

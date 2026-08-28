@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared test-only fixtures/harness for the five zone wizard component
 // tests (SimpleZoneWizard.test.tsx etc.) — not imported by any production
 // code. Builds a small three-node topology (mirroring testdata/clusters/

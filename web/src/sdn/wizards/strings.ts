@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Every explanatory string the five zone wizards show a user, collected in
 // one file for copy review (T-403's task card: "copy review: every
 // explanatory string reads for a non-networking-expert"). Nothing here

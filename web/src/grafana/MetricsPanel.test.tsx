@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1706 AC4 (metrics half): the Grafana metrics panel renders against a
 // fixture Prometheus scrape shaped exactly like T-1001's exporter output
 // (internal/api/metrics_exporter.go), with no live Grafana or Prometheus.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package topology_test
 
 // T-804 AC2: "Inventory golden test against three-node-vlan's bonded

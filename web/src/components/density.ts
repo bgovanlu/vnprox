@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-905 component-contract pass: the one density-mode seam every component
 // in this directory (Button, Dialog, Drawer, EmptyState, ErrorBoundary,
 // Table, Toast, Tooltip) reads instead of each hand-rolling its own

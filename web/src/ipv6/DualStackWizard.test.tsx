@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1404 acceptance criterion 6: the dual-stack rollout wizard produces
 // one changeset via blueprint.Instantiate, and re-running it against the
 // now-converged state (the backend's own idempotent-instantiate contract,

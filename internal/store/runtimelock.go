@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // runtimelock.go gives a running vnproxd a way to *advertise* that it owns
 // a particular store file, so `vnproxctl restore` can refuse to swap that
 // file out from under it (T-1901: "a restore is a mutation of the daemon's

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002: the installed policy-as-code rule set — `GET`/`PUT /policies`.
 //
 // Before this panel, `vnproxctl policy` was the only client: a cluster could

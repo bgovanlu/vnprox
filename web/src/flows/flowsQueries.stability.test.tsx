@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2003-bug-01 root-cause regression.
 //
 // `useLiveFlowRecords(false)` used to `return { records: [], ... }` — a new

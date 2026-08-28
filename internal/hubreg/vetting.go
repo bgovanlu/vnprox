@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // vetting.go implements T-3709's automated "vetted" checks — the owner's
 // decision that the hub's "vetted" badge means mechanically-checked hygiene,
 // never a human's vouching for a signer (docs/hub-registry.md's "Automated

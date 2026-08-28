@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package migration
 
 // Verdict is Assessment's pinned classification — docs/api.md's Migration

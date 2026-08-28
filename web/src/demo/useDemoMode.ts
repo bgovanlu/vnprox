@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2801: whether this daemon is a demo, and the app-wide consequences.
 //
 // Read once, from GET /health (the API's only unauthenticated route), at

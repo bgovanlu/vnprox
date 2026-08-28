@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1502 AC2: attributes a flow-explorer row's srcIp/dstIp to a k8s
 // service/pod/pod-subnet, mirroring internal/k8s/resolver.go's
 // K8sResolver.Resolve match precedence exactly (its own doc comment):

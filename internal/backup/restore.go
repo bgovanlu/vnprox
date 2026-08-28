@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // restore.go replaces a node's vnprox store with the one in an archive.
 //
 // The ordering below is the whole design, and every step is placed where it

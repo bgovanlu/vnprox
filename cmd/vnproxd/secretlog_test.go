@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // secretlog_test.go is T-604's permanent, CI-enforced secrets-in-logs
 // sweep (docs/security.md's implicit "no secrets in logs" expectation,
 // made explicit by this task's acceptance criterion 4: "Log-secrecy test

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2505 AC4, first half: deliberately corrupt this shard's global state.
 //
 // "Sharding isolates" is a claim about what one spec can do to another, and

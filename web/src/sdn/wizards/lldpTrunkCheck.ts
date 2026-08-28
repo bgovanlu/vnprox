@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure graph-traversal + check logic for the VLAN zone wizard's LLDP trunk
 // cross-check (docs/features/sdn.md §2: "validates the physical path
 // actually trunks the chosen VIDs (cross-checks LLDP VLAN info when

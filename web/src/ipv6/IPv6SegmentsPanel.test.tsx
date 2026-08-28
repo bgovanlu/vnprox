@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The IPv6 segments panel's honesty invariants. All three of these are the
 // same house rule from a different angle: an absence of observation is not
 // an observation of absence.

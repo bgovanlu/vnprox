@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-703 AC3/AC4 end-to-end: the guided management-redundancy wizard against
 // the single-node fixture (the management-path SPOF case — vmbr0 rides on a
 // single NIC eno1, with a spare eno2). Drives the full journey the card

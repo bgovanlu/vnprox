@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // One topic per routed screen in App.tsx. The coverage gate
 // (coverage.test.ts) parses App.tsx for every `path="…"` literal and fails
 // if any of them is missing from ROUTE_HELP, so this file and the router

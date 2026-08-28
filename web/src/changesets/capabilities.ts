@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Capability-gating helpers for editing affordances (docs/user-guide.md §5:
 // "Read-only PVE users get a read-only vnprox; users without SDN privileges
 // see the SDN cockpit disabled with a tooltip naming the missing

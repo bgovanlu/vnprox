@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // `vnproxctl doctor` (T-1904): a preflight and self-check that turns "it

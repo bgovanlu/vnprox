@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package automation implements T-1104's webhook half of the automation
 // firehose: signing/verifying delivery payloads and the retrying
 // dispatcher that posts internal/topology.Hub's "events" envelope to every

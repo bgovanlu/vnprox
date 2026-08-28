@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // trust.go implements T-1107's admin-managed trust store of signers whose
 // bundle signatures this installation accepts without an explicit
 // per-import trust step (docs/features/blueprints.md §5): a directory of

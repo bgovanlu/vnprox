@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package findings implements T-602's unified findings stream
 // (docs/features/monitoring.md §5): one Finding shape and one Engine that
 // composes four producers —

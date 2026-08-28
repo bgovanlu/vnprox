@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package posture computes one periodically-recomputed network security /
 // resilience score with NAMED, independently-inspectable contributing factors
 // (T-1607) — never an opaque single number. It folds four already-shipped

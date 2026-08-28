@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared "Addresses" step for all five zone wizards (T-701): extracts the
 // copy-pasted subnet block every wizard used to carry its own copy of
 // (SimpleZoneWizard.tsx/VlanZoneWizard.tsx/QinqZoneWizard.tsx/

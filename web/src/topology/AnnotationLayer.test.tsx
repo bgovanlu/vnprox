@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2806's canvas-layer tests: the escaping assertion for the map render
 // path (AC6), the orphaned-note rendering (AC2), and the region-persistence
 // property (AC5) at the level where a client could break it — a view switch

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Demo-mode escape hatch for auth, originally T-005's stub for demoing the
 // shell before real auth existed. Real Proxmox-credential auth landed in
 // T-105 (`make dev` gives a working login against pvemock: root@pam /

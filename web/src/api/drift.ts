@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Drift detection API calls (docs/api.md §Inventory & topology's `/drift`
 // entries; the exact contract is internal/drift.Finding + internal/api/drift.go).
 import { ApiError, apiFetch } from "./client";

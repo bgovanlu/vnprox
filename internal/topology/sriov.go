@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // sriov.go backs T-1506's SR-IOV & accelerated NIC lifecycle: guest<->VF
 // correlation (today-invisible passthrough devices, surfaced live in the
 // inspector rather than baked into a stored guess — see

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3003 AC3, as a RE-ASSERTION rather than a reimplementation.
 //
 // The card asks that plugin install show the declared capability scope before

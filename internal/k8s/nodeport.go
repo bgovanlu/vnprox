@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // nodeport.go implements the k8s_nodeport_exposed_without_fw_rule finding
 // (T-1501's card): a NodePort/LoadBalancer service's port has no covering
 // PVE firewall allow rule on the backing guest/node. "Covering" is

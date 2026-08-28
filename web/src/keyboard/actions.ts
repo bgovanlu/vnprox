@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-903: the command-palette action registry. Pages register their own
 // verbs ("Edit vmbr0", "New VLAN zone", "Open drafts", "Simulate path from
 // <entity>") on mount and unregister on unmount — the same lifecycle

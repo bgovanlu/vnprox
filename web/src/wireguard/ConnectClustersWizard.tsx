@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1402's "connect two clusters" wizard: builds a site-to-site WireGuard
 // tunnel plus the firewall rule it needs, staged as ONE reviewable
 // changeset — never a half-open state where the tunnel exists but its

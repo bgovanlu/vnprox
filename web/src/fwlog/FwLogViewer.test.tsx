@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-505 firewall log viewer: filter composition, pause/resume, and the
 // drop indicator, driven through the real component + reducer (network
 // and WS are mocked at the ./queries seam so these tests never touch

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // QoS shaping (GET /qos/shapes, T-1505): what is shaped right now, and the
 // three edits an operator can make to it.
 //

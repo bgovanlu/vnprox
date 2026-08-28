@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The capacity history export (GET /capacity/export, T-1606).
 //
 // This is an *export*, not a forecast. Capacity forecasts already reach the

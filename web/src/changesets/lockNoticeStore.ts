@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2805 — where the most recent staging response's advisory-lock warning
 // lives until the operator has seen it.
 //

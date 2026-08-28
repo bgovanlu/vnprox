@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package topology projects the T-103 inventory graph into the renderable
 // topology contract documented in docs/features/topology.md §3 and serves
 // it (docs/api.md's "Inventory & topology" and "WebSocket /api/ws"

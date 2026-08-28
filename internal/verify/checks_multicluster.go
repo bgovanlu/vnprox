@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package verify
 
 // checks_multicluster.go covers the four matrix rows whose `B` mark means

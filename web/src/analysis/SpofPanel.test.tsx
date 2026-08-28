@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3004 AC1's frontend half: a failure simulation names the affected
 // entities as map links, and states "indeterminate" where it cannot decide.
 // Network is mocked at the ./analysisQueries seam (the same pattern

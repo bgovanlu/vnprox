@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure logic backing DhcpView.tsx, split out for direct Vitest testing
 // (mirroring evpnStatus.ts's own "pure derivation, no RTL" split).
 import type { SdnTree } from "../api/types";

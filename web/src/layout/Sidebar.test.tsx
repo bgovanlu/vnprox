@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3402: replaces NavRail.test.tsx (retired alongside NavRail.tsx). Keeps
 // AC1's "Home entry highlights when active" case (NavRail.test.tsx's own
 // origin, T-904) and adds this task's own acceptance criteria: all 21

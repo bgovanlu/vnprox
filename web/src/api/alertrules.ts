@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Alert Rules API calls (docs/api.md's "Alert Rules" section; the exact
 // contract is internal/api/alertrules.go). Mirrors blueprints.ts's
 // convention: one function per route, mutations carry the CSRF token.

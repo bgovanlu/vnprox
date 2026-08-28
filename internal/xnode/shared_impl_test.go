@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package xnode_test
 
 // T-801 acceptance criterion 4: the three crossnode.* comparison families and

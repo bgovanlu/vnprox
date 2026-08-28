@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The script is data, so these are assertions about the data — including
 // the two the card and its dependency make load-bearing:
 //

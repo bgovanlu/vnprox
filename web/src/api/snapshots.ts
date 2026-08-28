@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Snapshots / time-machine API calls (docs/api.md "Snapshots / time
 // machine", T-206). Types are defined here rather than in types.ts to keep
 // this task's edits to shared files minimal while T-207 works on the

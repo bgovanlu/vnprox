@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The help registry: merges the content modules into one lookup, and is the
 // single place anything in the app resolves a topic id from.
 import type { HelpTopic } from "./types";

@@ -1,5 +1,7 @@
 //go:build !linux
 
+// SPDX-License-Identifier: Apache-2.0
+
 // conntrack_netlink_other.go is the non-Linux stand-in for
 // conntrack_netlink_linux.go — see that file's header comment and
 // internal/host/netlink_other.go for the same convention. vnprox only

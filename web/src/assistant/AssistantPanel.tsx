@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2808: the in-app assistant panel.
 //
 // A right-hand drawer that runs the mirrored MCP read tools against the

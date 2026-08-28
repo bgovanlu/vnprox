@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2802 the hosted read-only demo, end to end against a real
 // `vnproxd --demo --public-demo`.
 //

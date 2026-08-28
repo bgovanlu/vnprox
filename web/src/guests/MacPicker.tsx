@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared "pick a guest's MAC" dropdown (docs/features/sdn.md §5: "static
 // reservations bound to guest MACs (picker)"), sourced from the same
 // cluster-wide guest NIC list GuestsPage.tsx already renders

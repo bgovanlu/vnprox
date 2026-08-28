@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // autorollback.go is the composition root's half of T-2603 (and the half of

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The §5 staleness banner (docs/features/topology.md §5: "its band renders
 // greyed from last-known data with a staleness banner and timestamp").
 // Driven by the captured stale fixture (real vnproxd staleness object —

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared "which cluster nodes" multi-select every wizard's zone step
 // needs — a plain checkbox list rather than a comma-separated text input
 // (SdnZoneEditor.tsx's own `parseNodes` pattern), since the wizard already

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // certscmd.go implements `vnproxctl certs` (T-2304): the cluster certificate
 // inventory on the console.
 //

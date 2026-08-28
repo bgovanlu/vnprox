@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change
 
 // T-3102 SDN Controller op params, mirroring params_sdn_fabric.go's

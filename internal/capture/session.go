@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package capture
 
 // Status is the lifecycle state of one node-local capture session.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // hubcmd.go implements `vnproxctl hub` (T-2803): the publisher and registry
 // tooling for the hosted signed registry internal/hub browses.
 //

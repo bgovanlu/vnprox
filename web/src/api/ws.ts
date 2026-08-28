@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // WebSocket client for /api/ws (docs/api.md §WebSocket). Implements the
 // documented subscription protocol — client sends
 // `{"subscribe": ["topology", "changesets", "metrics:<ref>", "tasks"]}`,

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for T-3004's analysis surfaces (docs/development.md's
 // TypeScript standards: "server state via TanStack Query only — no fetch in
 // components").

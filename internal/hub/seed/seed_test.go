@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // seed_test.go proves T-2104 AC3's "applies cleanly and produces the
 // documented topology" the same way internal/blueprint's own starters_test.go
 // proves it for the five bundled starters: Validate + Instantiate against a

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure helpers for T-208's raw editor op/finding wiring — no React, no
 // network, directly Vitest-able. The op vocabulary and finding codes here
 // mirror internal/change/op.go (OpIfaceRawReplace) and

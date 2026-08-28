@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change_test
 
 // apply_canary_test.go is T-2602's acceptance suite: a staged (canary) apply

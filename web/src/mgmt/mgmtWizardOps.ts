@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure Op-construction helpers for T-703's management-redundancy wizard —
 // the frontend counterpart of internal/change/mgmtwizard_test.go's golden
 // ops. Every flow is "interlock-clean by construction" (docs/security.md's

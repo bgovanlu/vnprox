@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query mutation hooks for T-2001's federation cluster editor —
 // the CRUD half of the T-1201 registry the wizard-facing
 // topology/federation/federationQueries.ts already reads. Reuses that

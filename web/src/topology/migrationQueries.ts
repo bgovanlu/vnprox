@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hook for T-1507's migration pre-flight check. Mirrors
 // diagnose.ts/DiagnosisPage.tsx's postDiagnose+useMutation shape: a single
 // on-demand mutation (the operator picks a target node and clicks

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change_test
 
 // metrics_test.go covers T-1903's change-engine self-observability: Apply/

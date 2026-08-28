@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // SDN IPAM plugin-instance view (T-3104, docs/features/ipam.md): the
 // configured IPAM plugin *objects* themselves (netbox/phpipam/pve, their
 // connection config) — not the allocations inside them, which stay

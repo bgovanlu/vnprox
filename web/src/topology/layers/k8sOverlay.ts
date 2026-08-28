@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1502: turns T-1501's GET /k8s/{clusterId}/overlay into the map's
 // "Kubernetes" layer overlay — synthetic {nodes, edges} merged into the real
 // topology canvas via TopologyPage's existing extraNodes/extraEdges seam

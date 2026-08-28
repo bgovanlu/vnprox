@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 // embed.go implements T-1706's embeddable, read-only, token-scoped views

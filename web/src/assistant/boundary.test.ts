@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2808 AC5: no apply path is reachable from the assistant.
 //
 // The guarantee itself is INHERITED, not re-implemented. T-2705 made the

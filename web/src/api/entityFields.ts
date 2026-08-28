@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Readers for GET /inventory/{ref}'s `fields` map.
 //
 // `fields` is not a designed API shape: internal/topology.Detail builds it

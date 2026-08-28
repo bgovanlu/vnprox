@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // hubcmd_sigstore_test.go covers T-3709's CLI additions to `vnproxctl hub`:

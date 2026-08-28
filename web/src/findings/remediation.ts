@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Phase 36: one place that turns a producer-declared `Remediation` into a
 // button, for every surface that renders findings — the unified findings
 // stream, the topology banners, and whatever comes next.

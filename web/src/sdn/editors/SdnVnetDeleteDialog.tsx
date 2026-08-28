@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The vnet delete-with-reattach flow — T-402 acceptance criterion 2,
 // deliberately mirroring changesets/editors/BridgeDeleteDialog.tsx's T-203
 // pattern exactly (same guard, same UI shape): a vnet with running guest

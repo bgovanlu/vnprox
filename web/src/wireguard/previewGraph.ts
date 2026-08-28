@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Builds the "connect two clusters" wizard's live preview pane graph
 // (rendered through WizardPreviewPane — the REAL map components, exactly
 // like every SDN zone wizard's own preview: see sdn/wizards/

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package fw is the pure, I/O-free firewall resolution engine (T-501):
 // given a snapshot of the three pve-firewall scopes (cluster/node/guest)
 // plus cluster-scope security groups, it computes

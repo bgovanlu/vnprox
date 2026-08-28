@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command vnproxctl is the vnprox operator CLI documented in
 // docs/deployment.md "Troubleshooting quick refs" and docs/user-guide.md §6:
 // a root-only, daemon-independent escape hatch for status checks and

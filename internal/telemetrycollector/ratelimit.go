@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package telemetrycollector
 
 // ratelimit.go bounds submission throughput WITHOUT ever reading the

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Allocation-grid cell detail popover (docs/features/ipam.md §2: "Click any
 // cell -> detail (who, what, since when, source)" — "since when" is not
 // carried, see internal/ipam/types.go's Cell doc comment) plus the

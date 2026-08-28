@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The guided BPF filter builder (T-1302): host/port/protocol pickers
 // compose a filter string (bpf.ts's buildBpfFilter), submitted to
 // POST /captures alongside *requested* duration/bytes/packets caps.

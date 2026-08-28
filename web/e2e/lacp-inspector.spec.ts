@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-804 acceptance criterion 4's e2e half: open the bond inspector against
 // the real stack (pvemock three-node-vlan fixture -> vnproxd -> the
 // production SPA build) and assert the LACP section renders. This suite's

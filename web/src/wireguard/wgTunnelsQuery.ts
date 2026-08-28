@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Polls GET /wireguard/tunnels while the "WireGuard" map layer is active
 // (T-1402) — mirrors mtuProbeQueries.ts's useMTUProbeResultsQuery exactly:
 // no WS push exists for this data (docs/api.md's WireGuard section

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package collect
 
 // Direct unit tests for the loop timing helpers (audit F-20): jitter

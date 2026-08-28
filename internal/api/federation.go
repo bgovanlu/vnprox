@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // federation.go implements T-1201's cluster-registry routes (docs/api.md's
 // Federation section):
 //

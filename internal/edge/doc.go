@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package edge implements T-1403's Edge & NAT cockpit projection: "how does
 // traffic actually leave, and what's exposed inbound?" answered from
 // already-collected data, never a second write path.

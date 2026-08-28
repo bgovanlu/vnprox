@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1006 acceptance criterion 4 (Vitest half): the analytics tab renders
 // hit counts/top-blocked/unused list from a mocked GET /firewall/analytics
 // response, and the "edit rule" link points at the correct deep link

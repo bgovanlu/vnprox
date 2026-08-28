@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1507's migration pre-flight inspector tab: lets an operator, before
 // triggering a live migration/evacuation in PVE itself, check whether the
 // migration network has enough headroom for this guest's RAM size — the

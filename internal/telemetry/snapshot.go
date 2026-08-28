@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package telemetry
 
 // snapshot.go holds the card's primary trust surface: `telemetry preview`

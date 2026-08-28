@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command vitestgate decides whether a vitest run passed, the way
 // cmd/e2egate (T-2505) already decides for the Playwright suite.
 //

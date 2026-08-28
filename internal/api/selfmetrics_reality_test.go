@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 // selfmetrics_reality_test.go is T-1903 AC2: "Metrics reflect reality:

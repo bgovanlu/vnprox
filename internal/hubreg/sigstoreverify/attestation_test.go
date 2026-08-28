@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package sigstoreverify
 
 // attestation_test.go exercises VerifyKeyAttestation against sigstore-go's

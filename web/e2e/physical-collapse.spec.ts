@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1907 end to end: the physical-layer per-node summary pill
 // (internal/topology/collapse_physical.go) against a real vnproxd + pvemock
 // stack whose one node (pve1) has 10 physical NICs declared — comfortably

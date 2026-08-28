@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // demo_test.go covers the zero-argument `vnproxd --demo` shape: the config
 // and TLS keypair it materializes on first run, and the fact that a second
 // run reuses both.

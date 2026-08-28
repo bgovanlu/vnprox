@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2003's client-side echo of the server's approval gate. This is UI
 // convenience ONLY: internal/change's beginApply is the actual
 // authorization decision, re-checked server-side on every apply attempt

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package hostsample implements T-1004's host-local flow sampling: two
 // samplers for nodes that have no external sFlow/NetFlow/IPFIX exporter
 // pointed at them, both feeding the exact same internal/flow ring store

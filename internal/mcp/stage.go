@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // stage.go is T-2705's typed staging surface: the four `changesets.stage.*`
 // tools that turn a small, schema-described request from an AI operator into
 // exactly ONE op in a DRAFT changeset.

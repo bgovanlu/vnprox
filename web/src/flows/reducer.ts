@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure state machine for the Flow Explorer (T-1003): a bounded, client-
 // side-capped record buffer fed by both the initial GET /flows page
 // (already server-filtered) and the `flow.batch` WS follow stream (which

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 // metrics_exporter.go implements T-1001's `GET /metrics` Prometheus/

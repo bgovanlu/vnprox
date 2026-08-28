@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1705's Blueprint & plugin hub browse/install page. It lists the registry
 // catalog (GET /hub/index) and installs an entry (POST /hub/install), reusing
 // T-1107's trust-status vocabulary (unsigned / untrustedSignature /

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Entry point for the five guided zone wizards (docs/features/sdn.md §2:
 // "One wizard per zone type"). Picking a card mounts that wizard's own
 // dialog; closing/cancelling either just clears `active` back to

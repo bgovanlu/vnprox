@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change_test
 
 // T-703 AC5: touchesMgmtPath is computed server-side for *any* changeset

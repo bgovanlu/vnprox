@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // A small render-error boundary. React has no hook form of this, so it stays
 // a class component. Wrap any subtree whose crash should degrade gracefully
 // (a fallback) instead of unmounting the whole app to a blank screen — most

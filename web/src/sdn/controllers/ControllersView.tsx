@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // SDN Controllers view (T-3102, docs/features/sdn.md): controller list with
 // type badge, a create/edit form whose fields reveal per the selected type,
 // deletion blocked (server-side, criterion 5) while a zone still references

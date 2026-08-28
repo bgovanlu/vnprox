@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The v2 canvas draw pass (TopologyCanvasV2.tsx). Kept in its own module so
 // the component file stays about interaction/state and this stays about
 // pixels. It is a pure function of (FlowElements, viewport, theme): it reads

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Renders the topology canvas against a *real, captured* projection of the
 // messy-brownfield pvemock fixture (internal/topology's own T-106 dataset
 // for degraded/conflicting cluster state: unknown-status peer links,

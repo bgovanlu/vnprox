@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure logic backing MacPicker.tsx (T-406: "static reservations bound to
 // guest MACs (picker)", docs/features/sdn.md §5) — framework-free,
 // directly Vitest-able, mirroring web/src/ipam/nextFree.ts's split between

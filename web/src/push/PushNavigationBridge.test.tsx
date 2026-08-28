@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // PushNavigationBridge relays web/public/sw.js's postMessage into an
 // in-app navigation. jsdom has no real ServiceWorkerContainer, so this
 // test stubs `navigator.serviceWorker` as a plain EventTarget — enough to

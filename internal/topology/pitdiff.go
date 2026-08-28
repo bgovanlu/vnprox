@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // pitdiff.go implements T-2704's point-in-time topology diff — the pure half.
 //
 // THE GAP THIS CLOSES. A changeset records what *vnprox* did, and the history

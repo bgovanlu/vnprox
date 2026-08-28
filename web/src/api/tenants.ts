@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1703's tenant administration: the eight admin routes (docs/api.md
 // §"Tenants & self-service").
 //

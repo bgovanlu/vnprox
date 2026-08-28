@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // project.go builds a Snapshot over an explicit, caller-supplied entity set
 // instead of over collector polls — the seam T-2605's post-apply topology
 // preview needs.

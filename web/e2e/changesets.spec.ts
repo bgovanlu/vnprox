@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-207 acceptance criterion 1: scripted walkthrough of the editing UX
 // against the real stack (pvemock three-node-vlan fixture -> vnproxd ->
 // production SPA build), Playwright where feasible. What is and is not

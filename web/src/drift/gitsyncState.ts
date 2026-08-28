@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The `GET /gitsync/status` state machine, kept out of the component so the
 // one property that matters here is directly testable: **an unknown state is
 // never rendered as a definite one**.

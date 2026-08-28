@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2605: the post-apply preview query for the map's preview mode.
 //
 // Kept in its own module (the topologyDiffQuery.ts convention) so TopologyPage

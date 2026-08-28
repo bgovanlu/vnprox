@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change
 
 // T-3101 SDN Fabric op params, mirroring params_sdn.go's SdnZone*Params

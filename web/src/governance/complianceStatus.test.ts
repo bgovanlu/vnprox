@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002 AC4's logic half: a control with no mapped evidence is `unmapped`,
 // and `unmapped` is never a pass. Plus the fifth case the wire can produce
 // and the Go union cannot — a status this build has never seen.

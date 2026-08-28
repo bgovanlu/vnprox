@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package docexport builds the "as-built" config documentation export
 // (docs/features/blueprints.md §4: "One click -> Markdown/HTML document of
 // the cluster network: rendered topology (SVG), per-node interface tables,

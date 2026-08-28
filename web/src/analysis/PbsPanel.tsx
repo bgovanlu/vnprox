@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // PBS backup-path awareness (GET /pbs, T-1206): which Proxmox Backup Server
 // hosts this cluster backs up to, which link the backup traffic actually
 // rides, and whether that link is big enough for the schedule.

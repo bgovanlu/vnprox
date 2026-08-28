@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Component-level tests for T-602's unified findings stream panel: filter
 // composition (source/severity/node, AC2) rendered against the shared
 // FindingsList presentation, and the fix-changeset wiring. The backend is

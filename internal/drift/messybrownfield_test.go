@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package drift_test
 
 // T-305 acceptance criterion 1: "messy-brownfield fixture produces exactly

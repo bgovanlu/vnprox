@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The public demo's layout persistence: the same four operations
 // api/layouts.ts offers, against the edge's per-visitor scratch store
 // instead of the daemon's /layouts routes (which are refused at the edge).

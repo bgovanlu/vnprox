@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The Monaco leaf: this is the one module in the raw-editor feature that
 // imports `monaco-editor` itself. It is only ever reached through
 // `React.lazy(() => import("./MonacoRawEditor"))` (RawEditorPanel.tsx), so

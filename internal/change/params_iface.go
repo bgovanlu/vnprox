@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change
 
 // IfaceUpdateParams is op "iface.update" (docs/data-model.md §3's `iface`

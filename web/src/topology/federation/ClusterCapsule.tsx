@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1202: one cluster capsule in the global (outermost-LOD) map view. Built
 // on T-902's summary-capsule idea — a per-cluster rollup the operator clicks
 // to drill into that cluster's ordinary topology. Name, aggregate findings

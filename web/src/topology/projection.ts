@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure projection logic: turns a raw TopologyResponse (docs/features/
 // topology.md §3's rendering contract) plus UI state (active layers, VLAN
 // filter, hover/selection, saved positions) into the props React Flow needs.

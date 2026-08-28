@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package neighbor implements T-805's ARP/neighbor-table fan-out: a
 // cluster-wide ipam.NeighborSource that reads every node's resolved ARP
 // (IPv4) / IPv6-neighbor table (locally via internal/host.Reader, and for

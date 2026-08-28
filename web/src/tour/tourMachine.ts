@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2802: the guided tour's state, as pure functions.
 //
 // Structurally this is onboarding/onboardingMachine.ts's twin, and that is

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure-function coverage for T-1305's Conntrack Explorer URL state — the
 // exact encode/decode/link-building logic the map's right-click "View live
 // connections" entry (topology/TopologyPage.tsx's conntrackItemFor) and

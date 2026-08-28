@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // A tiny zustand store bridging the app-wide keyboard shortcut framework
 // (mounted once, in AppShell) to whichever page currently owns the
 // topology-specific shortcuts (`1`-`4`, `f`, `/` — docs/user-guide.md §6).

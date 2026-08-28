@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2704's point-in-time topology diff, rendered.
 //
 // The file-level snapshot diff next to this one answers "what text changed".

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2005's Settings section: per-category push opt-in for this device, and
 // a "Your devices" list to review/revoke every device subscribed (not just
 // this one). Follows SettingsPage.tsx's existing Section/Row pattern

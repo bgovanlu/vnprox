@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-902 AC2/AC3/AC5: integration coverage proving the LOD transform is
 // actually wired into TopologyCanvasV2 (not just correct in isolation, per
 // lod.test.ts) — zooming the real component out engages capsule/bundle

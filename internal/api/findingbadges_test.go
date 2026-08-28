@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3501: table-driven coverage for the badge-construction logic
 // (findingBadgeTokens, paintFindings, paintDrift) this task's card asked
 // for, plus a fixture reproducing pvecube's real finding set (the phase-35

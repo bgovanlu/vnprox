@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2505: the e2e suite's shard manifest — which specs run where, which
 // stacks each shard brings up, and on which ports.
 //

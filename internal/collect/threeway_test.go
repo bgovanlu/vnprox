@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package collect_test
 
 // F-12 collect-level test: with the interfaces(5) file actually ingested

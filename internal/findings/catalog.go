@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // catalog.go declares the findings stream's own check vocabulary: every
 // check name any producer can stamp on a Finding.
 //

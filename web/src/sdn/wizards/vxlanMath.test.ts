@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import { UNDERLAY_MTU, VXLAN_OVERHEAD, VXLAN_SAFE_MTU, computeVxlanMtuDerivation } from "./vxlanMath";
 

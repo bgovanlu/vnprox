@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // mtu.go: the cross-node half of docs/features/topology.md §6's MTU
 // consistency family — the same-named bridge's MTU differing across cluster
 // nodes, fixable via "MTU alignment" (a bridge.update aligning every outlier

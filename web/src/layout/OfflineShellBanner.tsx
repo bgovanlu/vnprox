@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2005's "offline shell that fails honestly": renders nothing while
 // online, and while offline says so explicitly and states the age of
 // whatever data is on screen — a stale topology silently presented as

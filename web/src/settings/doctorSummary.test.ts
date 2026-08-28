@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3003's single most important assertion, at the counting layer: a skipped
 // check is never a passing one.
 //

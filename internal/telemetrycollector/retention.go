@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package telemetrycollector
 
 // retention.go is T-3710 AC4: "retention actually expires data. Demonstrate

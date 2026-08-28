@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-909: same fake-matchMedia harness useReducedMotion.test.ts established
 // (jsdom has no real matchMedia), applied to the narrow-viewport signal.
 import { afterEach, describe, expect, it, vi } from "vitest";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2706's control-status vocabulary, classified in one place.
 //
 // The contract's own words (docs/api.md): "Four values, and exactly one of

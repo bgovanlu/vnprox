@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package docexport_test
 
 // T-2806's half of the config-doc export: the operator's own notes and

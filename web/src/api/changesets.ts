@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Changesets API calls (docs/api.md §Changesets — "the only write path").
 // Every mutation in the app must go through one of these functions; nothing
 // else in web/src may construct a raw fetch against /changesets*.

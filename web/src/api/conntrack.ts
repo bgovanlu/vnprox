@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Conntrack explorer API calls (docs/api.md's `GET /conntrack`;
 // internal/api/conntrack.go, T-1305). Read-only — this task adds no
 // mutation route anywhere: there is no flush/delete-entry call in this

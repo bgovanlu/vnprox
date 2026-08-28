@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Parses the firewall deep-link query params (`scope`, `ref`, `pos`,
 // `origin`, `group`) two independent producers already emit:
 // web/src/fwlog/deeplink.ts's ruleDeepLinkPath (T-505, correlated log

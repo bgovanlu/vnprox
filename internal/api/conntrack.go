@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // conntrack.go implements T-1305's GET /conntrack (docs/api.md's Conntrack
 // section): a live, per-node conntrack/NAT table read, fanned out across
 // the cluster and filtered — the "what is this connection doing right now"

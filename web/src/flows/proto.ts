@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Client-side mirror of internal/flow/record.go's protoNames table — kept
 // as its own tiny module so both reducer.ts (filter matching) and
 // FlowExplorer.tsx (display) share one source of truth instead of two

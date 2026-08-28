@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Inspector "Metrics" tab (docs/features/monitoring.md §1-2): live rx/tx
 // bps/pps/errors/drops counters, a recharts rate-over-time sparkline from
 // the 24h history ring, and — for a Bond — the per-slave balance view

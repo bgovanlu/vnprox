@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The step engine every zone wizard is built on: a left-hand column with
 // the current step's fields (plus a plain-English "what this actually
 // does" intro, docs/features/sdn.md §2), a right-hand live preview pane

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared chrome for the Platform panel's four sections (T-3003).
 //
 // The one non-obvious piece here is `RefusalNotice`. Three of these four

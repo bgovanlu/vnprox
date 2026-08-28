@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure-logic coverage for the top-talkers tile's ranking (T-904),
 // independent of React/TanStack Query — see topTalkers.ts's own doc
 // comment for why this stays framework-free.

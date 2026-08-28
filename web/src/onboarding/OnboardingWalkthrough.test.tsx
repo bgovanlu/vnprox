@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Component-level tests for the onboarding walkthrough: every API call is
 // mocked at its api/*.ts boundary (same convention as
 // changesets/ChangesetDrawer.test.tsx), so these run entirely against fake

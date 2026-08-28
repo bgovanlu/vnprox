@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2802: the hosted demo's per-visitor state surface.
 //
 // A public demo refuses every mutating route at the edge — including the

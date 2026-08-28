@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // dispatcher.go is this package's fan-out seam: internal/topology.Hub's
 // SetEventSink target (T-1104's mechanism — see internal/automation's
 // Dispatcher for the sibling webhook consumer of the exact same seam) plus

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3104 acceptance criterion 1: "Every IP-entry field in the UI offers
 // next-free; a test enumerates the fields so a new one added later without
 // the picker is caught." This is a source-derived gate, in the same style

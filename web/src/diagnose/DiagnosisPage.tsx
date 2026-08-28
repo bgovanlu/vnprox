@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1307's guided diagnosis ladder: the "Diagnose" map/inspector action's
 // verdict page (docs/api.md's "Diagnosis" section; POST /diagnose). Runs
 // config check → simulator, live probe, guest interior, conntrack, and

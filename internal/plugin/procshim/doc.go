@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package procshim is T-1702's out-of-process plugin transport: the adapter that
 // lets a plugin implement the exact same extension interfaces as an in-process
 // plugin, but from a separate OS process vnproxd spawns and supervises.

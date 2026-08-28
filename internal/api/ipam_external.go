@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // ipam_external.go implements T-1203's cross-cluster IPAM surfaces:
 //
 //   - GET/POST   /ipam/external-subnets       — list / create app-owned external subnets

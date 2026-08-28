@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import type { SimEndpointSpec } from "../api/types";
 import { verifyLiveGate } from "./verifyEligibility";

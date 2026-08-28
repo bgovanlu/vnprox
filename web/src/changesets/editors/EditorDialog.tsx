@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared chrome for every entity editor (docs/features/change-management.md
 // §5: "Form-based editors open from the map or list views; every field has
 // inline help written for non-networking-experts"). Handles the Dialog

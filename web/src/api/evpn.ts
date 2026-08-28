@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // EVPN/BGP observability API calls (docs/features/sdn.md §3;
 // internal/api/evpn.go's GET /sdn/evpn/status).
 import { apiFetch } from "./client";

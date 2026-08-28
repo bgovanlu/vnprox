@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Which capture dialog (if any) is currently requested to open, and for
 // which target — the map's right-click menu and the inspector panel's
 // "Capture" button both funnel through this instead of each owning their

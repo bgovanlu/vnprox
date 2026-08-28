@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package ha_test
 
 // T-1704 arbitration / fencing coverage (no change.Service needed here — see

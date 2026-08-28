@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // ack.go implements T-2402's finding acknowledgement: an operator's record
 // that a finding is understood and deliberate, so the unified stream can be
 // triaged instead of merely watched.

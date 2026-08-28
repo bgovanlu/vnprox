@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package telemetry
 
 // docs.go is T-2503 AC6: docs/security.md states exactly what is collected,

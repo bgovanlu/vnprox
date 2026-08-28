@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-901 renderer-v2 coverage. jsdom has no real CanvasRenderingContext2D, so
 // these tests do NOT assert pixels — they assert the things v2 must get right
 // independent of drawing: the accessibility bridge (one labeled, focusable

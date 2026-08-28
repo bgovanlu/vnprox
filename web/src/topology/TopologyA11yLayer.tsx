@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The rendered half of the topology a11y bridge (T-901): a parallel DOM
 // layer of one focusable, correctly-labeled proxy element per visible canvas
 // entity, kept positioned over its on-canvas box and navigable by keyboard

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // QinQ zone wizard (docs/features/sdn.md §2): "service VLAN + inner range
 // with double-tag illustration."
 //

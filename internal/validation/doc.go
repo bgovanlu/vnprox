@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package validation implements the machinery T-1801 built for Phase 18's
 // hardware-validation arc (docs/roadmap-proven.md D5/D7): the evidence-blob
 // schema every planning/validation/harness/<section>.sh script emits, and

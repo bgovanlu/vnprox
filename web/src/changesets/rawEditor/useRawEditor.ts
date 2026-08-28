@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-208 raw editor state machine: load the live file, debounce syntax
 // linting as the user types (AC1, <300ms latency budget), and save through
 // the ordinary changeset drawer (useDrawerActions — "another editing

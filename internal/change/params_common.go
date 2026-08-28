@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change
 
 // VidRange is an inclusive VLAN ID range (a single VID has Low == High),

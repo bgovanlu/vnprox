@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package verify
 
 // checks_test.go is T-2501 AC2: every check has a fixture that makes it

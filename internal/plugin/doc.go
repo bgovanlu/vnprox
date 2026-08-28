@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package plugin is T-1702's capability-scoped extension SDK: stable, versioned
 // extension points for the read/discovery/ingest/render seams third parties
 // keep asking to extend — switch drivers (T-1205's internal/switchdrv), flow/

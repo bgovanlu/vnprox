@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-208 AC4: "Monaco loads only when the editor opens (lazy-loaded chunk)
 // with a bundle-size assertion in the build." This runs a real production
 // `vite build` (into a scratch directory, never the tracked web/dist) and

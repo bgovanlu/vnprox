@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks over api/push.ts — kept separate from the
 // browserPush.ts wrapper (which knows nothing about the server) and from
 // PushSettingsSection.tsx (which composes both).

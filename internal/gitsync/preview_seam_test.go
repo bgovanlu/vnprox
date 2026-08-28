@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package gitsync_test
 
 // preview_seam_test.go pins the seam T-2702's pull-request body renders its

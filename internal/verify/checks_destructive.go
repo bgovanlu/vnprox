@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package verify
 
 // checks_destructive.go is the suite that breaks things on purpose.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2706's compliance profiles: `GET /compliance` and
 // `GET /compliance/{profile}` (docs/api.md §"Compliance profiles & evidence
 // export"). Both are read-only; a report is a derived artifact, never staged,

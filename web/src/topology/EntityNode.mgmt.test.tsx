@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-702 acceptance criterion 4 (graph-view render test): the mgmt/corosync/
 // mgmt-path badge vocabulary (docs/features/topology.md §3) gets a distinct
 // (amber) treatment in EntityNode, additive to the plain-grey treatment

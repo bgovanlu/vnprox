@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3605: Phase 36's buttons, end to end, against the real stack.
 //
 // The three topology banners now offer to fix what they report. Each one is

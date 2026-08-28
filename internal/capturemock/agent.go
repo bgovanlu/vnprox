@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package capturemock is T-1301's scripted, hardware-free capture agent: it
 // satisfies internal/capture.Agent by generating a deterministic sequence of
 // real Ethernet frames into a classic-pcap file, honoring the session's

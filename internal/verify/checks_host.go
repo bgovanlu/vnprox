@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package verify
 
 // checks_host.go holds the checks that read the node itself — the kernel, the

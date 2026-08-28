@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Phase 36: turning a failed remediation into something an operator can act
 // on.
 //

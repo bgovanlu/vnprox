@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The real implementation lives in src/dashboard/ (DashboardPage.tsx plus
 // one component per tile) alongside its own tests — this file only wires
 // it to the routed "/" index path App.tsx expects, per the existing

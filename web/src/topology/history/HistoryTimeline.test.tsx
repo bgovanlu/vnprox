@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1007 acceptance criteria 1/2/4 (planning/tasks/phase-10.md):
 // 1. Scrubbing re-issues GET /metrics/history + GET /flows with the
 //    correct fromTs/toTs and re-renders from that historical data, not the

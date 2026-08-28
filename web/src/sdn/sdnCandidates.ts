@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure derivation of the SDN vnet-delete flow's reattachment candidate list
 // from an already-fetched topology — the SDN cockpit's own counterpart of
 // changesets/entityCandidates.ts's reattachTargets, framework-free and

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 // T-703 AC5's API-layer coverage: the touchesMgmtPath response flag is

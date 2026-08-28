@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // stageonly.go holds T-2705 acceptance criterion 2: the change-engine
 // interface this package holds has no apply, confirm, or approve method —
 // **asserted at compile time**, not by a runtime check.

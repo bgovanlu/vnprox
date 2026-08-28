@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2801 demo mode, end to end against a real `vnproxd --demo`.
 //
 // This file exists because two of the card's acceptance criteria say so in

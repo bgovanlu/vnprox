@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package federation implements T-1201's federation core: a cluster registry
 // (CRUD over the app-owned clusters table, with each attached cluster's PVE
 // credential encrypted at rest) plus an Aggregator that fans reads out to N

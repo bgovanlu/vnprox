@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package collect_test
 
 // TestOnServices_WiredThroughHostLoop is T-602's collector-plumbing check:

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package store
 
 // export_test.go exposes a small, deliberate slice of this package's

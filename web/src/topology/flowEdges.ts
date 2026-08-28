@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1003's map-painting glue: aggregates a set of ingested flow.Records
 // (docs/api.md's Flows section, T-1002) into weighted, directed
 // conversation edges the v2 canvas renderer overlays on top of the normal

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package diagnose implements T-1307's guided diagnosis ladder: a generic,
 // dependency-light orchestrator that runs a registered sequence of steps
 // against one target and folds their outcomes into one stable,

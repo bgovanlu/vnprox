@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package ingressmock provides the four reverse-proxy status-endpoint
 // doubles T-1406's card names — HAProxy, nginx, Caddy, Traefik — as small
 // httptest.Server fixtures serving realistic canned responses in each

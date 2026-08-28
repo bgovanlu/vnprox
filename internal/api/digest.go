@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // digest.go exposes T-2807's digest schedule over the API.
 //
 //	GET /digest/schedule   the current schedule and the last run's outcome

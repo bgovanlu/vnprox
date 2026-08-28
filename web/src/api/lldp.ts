@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // LLDP neighbor list + guided install API calls (docs/api.md §"Inventory &
 // topology"'s GET /lldp row and §"LLDP guided install (T-605)"). Backs the
 // onboarding walkthrough's step 3 (docs/user-guide.md §1.3).

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3001: the plan — `POST /spec/import`.
 //
 // There is no `plan` route and no `diff` route in this family. The plan IS

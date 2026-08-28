@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package findings
 
 // K8sProvider is the seam internal/k8s's NodePort-exposure producer

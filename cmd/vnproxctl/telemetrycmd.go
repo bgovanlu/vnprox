@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // `vnproxctl telemetry` (T-2503): the opt-in compatibility report, and the

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1305 acceptance criterion 5: filter application and NAT-column
 // rendering against a seeded fixture set. Network is mocked at the
 // ./conntrackQueries seam (mirrors flows/FlowExplorer.test.tsx's identical

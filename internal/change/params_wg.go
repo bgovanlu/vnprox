@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change
 
 // params_wg.go defines T-1401's WireGuard op parameter structs. Every wg.* op

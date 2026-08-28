@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_federation_tunnel.go implements T-1407's tunnel_down_peer_unreachable
 // finding (source "federation"): a federated cluster that declares itself
 // reachable only via a specific T-1401-managed WireGuard tunnel

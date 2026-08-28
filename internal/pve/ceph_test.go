@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package pve_test
 
 // Integration tests for pve.Client.CephConfig/CephOSDs (T-1503), exercised

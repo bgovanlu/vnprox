@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Failure simulation: "what breaks if this NIC / bond / switch dies?"
 // (GET /failsim/spof-score, T-1604).
 //

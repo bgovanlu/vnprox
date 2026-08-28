@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Builds a simple structural preview (nodes + edges) from a blueprint's
 // entities, for BlueprintPreviewDiagram's "preview diagram" requirement
 // (docs/features/blueprints.md §1: "Each starter carries ... a preview

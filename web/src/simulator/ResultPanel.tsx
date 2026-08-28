@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The simulation result panel (docs/features/firewall.md §5's output
 // contract + T-504's AC1-3): verdict banner, hop-by-hop list, the
 // blocking-rule card with its firewall-editor deep link, the missing-link

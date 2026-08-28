@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_lacpmismatch.go implements T-804's `lacp_partner_mismatch` check:
 // an 802.3ad bond whose slaves disagree on the LACP partner's system
 // ID/key (split-brain aggregation — each slave is actually talking to a

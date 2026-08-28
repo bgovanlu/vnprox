@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // hubcmd_sigstore.go is `vnproxctl hub verify --sigstore-key-bundle`'s
 // implementation: the one place in this binary — and, by design, the one
 // place in this repository outside cmd/vnproxctl's own dependency tree and

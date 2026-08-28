@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package telemetrycollector
 
 // consent_test.go is T-3710's AC1/AC2, demonstrated by observation rather

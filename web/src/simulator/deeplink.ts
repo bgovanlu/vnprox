@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Deep-link construction from a simulator deny verdict's blocking rule to
 // its editor (T-504 AC1: "one click lands in the rule editor with the rule
 // focused"). Deliberately mirrors web/src/fwlog/deeplink.ts's

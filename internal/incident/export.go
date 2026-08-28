@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // export.go is the card's "close and export produces one artifact — the
 // timeline plus a support bundle — through the existing redaction path".
 //

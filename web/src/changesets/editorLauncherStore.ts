@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Which entity editor (if any) is currently requested to open, and with
 // what target — the map (drag-drop, "new" toolbar) and the inspector panel
 // (Edit/Delete buttons) both funnel through this instead of each owning

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2808: the assistant panel's open/closed state.
 //
 // A store rather than a prop, for the same reason help/store.ts is one: the

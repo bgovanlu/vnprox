@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2003's shareable review link target: /changesets/:id/review
 // (App.tsx). Opens a changeset directly in the review screen without
 // requiring the visitor to already have it "active" in their drawer — a

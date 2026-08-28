@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { useCallback } from "react";
 import { Background, Controls, MiniMap, ReactFlow, type NodeMouseHandler, type OnNodeDrag, type XYPosition } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";

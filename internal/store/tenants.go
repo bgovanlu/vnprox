@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // tenants.go implements T-1703's multi-tenancy tables (docs/data-model.md §2,
 // migration 0030_tenants.sql): tenants, tenant_scopes, tenant_members, and the
 // changeset_requests linkage for request-changesets.

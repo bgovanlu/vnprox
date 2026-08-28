@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Hand-maintained mirror of docs/api.md's request/response shapes (a
 // generation task exists in the P6 backlog — see docs/development.md's
 // TypeScript standards section). Keep this file the single source of

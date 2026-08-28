@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Polls GET /latmesh/heatmap while the "Latency" paint mode is active
 // (T-1303) — unlike metricsQueries.ts's live rates, there is no WS event
 // for the heatmap (docs/api.md's Latency mesh section documents no such

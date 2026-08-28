@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package microseg is T-1602's microsegmentation planner core: from observed
 // flows it computes the minimal firewall policy that preserves observed-good
 // traffic ("these N rules cover 30 days of traffic; everything else was

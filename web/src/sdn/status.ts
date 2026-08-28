@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure status-painting logic for the SDN cockpit tree, shared (in spirit —
 // the actual color classes live in EntityNode.tsx/EntityEdge.tsx, which
 // this module doesn't import to keep it framework-free and Vitest-cheap)

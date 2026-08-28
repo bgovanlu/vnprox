@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // WAN & upstream health (GET /wan/status, GET/PUT /wan/targets, T-1405) —
 // the "it's the ISP, not the cluster" answer, on the page that already
 // explains how traffic leaves.

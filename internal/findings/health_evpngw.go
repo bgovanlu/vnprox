@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_evpngw.go implements docs/features/monitoring.md §5's
 // "evpn_gw_inconsistency" health check (T-803): an EVPN zone's anycast
 // subnet gateway (docs/features/sdn.md §2: "the gateway becomes the

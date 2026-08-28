@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package ipv6
 
 // Segment is one node's per-interface IPv6 RA/DHCPv6 observation, attached

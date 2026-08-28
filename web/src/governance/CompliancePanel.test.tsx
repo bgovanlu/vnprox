@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002 AC4, on the rendered DOM: a compliance control with no mapped
 // evidence renders as `unmapped` — never as pass, and never hidden.
 import { render, screen, within } from "@testing-library/react";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared "suggest next free address from an SDN subnet" affordance for any
 // editor's Addresses field (T-3104, docs/features/ipam.md §3: "wiring
 // [NextFreePicker] into every other IP-entry field in the UI ... is a known

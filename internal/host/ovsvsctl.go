@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package host
 
 // Open vSwitch runtime state via `ovs-vsctl` (T-407). This file holds the

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2101: the "published contract artifact" half of this package.
 //
 // automationContractRoutes is a hand-curated, deliberately minimal mirror of

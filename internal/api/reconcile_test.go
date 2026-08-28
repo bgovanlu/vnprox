@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 // T-2703's HTTP surface. The assertions that matter here are not the status

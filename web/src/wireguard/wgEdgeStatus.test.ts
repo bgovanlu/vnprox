@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import { wgPeerEdgePaint, worstWgPeerPaint, WG_HANDSHAKE_STALE_THRESHOLD_SEC } from "./wgEdgeStatus";
 

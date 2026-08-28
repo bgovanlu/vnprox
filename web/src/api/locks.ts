@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Advisory-lock and presence reads (docs/api.md's "Advisory locks and
 // presence", T-2805).
 //

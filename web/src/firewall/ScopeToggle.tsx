@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Scope enable/disable control with the "what will happen" summary
 // (docs/features/firewall.md §2 — "the classic PVE footgun made visible").
 // A plain checkbox plus scopeToggleSummary's golden-string explanation,

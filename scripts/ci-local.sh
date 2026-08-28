@@ -50,7 +50,7 @@ cd "$REPO_ROOT"
 FUZZTIME="${FUZZTIME:-60s}"
 LOG_DIR="${LOG_DIR:-$REPO_ROOT/.ci-local}"
 
-ALL_JOBS=(check e2e cross-arm64 fuzz package packaging-matrix cluster-ssh dco reproducible openapi-client)
+ALL_JOBS=(check e2e cross-arm64 fuzz package packaging-matrix cluster-ssh dco reproducible openapi-client license)
 
 # --- job selection ---------------------------------------------------------
 
@@ -289,6 +289,20 @@ job_openapi_client() {
     ( cd web && npm run check:openapi-drift )
 }
 
+# job_license (T-3801) is the license-compatibility gate: go-licenses over
+# the Go build graph and license-checker-rseidelsohn over web/'s production
+# dependencies, both against an explicit allowed-license set. Neither tool
+# is a build dependency — go-licenses runs via a versioned `go run` module
+# path that never touches this repo's go.mod/go.sum, and
+# license-checker-rseidelsohn is a web/ devDependency only. See
+# scripts/check-licenses.sh's header comment for the allowed-license list
+# and why each entry is there (including the one narrow copyleft exception,
+# EPL-2.0, justified there rather than here).
+job_license() {
+    ( cd web && npm ci ) || return 1
+    scripts/check-licenses.sh
+}
+
 # --- dispatch --------------------------------------------------------------
 
 for j in "${JOBS[@]}"; do
@@ -303,6 +317,7 @@ for j in "${JOBS[@]}"; do
         dco)              run_job dco              job_dco ;;
         reproducible)     run_job reproducible     job_reproducible ;;
         openapi-client)   run_job openapi-client   job_openapi_client ;;
+        license)          run_job license          job_license ;;
     esac
 done
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared zone/vnet name input for the guided SDN wizards (issue #3): renders
 // a name field with inline, as-you-type feedback — a hard red error for a
 // charset PVE rejects (sdnNameError) and a soft amber warning for an

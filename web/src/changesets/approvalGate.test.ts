@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import { blocksApply, twoPersonBlocksApply, twoPersonRequiredMessage } from "./approvalGate";
 import type { ApprovalState, TwoPersonState } from "../api/types";

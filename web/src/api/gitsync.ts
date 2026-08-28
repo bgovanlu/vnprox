@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // `GET /gitsync/status` (T-2701) — the only route the git spec sync serves.
 //
 // There is deliberately no route that triggers a sync, applies its draft, or

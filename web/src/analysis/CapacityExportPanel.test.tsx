@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3004 AC2: the capacity export is reachable for a link and for an IPAM
 // pool, passes both required query parameters, and states the retention
 // bound.

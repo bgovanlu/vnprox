@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import type { CephOverlay } from "../api/types";
 import { attributionForNode, computeCephBadges, osdsForNode } from "./cephOverlay";

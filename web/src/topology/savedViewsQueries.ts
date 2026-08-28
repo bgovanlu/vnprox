@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for T-907's named saved views, built on the
 // existing per-user `layouts` mechanism (docs/api.md's Saved views &
 // annotations section) rather than a dedicated views table — see

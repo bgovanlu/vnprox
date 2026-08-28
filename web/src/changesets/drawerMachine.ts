@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure state machine mapping a changeset's server-side Status (+ the
 // drawer's own "review requested" UI flag) onto what the drawer should
 // currently show. Framework-free and independently Vitest-able (T-207

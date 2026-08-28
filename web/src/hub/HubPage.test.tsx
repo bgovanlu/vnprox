@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1705 UI tests: the hub browse/install page surfaces a plugin's declared
 // capabilities before install (AC4), shows the informational "vetted" badge,
 // and never bypasses the trust decision — a vetted-but-untrusted or unsigned

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-703 AC3/AC5: the review screen turns the server's touchesMgmtPath flag
 // into a mandatory acknowledgement block — the ack renders, apply is
 // disabled until the node name is typed exactly, and the confirm-window

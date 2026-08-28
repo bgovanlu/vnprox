@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // QoS shaping (docs/api.md's QoS section, T-1505; internal/api/qos.go).
 //
 // GET /qos/shapes is the *only* QoS route this daemon serves. Creating,

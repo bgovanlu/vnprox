@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Small display helpers shared by MicrosegPlanner + DryRunReport. Kept
 // separate from the components so the "never round coverage to 100%/0"
 // contract (T-1602's honesty fields, T-1603 AC1) is one tested function,

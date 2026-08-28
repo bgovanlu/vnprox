@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package ha implements T-1704's active/standby vnproxd high availability: a
 // durable, fenced leader lease that makes exactly one daemon the single writer
 // for apply/confirm/rollback at any instant, state replication of the

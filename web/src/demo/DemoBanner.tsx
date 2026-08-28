@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2801: the persistent demo banner.
 //
 // "Demo mode is unmistakable" is the card's word, and unmistakable rules

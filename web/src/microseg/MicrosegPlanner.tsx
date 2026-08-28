@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The microsegmentation planner panel, launched from a guest's firewall
 // inspector (FirewallPage's GuestPanel). It calls T-1602's read-only
 // synthesis routes and presents:

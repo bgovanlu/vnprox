@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2402 / T-2408 frontend tests.
 //
 // The central claim these pin is the invariant: ACKNOWLEDGEMENT IS NOT

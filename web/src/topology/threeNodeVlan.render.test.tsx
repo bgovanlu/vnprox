@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Cross-validates this frontend's client-side layer/VLAN filtering against
 // the *real backend's own* server-side ?vlan=20 filter — both captured by
 // running the actual pvemock -> collect -> inventory.Graph ->

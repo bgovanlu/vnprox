@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // cni.go implements T-1501's best-effort CNI detector: Flannel, Calico,
 // and Cilium are recognized from markers a default install of each
 // actually leaves behind; anything else — a different CNI, a

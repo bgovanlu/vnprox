@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3603: re-run a collector poll now.
 //
 // Phase 36's read-only operational tier — vnprox re-reading its own inputs,

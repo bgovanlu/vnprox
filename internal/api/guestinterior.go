@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // guestinterior.go implements T-1304's guest network interior inspector:
 // an opt-in, read-only view of a guest's own inside network state
 // (interfaces, addresses, routes, DNS, listening sockets, default-gateway

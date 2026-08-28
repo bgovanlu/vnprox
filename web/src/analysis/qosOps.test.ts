@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3004 AC3: QoS edits stage a changeset, and no direct write path exists.
 //
 // The second half is asserted structurally, against the shipped source

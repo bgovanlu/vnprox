@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Security-group inspector (T-2002, closing the gap T-1603's report
 // flagged): "groups are where microsegmentation policy actually lives",
 // but until now the only way to launch the microseg planner was per-guest

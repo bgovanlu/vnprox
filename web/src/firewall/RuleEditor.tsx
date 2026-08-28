@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Editable rule table (T-502, docs/features/firewall.md §2): drag-to-
 // reorder, inline enable/disable, delete, and a builder row with
 // autocomplete + macro picker + expansion preview. Wraps the read-only

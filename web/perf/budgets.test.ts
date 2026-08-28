@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2506. Unit coverage for the browser half of the budget gate.
 //
 // These run under vitest (`make check`), NOT under Playwright: everything here

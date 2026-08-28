@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-908: side-by-side compare layout for InspectorStack's two-pane case.
 // Two same-kind entities (e.g. two Bonds, or two nodes' vmbr0) render a
 // single shared tab strip (Fields | Metrics) with each tab's content laid

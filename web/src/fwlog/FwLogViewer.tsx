@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Firewall log viewer (T-505, docs/features/firewall.md §4): a filterable,
 // pausable, cluster-wide stream of pve-firewall log lines with honest rule
 // correlation and a storm-safe follow mode (server rate cap + client

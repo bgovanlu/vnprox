@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3005: the apply-strategy picker on the review screen — how this apply
 // fans out (T-2602) and whether a new error finding rolls it back inside the
 // commit-confirm window (T-2603).

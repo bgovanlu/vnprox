@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2402's acknowledge dialog: collects the REQUIRED reason and an optional
 // expiry before muting a finding.
 //

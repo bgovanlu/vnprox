@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shareable Flow Explorer state — the same "state lives in the URL"
 // convention this codebase already established for the path simulator
 // (simulator/urlState.ts) and the firewall log rule deep link

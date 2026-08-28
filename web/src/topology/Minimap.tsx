@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-902: the v2 canvas's minimap overlay — a small overview canvas plus a
 // viewport rectangle that pans the main canvas when dragged. Self-contained
 // pointer handling (its own drag state, not TopologyCanvasV2's pan/node

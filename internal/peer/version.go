@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package peer
 
 // ProtocolVersion is this build's peer wire-protocol version. It is

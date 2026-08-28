@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package api implements the HTTP router, handlers, and middleware stack
 // for vnproxd: request id / structured logging / panic recovery / security
 // headers, the /api/v1/health endpoint, and embedded-SPA serving with

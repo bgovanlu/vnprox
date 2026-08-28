@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package findings
 
 // ProbeProvider is the seam T-806's persisted sim_divergence findings

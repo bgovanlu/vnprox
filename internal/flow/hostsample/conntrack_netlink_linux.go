@@ -1,5 +1,7 @@
 //go:build linux
 
+// SPDX-License-Identifier: Apache-2.0
+
 // conntrack_netlink_linux.go is T-3711's production ConntrackReader: the
 // netlink conntrack socket (netlink.ConntrackTableList, CAP_NET_ADMIN)
 // rather than /proc/net/nf_conntrack — PVE 9 kernels ship

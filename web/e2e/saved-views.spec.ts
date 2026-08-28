@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-907 acceptance criteria, exercised against the real stack (pvemock
 // three-node-vlan fixture -> vnproxd -> the production SPA build):
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Builds the synthetic {nodes, edges} the wizard preview pane renders
 // through the REAL topology components (TopologyCanvas/toFlowElements/
 // computeLayout — see WizardPreviewPane.tsx), one function per zone type.

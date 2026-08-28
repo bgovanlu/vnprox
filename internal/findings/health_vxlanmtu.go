@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_vxlanmtu.go implements docs/features/monitoring.md §5's
 // "vxlan_underlay_mtu" health check (T-803).
 //

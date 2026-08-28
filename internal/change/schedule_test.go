@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change_test
 
 // T-1103 acceptance-criteria coverage. Test <-> AC/safety-analysis-scenario

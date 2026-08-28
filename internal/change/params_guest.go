@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change
 
 // GuestNicUpdateParams is op "guest.nic.update" (docs/data-model.md §3:

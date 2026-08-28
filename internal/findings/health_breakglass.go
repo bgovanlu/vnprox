@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_breakglass.go implements the "change_break_glass" check (T-2604):
 // one error-severity finding per emergency break-glass invocation — the
 // reasoned override that let a changeset in a protected op class apply

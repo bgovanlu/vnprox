@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 // redmetrics_test.go is AC1's own test: "a test asserts route labels use

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // apply_staged.go implements T-2602's canary / staged multi-node apply: a
 // changeset that fans out to several nodes can apply to a named subset
 // first, PAUSE, and only then continue to the rest.

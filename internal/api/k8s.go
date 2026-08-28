@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // k8s.go implements T-1501's Kubernetes overlay mapping engine routes
 // (docs/api.md's new Kubernetes section):
 //

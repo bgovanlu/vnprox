@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // gitsync.go implements T-2701's `GET /gitsync/status`: the last fetched
 // commit, the last plan, and why the current draft changeset exists.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package demo implements T-2801's built-in demo mode: `vnproxd --demo`
 // runs the whole product against an embedded synthetic cluster, with no
 // Proxmox VE endpoint and no network access.

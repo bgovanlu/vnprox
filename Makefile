@@ -18,7 +18,7 @@ FUZZTIME ?= 60s
 GOLANGCI_LINT_VERSION := v2.12.2
 GOVULNCHECK_VERSION   := v1.5.0
 
-.PHONY: build dev test lint check deb mockpve openapi contract-export conformance-external record record-mock soak perf e2e e2e-whole e2e-trend vitest-trend compat-matrix ci install-hooks
+.PHONY: build dev test lint check deb mockpve openapi contract-export conformance-external record record-mock soak perf e2e e2e-whole e2e-trend vitest-trend compat-matrix ci install-hooks third-party
 
 # --- readiness gates -----------------------------------------------------
 # Each *_READY variable is non-empty once the task that owns that piece has
@@ -226,9 +226,21 @@ compat-matrix: ## regenerate docs/compat-matrix.json + docs/compatibility.md's t
 	$(GO) test ./internal/apicontract/compat/... -run TestMatrix_MatchesPublishedArtifact -update -count=1
 	@echo ">> compat-matrix: docs/compat-matrix.json and docs/compatibility.md are up to date"
 
+# --- third-party (T-3801) --------------------------------------------------
+
+third-party: ## regenerate THIRD-PARTY-LICENSES.md from go list / license-checker-rseidelsohn
+	@echo ">> third-party: regenerating THIRD-PARTY-LICENSES.md"
+	@if [ -n "$(WEB_READY)" ]; then \
+		(cd $(WEB_DIR) && npm ci --no-audit --no-fund >/dev/null); \
+	fi
+	packaging/bin/gen-third-party-licenses.sh
+	@echo ">> third-party: THIRD-PARTY-LICENSES.md is up to date"
+
 # --- lint ----------------------------------------------------------------
 
 lint: ## golangci-lint + eslint + tsc --noEmit
+	@echo ">> spdx: header check (T-3801)"
+	@python3 scripts/add_spdx_headers.py --check
 	@echo ">> go: gofmt check"
 	@fmtout="$$(gofmt -l $$(find . -name '*.go' -not -path './web/*' -not -path './.claude/*'))"; \
 	if [ -n "$$fmtout" ]; then \

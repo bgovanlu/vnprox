@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Phase 36's Tier 2 ceremony, in one component.
 //
 // An operational remedy — install a package, start a unit, re-run a poll —

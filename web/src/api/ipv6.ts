@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // IPv6 segment visibility (docs/api.md's IPv6 section, T-1404;
 // internal/api/ipv6.go's GET /ipv6/segments).
 //

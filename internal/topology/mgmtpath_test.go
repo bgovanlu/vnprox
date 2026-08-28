@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package topology_test
 
 // Golden tests for T-702's shared management-path resolver

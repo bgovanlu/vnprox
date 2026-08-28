@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // mgmtpath.go implements the physical-path half of T-702's management-path
 // visibility deliverable (docs/features/topology.md §3, docs/api.md's
 // GET /protected-interfaces/status): given a set of already role-classified

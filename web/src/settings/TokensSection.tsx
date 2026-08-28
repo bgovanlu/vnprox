@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Automation tokens (T-1104 routes, T-2903 semantics) — the panel that ends
 // the `curl` + CSRF-double-submit ceremony minting one used to require.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // `GET /doctor/live` (T-2406; internal/api/doctor.go, internal/doctor/live.go).
 //
 // SCOPE, because the number is easy to overstate. `vnproxctl doctor` runs TEN

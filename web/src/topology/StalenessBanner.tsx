@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The docs/features/topology.md §5 staleness banner: when any collector
 // source is stale (GET /topology's `staleness.stale`), the map is showing
 // last-known data, and this banner says so with the timestamp of the last

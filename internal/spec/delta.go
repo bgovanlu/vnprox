@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package spec
 
 // delta.go runs import.go's direction backwards: it renders a changeset's ops

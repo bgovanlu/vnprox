@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1006 acceptance criterion 4's e2e half: the firewall log viewer's
 // Analytics tab, against the real stack (pvemock three-node-vlan fixture
 // -> vnproxd -> the production SPA build) with the seeded log fixture

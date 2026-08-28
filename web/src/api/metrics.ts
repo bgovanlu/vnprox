@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Metrics API calls (docs/features/monitoring.md §1-2; internal/api/metrics.go's
 // GET /metrics/live, GET /metrics/history).
 import { apiFetch } from "./client";

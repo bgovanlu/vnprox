@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Service/proto/port presets for the simulator's request form. Reuses
 // `GET /firewall/objects`' built-in macro catalog (internal/fw.KnownMacros,
 // already exposed to the frontend as FirewallObjectsResponse.macros — see

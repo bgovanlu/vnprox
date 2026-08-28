@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package verify
 
 // fakes_test.go builds the healthy baseline every negative case in

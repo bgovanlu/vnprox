@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-403 acceptance criterion 4: "Preview pane updates live as parameters
 // change (<100ms perceived; debounced)". useDebouncedValue.test.ts already
 // proves the debounce primitive itself settles well under 100ms after the

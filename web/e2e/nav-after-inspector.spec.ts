@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2003-bug-01 regression: nav-rail navigation must keep working from the
 // Topology page — including after the entity inspector has been opened and
 // dismissed.

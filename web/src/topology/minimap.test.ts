@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-902 AC4: pure geometry coverage for the minimap overlay (minimap.ts) —
 // the viewport-rectangle projection and drag-to-pan math, independent of
 // the <canvas> element Minimap.tsx wraps (jsdom has no real 2d context, so

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2005's "cached views are labeled with their age" mechanism: tracks the
 // timestamp of the most recent successful query response, app-wide, by
 // subscribing to the shared QueryClient's cache — the one place every

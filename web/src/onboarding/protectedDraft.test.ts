@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Covers T-605 AC1/AC2's "correctly detects and pre-fills management +
 // corosync interfaces from the fixture" against a suggest response shaped
 // exactly like testdata/clusters/three-node-vlan.yaml's real detection

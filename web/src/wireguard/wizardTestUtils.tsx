@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared test-only harness for ConnectClustersWizard.test.tsx — mirrors
 // sdn/wizards/wizardTestUtils.tsx's exact shape (a `vi.stubGlobal("fetch",
 // ...)` mock covering every route the wizard's hooks touch, capturing

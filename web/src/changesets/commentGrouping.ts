@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure grouping logic split out of CommentsPanel.tsx so that component-only
 // file keeps react-refresh's "only export components" invariant, and so
 // this logic is independently unit-testable.

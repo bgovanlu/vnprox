@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // timeline.go assembles the view. It writes nothing, anywhere: every function
 // in this file takes a window and returns events.
 //

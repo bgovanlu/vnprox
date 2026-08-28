@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_gitsync.go adapts T-2701's git spec sync into the unified findings
 // stream (source "gitsync"). internal/gitsync computes these conditions on
 // its own poll cadence — an unreachable remote, an unparseable document, a

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-504's firewall deep-link consuming side: a simulator deny verdict's
 // blocking-rule card (or a T-505 correlated log line) links to
 // `/firewall?scope=guest&ref=...&pos=...&origin=...&group=...` — this

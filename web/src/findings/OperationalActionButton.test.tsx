@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Phase 36 Tier 2's ceremony. An operational action has no changeset to
 // review, so the confirmation dialog is the only place an operator is told
 // what is about to happen — which makes "does it actually confirm" a

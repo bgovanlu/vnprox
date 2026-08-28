@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for T-305's drift findings: the list fetch, the
 // "create fixing changeset" mutation, and the WS bridge that keeps the
 // list fresh on `drift.changed` — the same "targeted invalidation on a WS

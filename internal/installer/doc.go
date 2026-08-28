@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package installer holds no code. It exists so packaging/install.sh's
 // signature verification and idempotence have a home inside `go test ./...`,
 // and therefore inside `make check`.

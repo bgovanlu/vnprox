@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Ceph network awareness API calls (docs/api.md's Ceph section, T-1503;
 // internal/api/ceph.go's GET /ceph/status). Read-only, mirroring
 // api/mtuprobe.ts's single-fetch shape.

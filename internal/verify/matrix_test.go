@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package verify
 
 // matrix_test.go is T-2501 AC1, in both directions, against the real

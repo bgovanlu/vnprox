@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // SDN VNet editor: zone (create-only), alias, tag (VLAN ID / VNI), VLAN-aware.
 import { useState } from "react";
 import { useSession } from "../../api/useSession";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Turns each wizard's finished params into the changeset draft ops T-403's
 // task card requires ("output = changeset draft, uses T-402's sdn.* ops,
 // never a direct apply, no exceptions"). Every op is built through T-402's

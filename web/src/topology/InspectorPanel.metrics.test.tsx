@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The Inspector's "Metrics" tab (docs/features/monitoring.md §1-2):
 // counters + sparkline for a physnic/bond/bridge/vlan entity, and the
 // bond per-slave balance view. A separate file from InspectorPanel.test.tsx

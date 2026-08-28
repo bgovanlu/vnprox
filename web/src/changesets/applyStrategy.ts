@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The client half of T-2602's canary apply: which strategies this changeset
 // could possibly be applied with, and the exact request body a chosen one
 // becomes.

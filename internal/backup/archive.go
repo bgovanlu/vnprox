@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // archive.go is the archive container: a gzip-compressed tar whose first
 // entry is always the manifest, followed by exactly the files that manifest
 // declares, in that order.

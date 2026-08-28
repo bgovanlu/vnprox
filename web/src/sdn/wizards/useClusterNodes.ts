@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The distinct cluster node names currently visible in the topology —
 // mirrors web/src/topology/TopologyPage.tsx's own `NewEntityMenu` node-list
 // derivation exactly (the only other place in this codebase needs "every

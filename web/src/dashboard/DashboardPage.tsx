@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Home dashboard (T-904, docs/features/monitoring.md §1/§3/§5,
 // docs/features/topology.md §3): a network-at-a-glance landing page built
 // entirely on routes that already exist (findings, changesets,

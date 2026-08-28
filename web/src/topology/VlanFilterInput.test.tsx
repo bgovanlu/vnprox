@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-907: VlanFilterInput must reflect programmatic `value` changes (loading
 // a saved view or a shareable-URL view sets the VLAN filter outside this
 // component's own Apply/Clear handlers) — the bug this test pins was found

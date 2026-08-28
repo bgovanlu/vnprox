@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The wizard's live topology preview: the REAL map components
 // (TopologyCanvas + toFlowElements + computeLayout, exactly what
 // TopologyPage.tsx itself uses) rendering synthetic entities from

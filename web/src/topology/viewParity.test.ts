@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3505 AC1: "The same entity reports the same status, source and severity
 // in both views — pinned by a test over one fixture, not by inspection."
 //

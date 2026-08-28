@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package collect
 
 // TestRecordResult_PVEAuthFailureLogsRegenerationHint covers the daemon-side

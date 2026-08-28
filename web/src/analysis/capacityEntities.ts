@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Which entities `GET /capacity/export` actually has history for, derived
 // from the same two sources cmd/vnproxd's capacityBucketSource rolls up
 // from. Pure, so the derivation is testable without rendering anything.

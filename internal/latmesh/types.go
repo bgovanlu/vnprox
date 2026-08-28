@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package latmesh
 
 // Fabric names one shared network this package probes across — see doc.go

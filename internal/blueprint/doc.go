@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package blueprint implements T-603's parameterized topology templates
 // (docs/features/blueprints.md §1): a versioned JSON format
 // (blueprintVersion: 1) describing entities to create with {{param}}

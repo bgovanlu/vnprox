@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure helpers for the walkthrough's step 2 ("Protected interfaces" —
 // docs/user-guide.md §1.2). The step renders one checkbox per node/ref pair
 // vnprox detected (GET /protected-interfaces/suggest), pre-checked, plus

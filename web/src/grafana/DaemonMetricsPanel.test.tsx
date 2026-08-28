@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1903: the daemon self-observability Grafana panel renders against a
 // fixture Prometheus scrape shaped exactly like the exporter's real output
 // (internal/api/metrics_exporter.go + internal/metrics/self.go) — no live

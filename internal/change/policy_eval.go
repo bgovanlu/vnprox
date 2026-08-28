@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // policy_eval.go evaluates a PolicySet against a changeset's ops. It is
 // pure: ops in, inventory snapshot in, findings out — no I/O, no store, no
 // clock — so it is callable from table-driven tests and from every stage of

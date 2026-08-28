@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2404's blast-radius panel: what an operator would NOTICE if this
 // changeset were applied.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002: `POST /changesets/{id}/break-glass` (T-2604's emergency override of
 // the two-person rule) and the copy that has to be on screen before it is
 // invoked.

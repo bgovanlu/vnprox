@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package auth
 
 // oidc_caps.go holds T-1207's group→role mapping and the authn/authz split

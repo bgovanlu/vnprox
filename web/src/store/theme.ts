@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Theme store: dark by default (per docs/user-guide.md's ergonomics
 // expectation for a NOC-style dashboard), persisted across reloads via
 // zustand's `persist` middleware (localStorage).

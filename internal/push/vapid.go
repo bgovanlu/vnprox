@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package push implements T-2005's web-push delivery: RFC 8291 message
 // encryption, RFC 8292 VAPID request authentication, and the
 // category-filtered dispatcher that turns internal/topology.Hub's event

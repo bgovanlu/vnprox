@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Renders whichever entity editor useEditorLauncherStore currently
 // requests, wiring it up with the topology-derived candidate lists
 // (entityCandidates.ts) and the target's own EntityDetail. One component,

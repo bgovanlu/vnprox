@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1603 AC1 + AC3 (Vitest):
 //   AC1 — MicrosegPlanner renders the coverage percentage and uncovered-flow
 //         count from a fixed Proposal fixture WITHOUT rounding either to

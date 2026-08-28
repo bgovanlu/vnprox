@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Stored scope vs. effective scope for an automation token (T-2903), and the
 // three-state expiry model that came with it.
 //

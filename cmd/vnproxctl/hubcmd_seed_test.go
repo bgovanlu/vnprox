@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // hubcmd_seed_test.go is T-2104 AC4: the submission and review process
 // documented in docs/hub-registry.md, walked once end to end with real
 // bundles — the T-2104 seeded blueprint library (internal/hub/seed), not the

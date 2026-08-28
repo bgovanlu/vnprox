@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package verify
 
 // sign.go turns a Report into the on-disk artifact: a signed, timestamped

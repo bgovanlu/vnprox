@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Management-path redundancy tile (T-904 deliverables: "mgmt-path
 // redundancy per node from GET /protected-interfaces/status, counting
 // non-redundant nodes"). Reuses topology/queries.ts's useMgmtStatusQuery —

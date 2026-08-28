@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // switches.go implements T-1205's switch registry storage (docs/data-model.md,
 // migration 0022_switches.sql). App-owned intent + credentials only per
 // CLAUDE.md's storage rule — a switch's live port/VLAN/LACP state is never

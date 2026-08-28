@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure address-parsing logic for the VXLAN wizard's "peer address list
 // auto-suggested from cluster node IPs" (docs/features/sdn.md §2). There is
 // no dedicated "cluster node IP" API in this codebase (docs/architecture.md

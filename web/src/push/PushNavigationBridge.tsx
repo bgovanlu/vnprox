@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Relays web/public/sw.js's notificationclick handler (which posts
 // {type:"vnprox-push-navigate", url} to every focused/open client, per
 // that file's own doc comment) into an in-app react-router navigation.

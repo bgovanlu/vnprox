@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // "Trace path" from the map (T-504 AC5): builds the /tools URL that
 // pre-fills one endpoint of the Path simulator from an entity the user
 // right-clicked or opened in the inspector. Reuses the exact same URL

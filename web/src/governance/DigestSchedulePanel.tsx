@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002: the scheduled digest's cadence — `GET`/`PUT /digest/schedule`.
 //
 // T-2807 landed the runner, the renderer and the store and no route; T-2905's

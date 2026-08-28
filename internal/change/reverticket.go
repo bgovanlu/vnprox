@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // reverticket.go implements T-1805 / roadmap-proven **D1**: the apply-time
 // revert ticket that closes the one genuine hole in this engine's safety
 // guarantee.

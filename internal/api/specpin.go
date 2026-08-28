@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // specpin.go implements T-1102's pinned-spec routes (docs/api.md's Spec
 // section): GET/POST/DELETE /spec/pin. Pinning is the GitOps reconciler's
 // declared desired state — app-owned data (docs/architecture.md §7), never a

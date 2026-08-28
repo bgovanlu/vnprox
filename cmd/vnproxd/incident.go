@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // incident.go wires T-2804's incident view.
 //
 // Note what this composition does NOT do: it starts no goroutine, registers

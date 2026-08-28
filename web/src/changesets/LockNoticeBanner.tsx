@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2805 — the advisory-lock notice inside the changeset drawer.
 //
 // Two operators staging conflicting changes to the same bridge used to be

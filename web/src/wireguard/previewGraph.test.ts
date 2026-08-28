@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import { buildConnectClustersPreview } from "./previewGraph";
 import { buildConnectClustersOps, wgPeerTarget, type ConnectClustersParams } from "./wizardOps";

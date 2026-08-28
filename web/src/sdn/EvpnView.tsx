@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // EVPN/BGP observability (docs/features/sdn.md §3): peering matrix (nodes
 // x peers, state colors), session detail (prefixes, uptime, last error),
 // VNI list, and exit-node health — GET /sdn/evpn/status. Lives alongside

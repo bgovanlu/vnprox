@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change
 
 // NatMasqueradeCreateParams is op "nat.masquerade.create" (T-1403). Target

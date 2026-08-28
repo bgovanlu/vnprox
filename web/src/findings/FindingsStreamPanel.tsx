@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-602's unified findings stream view: fetches GET /findings, stays live
 // via the findings.changed WS bridge, offers the source/severity/node
 // filter controls (AC2), and wires "Create fixing changeset" to

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // ports.go implements docs/features/lldp-discovery.md §2's Ports view: "a
 // flat table (node, NIC, switch, port, speed, PVID, tagged VLANs, last
 // seen) — exportable CSV; this alone replaces most wiring spreadsheets."

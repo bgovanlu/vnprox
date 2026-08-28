@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for the path simulator. `useSimulateQuery` fires
 // `POST /simulate/path` (T-503) as a query, not a mutation: the route is
 // documented as read-only ("a read-only static analysis over the

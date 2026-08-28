@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1603 AC2 (Vitest): DryRunReport renders every `wouldBlock` entry from a
 // fixed Report fixture in the flow-table format, and zero entries render
 // zero rows (not a missing/error state). The would-have-blocked and

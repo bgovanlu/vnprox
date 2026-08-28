@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1403's Edge & NAT cockpit: "how does traffic actually leave, and what's
 // exposed inbound?" — default routes, PVE-host masquerade/port-forward
 // rules (with a port-forward's target guest correlated and a powered-off

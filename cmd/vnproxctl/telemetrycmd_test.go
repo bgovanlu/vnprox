@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // telemetrycmd_test.go drives `vnproxctl telemetry` through run() — the real

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package spec implements T-1101's declarative cluster network spec:
 // blueprints v2, cluster-scoped. One versionable YAML document (Spec)
 // captures cluster-wide L2/SDN network intent — per-node bonds, bridges and

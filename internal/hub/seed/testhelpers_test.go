@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // testhelpers_test.go mirrors internal/blueprint's own testhelpers_test.go
 // convention exactly (same reasoning: Instantiate/diffEntity are pure
 // functions of an inventory.Snapshot, so a small hand-built graph is a

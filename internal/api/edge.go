@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // edge.go implements T-1403's Edge & NAT cockpit read views: GET
 // /edge/routes and GET /edge/nat. Both are netRead-gated, accept no request
 // body, and mount no netWrite-capable route at all — every mutation to

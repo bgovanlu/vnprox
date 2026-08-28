@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package inventory
 
 // resolved bundles a merged entity with its provenance.

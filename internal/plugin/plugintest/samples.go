@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package plugintest is T-1702's plugin conformance harness and its one sample
 // plugin per extension point (the "fixture family" the task card calls for). The
 // same table-driven Conformance suite (conformance.go) runs against both the

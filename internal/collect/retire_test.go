@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package collect_test
 
 // F-01 regression test: a node that leaves the cluster (disappears from

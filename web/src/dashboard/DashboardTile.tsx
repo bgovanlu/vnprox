@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared presentational shell for every Home dashboard tile (T-904,
 // docs/features/monitoring.md §1/§3/§5, docs/features/topology.md §3):
 // a titled card with a deep-link button into the tile's "owning page", and

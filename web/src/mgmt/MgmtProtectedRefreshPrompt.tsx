@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-703 AC6's post-commit protected-set refresh prompt: after flow C moves
 // a node's management address to a new carrier and the changeset commits,
 // GET /protected-interfaces/status reports staleProtected (the confirmed

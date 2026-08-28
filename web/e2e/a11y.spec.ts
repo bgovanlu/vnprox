@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-905 acceptance criterion 6: automated axe checks across the app's main
 // surfaces (Dashboard, Topology's Graph and Switch views, SDN, Firewall,
 // IPAM, the changeset drawer, Settings), against the real stack (pvemock

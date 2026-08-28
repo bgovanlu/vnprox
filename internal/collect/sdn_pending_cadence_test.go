@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package collect_test
 
 // Debt-sweep 2026-08-19 follow-up ("inventory.FromPVESDN ... read .Pending

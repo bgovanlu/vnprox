@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // haleases.go implements T-1704's ha_lease table (migration 0031_ha.sql,
 // docs/data-model.md §2): the singleton leader-lease/fencing record for an
 // active/standby vnproxd pair. App-owned HA coordination state per CLAUDE.md's

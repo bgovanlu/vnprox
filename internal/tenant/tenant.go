@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package tenant implements T-1703's multi-tenancy & self-service: delegated,
 // server-side-scoped views over the federation-era permission model, and the
 // request-changeset approval workflow.

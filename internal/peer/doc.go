@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package peer implements vnprox's intra-cluster API: the shared cluster
 // secret, HMAC-SHA256 request signing/verification, the peer HTTP server
 // (mounted at /api/peer/* on the same listener as the rest of vnproxd), and

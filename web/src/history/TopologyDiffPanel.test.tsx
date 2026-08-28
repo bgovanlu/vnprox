@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2704: the point-in-time diff panel. The assertions here are about the one
 // thing the feature exists for — that a change vnprox did NOT make is visibly
 // marked as such, and that a range vnprox cannot answer for says so instead of

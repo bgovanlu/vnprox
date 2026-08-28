@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_orphanvnet.go implements docs/features/monitoring.md §5's
 // "orphan_vnet" health check (T-803): an SdnVnet whose Zone no longer
 // resolves to any known SdnZone — the zone was deleted out from under it

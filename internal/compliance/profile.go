@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package compliance maps vnprox's existing evidence — the unified findings
 // stream's checks (internal/findings), T-1607's named posture factors
 // (internal/posture), and T-2601's installed policy rules (internal/change)

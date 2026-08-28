@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002 AC5: the digest schedule round-trips through PUT and reflects the
 // daemon's stored value afterwards — plus the `everySec: 0` honesty the
 // contract is explicit about.

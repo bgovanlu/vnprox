@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-903: roving arrow-key focus across topology entities. Framework-free
 // (no React, no DOM) so the ordering logic itself is exhaustively
 // Vitest-able without mounting anything — the same discipline

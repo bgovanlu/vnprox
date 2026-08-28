@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // sriov.go implements T-1506's vf_spoofcheck_mismatch standing drift check:
 // an already-diverged live SR-IOV VF (host-netlink observed, inventory.
 // PhysNic.SRIOVVFs) whose configured VLAN/spoof-check setting no longer

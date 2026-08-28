@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Traffic paint mode: edge thickness/heat by utilization % of link speed
 // (docs/features/monitoring.md §1: "map integration: optional 'traffic'
 // paint mode — edge thickness/heat by current utilization %"). Pure

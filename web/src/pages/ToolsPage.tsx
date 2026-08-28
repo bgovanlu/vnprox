@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Tools page: T-504's path simulator (docs/user-guide.md §3: "Tools ->
 // Path simulator"), T-208's raw interfaces editor (the power-user escape
 // hatch, docs/features/change-management.md §7), T-602's unified findings

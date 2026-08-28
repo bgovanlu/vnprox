@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3005: the rollout-state view for a changeset paused mid-canary.
 //
 // This is the half the card calls load-bearing. Everything it renders comes

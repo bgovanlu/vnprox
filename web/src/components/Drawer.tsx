@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import type { ComponentPropsWithoutRef } from "react";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import clsx from "clsx";

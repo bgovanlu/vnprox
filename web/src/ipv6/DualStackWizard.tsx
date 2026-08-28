@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1404's guided dual-stack rollout wizard: adds an IPv6 subnet
 // (addressing — RA/DHCPv6 itself is emitted by the zone's own dnsmasq/
 // radvd once addressing exists on PVE SDN, docs/features/sdn.md §6's

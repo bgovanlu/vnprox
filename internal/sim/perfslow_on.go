@@ -1,5 +1,7 @@
 //go:build perfslow
 
+// SPDX-License-Identifier: Apache-2.0
+
 package sim
 
 // T-2506's deliberate-slowdown fixture: a real, measurable cost inside the

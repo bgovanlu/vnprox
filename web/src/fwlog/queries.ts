@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hook (initial page) + WS bridge (follow mode) for T-505's
 // firewall log viewer — the same "REST for the initial snapshot, WS for
 // live increments" split topology/queries.ts and drift/queries.ts already

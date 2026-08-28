@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3003 (extended by T-3003-followup-01, 2026-08-19): the
 // stored-scope/effective-scope and expiry rules, tested away from React so
 // the claims the panel makes are checkable on their own.

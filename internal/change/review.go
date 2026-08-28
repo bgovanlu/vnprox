@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // review.go implements T-2003's change review surface: per-op/changeset
 // comments and an explicit review-approval gate, generalizing T-1703's
 // tenant request-changeset approval queue (internal/tenant's CanApprove/

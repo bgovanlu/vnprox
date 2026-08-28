@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-907's saved-views toolbar control: save the current topology page
 // state as a named view, load/delete a previously-saved one, or copy a
 // shareable link that carries the same state in the URL (docs/api.md's

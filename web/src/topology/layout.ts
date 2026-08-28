@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // elkjs-driven auto-layout: node columns per cluster node, layer bands
 // within each column (phys/l2/sdn/guest), the SDN band spanning the full
 // width rather than belonging to any one node's column

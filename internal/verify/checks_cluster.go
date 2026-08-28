@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package verify
 
 // checks_cluster.go holds the checks that read the cluster through the vnprox

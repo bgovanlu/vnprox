@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1003's guest-pair drill-down: opened when a Flows-layer overlay edge
 // (flowEdges.ts's FlowEdge) is clicked on the map — a small, non-modal
 // floating summary (mirrors InspectorStack.tsx's bottom-anchored floating

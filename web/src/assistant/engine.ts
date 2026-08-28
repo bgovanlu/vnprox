@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2808: one turn of the assistant.
 //
 // The order of operations is the whole design:

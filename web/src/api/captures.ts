@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Packet capture API calls (docs/api.md's Captures section, T-1301/T-1302;
 // internal/api/captures.go). Every route is netRead + capture gated on the
 // server; this module never enforces or re-derives a cap client-side — every

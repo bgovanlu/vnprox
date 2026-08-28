@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // resolver.go implements K8sResolver: resolves a flow's srcIp/dstIp
 // against a cluster's live overlay to a k8s ref string, mirroring
 // internal/flow.GraphResolver's exact shape (Refresh/Resolve) — "so T-1502

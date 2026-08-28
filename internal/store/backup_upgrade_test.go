@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package store_test is the external test package for internal/store. It
 // exists so this file can import internal/backup (which imports
 // internal/store, so `package store` could not).

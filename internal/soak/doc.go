@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package soak is T-2504's resource-leak gate: the machinery that samples a
 // running daemon's resource usage on a fixed interval and fails on a
 // *trend*, not on a threshold.

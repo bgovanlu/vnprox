@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package digest implements T-2807's scheduled digest reports: one periodic
 // push that turns three pull surfaces — the posture score, capacity forecasts,
 // and unresolved drift — plus the findings opened and closed in the period

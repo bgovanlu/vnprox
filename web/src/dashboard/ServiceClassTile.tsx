@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Service-network traffic tile (T-1504 deliverable: "New home-dashboard
 // tile (extends T-904's tile set): per-serviceClass bytes/sec breakdown
 // over the retained flow window"). Reuses flows/flowsQueries.ts's

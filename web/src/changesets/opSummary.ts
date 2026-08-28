@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure, framework-free op-summary rendering for the drawer and the review
 // screen's Summary tab — the client-side mirror of internal/change/ifaces/
 // summary.go's Summarize(), extended to cover every op family T-207's

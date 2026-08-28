@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure computation for the Home dashboard's "top talkers" tile
 // (docs/features/monitoring.md §3: "Per-bridge approximation from guest
 // NIC counters: rank guests by throughput on a selected bridge" — here,

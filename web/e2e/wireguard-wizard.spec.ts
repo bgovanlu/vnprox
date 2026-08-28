@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1402 acceptance criterion 3: "wizard run against two pvemock-backed
 // clusters produces one changeset with both wg.* and fw.* ops; applying it
 // leaves the edge rendering healthy on the next poll." Federation (T-1201)

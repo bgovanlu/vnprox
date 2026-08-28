@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // filerun.go implements docs/features/topology.md §6's fifth check family:
 // "interfaces file vs. runtime state (someone edited by hand / ran `ip`
 // commands)" — comparing a single entity's own declared (host-interfaces/

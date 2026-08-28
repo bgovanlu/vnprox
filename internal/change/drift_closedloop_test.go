@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change_test
 
 // T-305 acceptance criterion 3: "A generated fixing changeset, applied

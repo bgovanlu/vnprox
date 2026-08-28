@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1706 AC4 (event-annotation half): the Grafana live-event-annotation
 // panel renders against a fixture T-1104 WS event stream, with the transport
 // mocked (events passed in as a prop) — no live socket or Grafana.

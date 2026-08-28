@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-605 acceptance criteria 1 and 2: "Fresh-DB first login on the
 // brownfield fixture runs the full walkthrough; protected.json written
 // with confirmed interfaces; skipping and resuming works" / "Walkthrough

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-908 acceptance criterion 4: against the real stack (pvemock
 // three-node-vlan fixture -> vnproxd -> the production SPA build), open the
 // bond0 inspector, pin it, select a second node's bond0, and assert both

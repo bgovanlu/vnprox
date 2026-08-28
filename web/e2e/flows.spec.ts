@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1003 AC2: against the real stack (pvemock testdata/clusters/
 // flow-lab.yaml -> vnproxd's real internal/flow NetFlow v5 listener ->
 // the production SPA build), on this task's own webServer pair

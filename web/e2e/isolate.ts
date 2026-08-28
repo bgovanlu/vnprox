@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3204: per-spec-file daemon isolation for the specific spec files T-2505
 // AC3 measured as unsafe under `--repeat-each` — the criterion T-2409 was
 // opened for and never ran, then T-2505 subsumed and ran once:

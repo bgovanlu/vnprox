@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package telemetrycollector
 
 // summary.go is T-3710's deliverable 4: "a way to read what arrives ...

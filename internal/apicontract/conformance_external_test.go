@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2101: the "consumable by an external CI run" half of this package.
 //
 // Every scenario in this package (lifecycle_test.go, validation_test.go,

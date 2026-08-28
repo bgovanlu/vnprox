@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package findings
 
 // AC6 ("Findings route through T-1005: a fixture-triggered path_loss

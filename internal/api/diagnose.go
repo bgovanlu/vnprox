@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // diagnose.go implements T-1307's guided diagnosis ladder route:
 // `POST /diagnose {targetRef, escalateToCapture?}` → one internal/diagnose.
 // Result. Every step closure below composes an existing surface this

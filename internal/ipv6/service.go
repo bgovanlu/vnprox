@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package ipv6 implements T-1404's IPv6 enablement suite's read side:
 // GET /ipv6/segments aggregates every cluster node's bounded, host-local
 // IPv6 Router Advertisement / DHCPv6 observation (internal/host.Reader.

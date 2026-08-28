@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Unit coverage for the a11y bridge's pure half (a11yBridge.ts): the
 // aria-label vocabulary, the one-proxy-per-entity projection, roving order,
 // and screen-rect resolution. This is the contract T-905 (SR labels) and

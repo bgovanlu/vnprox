@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Router path → help topic. The coverage gate (coverage.test.ts) parses
 // App.tsx for every `path="…"` literal and fails if one is missing a key
 // here, so adding a route without adding its help is a build failure, not

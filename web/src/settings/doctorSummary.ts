@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Counting and verdict rules for `GET /doctor/live`'s results.
 //
 // This module exists so that the single most important assertion on the

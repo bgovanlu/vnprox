@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_dualstack.go implements T-1404's "dualstack_drift" health check:
 // the classic silent dual-stack failure where an IPv4 path works and the
 // identical IPv6 path is broken — never caught unless something actually

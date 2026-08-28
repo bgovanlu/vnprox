@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3003 AC1: a token minted through the UI carries the default 90-day
 // expiry, and the list distinguishes stored scope from effective scope under
 // `read_only`.

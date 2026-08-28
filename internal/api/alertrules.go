@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // alertrules.go implements T-1005's alert routing CRUD + delivery log
 // (docs/api.md's Alert Rules section):
 //

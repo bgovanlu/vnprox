@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // policy_load.go parses a policy document. The authoring format is YAML
 // (`vnproxctl policy test --policy=f.yaml`), which — being a strict
 // superset of JSON — means the same parser accepts the JSON body the API

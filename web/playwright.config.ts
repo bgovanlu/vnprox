@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Opt-in end-to-end verification of the topology UI against the REAL stack
 // (audit findings F-06/F-07): pvemock + vnproxd serving the production SPA
 // build from web/dist. Run with `npm run e2e` (which builds the SPA first —

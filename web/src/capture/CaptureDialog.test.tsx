@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // CaptureDialog wiring smoke tests: request -> live status -> decode ->
 // download, and the multi-point side-by-side render. web/e2e/capture.spec.ts
 // covers the same flow end to end against the real backend; these tests

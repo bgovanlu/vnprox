@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package gitsync implements T-2701's git-backed spec sync: a repository
 // becomes the source of *intent* for a cluster's declarative network spec
 // (internal/spec), while Proxmox remains the source of *truth*.

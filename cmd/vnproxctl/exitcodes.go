@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // Exit codes for every vnproxctl command (T-1105). This table is a stable,

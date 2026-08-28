@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1005's alert routing Settings page: CRUD over `alert_rules` (route
 // findings/drift transitions to a webhook target) plus the delivery log
 // (`GET /alert-deliveries`). Mirrors web/src/blueprints/BlueprintsPage.tsx's

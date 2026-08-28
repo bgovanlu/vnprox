@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3501's shared badge vocabulary: the pure, framework-free helpers both
 // renderers (SwitchFaceplate.tsx, EntityNode.tsx/EntityEdge.tsx/canvasDraw.ts)
 // and the a11y bridge (a11yBridge.ts) use so a map entity says which KIND of

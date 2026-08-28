@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // debugpprof.go: an opt-in, off-by-default diagnostic listener for
 // runtime.NumGoroutine()/pprof introspection, added for T-607's soak-test
 // observability requirement (docs/development.md's Definition of Done asks

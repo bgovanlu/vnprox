@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import type { ReactNode } from "react";
 import * as RadixTooltip from "@radix-ui/react-tooltip";
 import clsx from "clsx";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1304's guest network interior inspector: an opt-in inspector tab
 // showing a guest's own inside view of its network — interfaces,
 // addresses, routing table, DNS config, listening sockets, default-gateway

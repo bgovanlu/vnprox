@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useSession } from "../api/useSession";
 import { useDemoSessionStore } from "../store/authStub";

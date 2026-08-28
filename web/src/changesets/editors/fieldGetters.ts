@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Safe, typed readers over an EntityDetail's `fields` (a plain
 // `Record<string, unknown>` on the wire — docs/api.md doesn't type its
 // contents beyond "the resolved entity's canonical fields"). Every editor

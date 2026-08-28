@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // seed_pvemock_test.go is T-2104 AC3's literal proof for the flagship
 // three-node Ceph seed: blueprint.Instantiate's produced ops, pushed through
 // the exact same pve.Client calls cmd/vnproxd's own PVEGateway.SDNStageOp

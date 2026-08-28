@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Findings-by-severity tile (T-904 deliverables: "findings-by-severity
 // (GET /findings, grouped)"). Reuses findings/queries.ts's
 // useFindingsQuery — the same unbounded, unfiltered fetch

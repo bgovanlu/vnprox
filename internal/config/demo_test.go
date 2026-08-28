@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // demo_test.go covers T-2801 AC3's first direction: demo mode cannot be
 // enabled against a real PVE endpoint.
 package config

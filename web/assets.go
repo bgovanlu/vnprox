@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package webui embeds the built frontend (web/dist) into the vnproxd
 // binary so it can be served without any files on disk at runtime.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package verify implements `vnproxctl verify` (T-2501): the hardware
 // validation checklist, executed.
 //

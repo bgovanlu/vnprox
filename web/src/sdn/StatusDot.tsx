@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Small shared status dot for the SDN cockpit tree/detail — same
 // ok/down/degraded/unknown -> green/red/amber/grey mapping the topology map
 // uses (EntityNode.tsx's STATUS_CLASSES), so a zone's error node reads the

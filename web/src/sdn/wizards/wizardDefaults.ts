@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Click-through defaults for the guided Simple-zone flow: a user can accept
 // every step as-is and deploy a working, isolated SDN network without typing
 // anything (the "just click Next" path the SDN empty-state promises). Every

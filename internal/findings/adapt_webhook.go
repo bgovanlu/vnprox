@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package findings
 
 // WebhookProvider is the seam T-1104's webhook-health producer satisfies

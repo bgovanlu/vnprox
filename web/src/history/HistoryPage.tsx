@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // History — the configuration time machine (T-206, docs/user-guide.md §3:
 // "History → Snapshots lets you diff any two points and restore any of
 // them — restores go through the same review flow").

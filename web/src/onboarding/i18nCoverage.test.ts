@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3106 acceptance criterion 2: a gate that fails on a new hardcoded
 // user-facing string inside the bounded, localized subset
 // (web/src/onboarding/OnboardingWalkthrough.tsx — see that file's own doc

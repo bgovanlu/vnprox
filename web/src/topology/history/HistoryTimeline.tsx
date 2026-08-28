@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1007 "History playback": a scrubber bound to the map's EXISTING
 // traffic-paint (trafficMode.ts) and flows (flowEdges.ts) layers. Dragging
 // the scrubber re-queries GET /metrics/history and GET /flows for the

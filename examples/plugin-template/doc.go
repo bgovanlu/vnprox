@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package plugintemplate is a complete, minimal, compiling vnprox plugin: the
 // template `vnproxctl plugin scaffold <name>` stamps out (T-3811). It attaches
 // to exactly one of the SDK's five v1 extension points — findingProducer, the

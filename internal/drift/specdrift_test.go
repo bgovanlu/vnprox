@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package drift_test
 
 // T-1102 acceptance criteria for internal/drift's sixth check family,

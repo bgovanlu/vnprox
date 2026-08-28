@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The state classification behind the cockpit, tested directly because the
 // property it holds is a phrasing rule the components then just render:
 // "off", "broken" and "we could not ask" are three states, and an unknown is

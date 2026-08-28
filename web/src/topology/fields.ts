@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure field-flattening logic for the inspector's Fields tab, kept out of
 // InspectorPanel.tsx so the component file only exports a component
 // (react-refresh) and this stays directly unit-testable.

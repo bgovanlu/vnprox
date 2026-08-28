@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // One endpoint (source or destination) of a simulated flow (docs/features/
 // firewall.md §5: "Endpoints: guest NIC, arbitrary IP, or external/WAN").
 // Guest NIC search reuses the same GET /inventory/search client the map's

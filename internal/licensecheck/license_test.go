@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package licensecheck exists only to hold this test.
 //
 // T-2106: the repository shipped 617 commits and three release arcs with no

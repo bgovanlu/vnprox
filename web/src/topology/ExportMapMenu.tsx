@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-906: the Topology page toolbar's "Export map" control, present on both
 // Graph and Switch views (TopologyPage.tsx wires `getScene` to whichever
 // view is current — see export.ts's sceneFromFlowElements/

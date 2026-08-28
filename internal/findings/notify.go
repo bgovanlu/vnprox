@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // notify.go implements docs/features/monitoring.md §5's P1 notification
 // hooks: "webhook/email via PVE notification system". AC5's contract is
 // specific: a notification fires once per finding *transition* (new

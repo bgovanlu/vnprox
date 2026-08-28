@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // backup.go holds the three store-level primitives T-1901's backup and
 // restore path needs and nothing else in the codebase had:
 //

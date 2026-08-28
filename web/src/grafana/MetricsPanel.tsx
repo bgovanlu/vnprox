@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // MetricsPanel (T-1706): the render body of the vnprox Grafana metrics
 // panel. It is deliberately framework-agnostic React — the Grafana plugin
 // wrapper (module.ts registering a PanelPlugin, plugin.json, signing) lives

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package gitsync
 
 // adopt.go is T-2703's "adopt reality" half: a drift finding becomes a

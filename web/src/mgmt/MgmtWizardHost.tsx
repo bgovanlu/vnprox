@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Mounts the single management-redundancy wizard instance app-wide, driven
 // by mgmtWizardStore — every launch point (finding, inspector, New menu)
 // just calls the store's open(), the same one-instance pattern

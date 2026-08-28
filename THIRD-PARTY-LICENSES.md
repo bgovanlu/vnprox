@@ -31,77 +31,433 @@ Full licence texts: [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) ·
 
 Modules in the build graph, from `go list -m all`. Includes
 test-only and transitive modules; not all are linked into the shipped
-binaries.
+binaries — the Licence column is populated only for modules
+`go-licenses` (T-3801, the same tool `scripts/check-licenses.sh`'s CI
+gate uses) can actually resolve to an importable package in the real
+build graph; a blank cell means `go list -m all`'s module-requirement
+graph named it but no vnprox package imports any of its code.
 
-| Module | Version |
-|---|---|
-| `github.com/alecthomas/kingpin/v2` | v2.4.0 |
-| `github.com/alecthomas/units` | v0.0.0-20240927000941-0f3dac36c52b |
-| `github.com/beorn7/perks` | v1.0.1 |
-| `github.com/BurntSushi/toml` | v1.6.0 |
-| `github.com/cespare/xxhash/v2` | v2.3.0 |
-| `github.com/creack/pty` | v1.1.9 |
-| `github.com/davecgh/go-spew` | v1.1.1 |
-| `github.com/dustin/go-humanize` | v1.0.1 |
-| `github.com/go-chi/chi/v5` | v5.3.1 |
-| `github.com/golang-jwt/jwt/v5` | v5.3.1 |
-| `github.com/golang/protobuf` | v1.5.0 |
-| `github.com/google/go-cmp` | v0.7.0 |
-| `github.com/google/pprof` | v0.0.0-20250317173921-a4b03ec1a45e |
-| `github.com/google/uuid` | v1.6.0 |
-| `github.com/hashicorp/golang-lru/v2` | v2.0.7 |
-| `github.com/jpillora/backoff` | v1.0.0 |
-| `github.com/julienschmidt/httprouter` | v1.3.0 |
-| `github.com/klauspost/compress` | v1.19.0 |
-| `github.com/kr/pretty` | v0.1.0 |
-| `github.com/kr/text` | v0.2.0 |
-| `github.com/mattn/go-isatty` | v0.0.20 |
-| `github.com/munnerz/goautoneg` | v0.0.0-20191010083416-a7dc8b61c822 |
-| `github.com/mwitkow/go-conntrack` | v0.0.0-20190716064945-2f068394615f |
-| `github.com/ncruces/go-strftime` | v1.0.0 |
-| `github.com/oklog/ulid/v2` | v2.1.1 |
-| `github.com/pborman/getopt` | v0.0.0-20170112200414-7148bc3a4c30 |
-| `github.com/pmezard/go-difflib` | v1.0.0 |
-| `github.com/prometheus/client_golang` | v1.23.2 |
-| `github.com/prometheus/client_model` | v0.6.2 |
-| `github.com/prometheus/common` | v0.70.0 |
-| `github.com/prometheus/procfs` | v0.21.0 |
-| `github.com/remyoudompheng/bigfft` | v0.0.0-20230129092748-24d4a6f8daec |
-| `github.com/stretchr/testify` | v1.11.1 |
-| `github.com/vishvananda/netlink` | v1.3.1 |
-| `github.com/vishvananda/netns` | v0.0.5 |
-| `github.com/xhit/go-str2duration/v2` | v2.1.0 |
-| `golang.org/x/mod` | v0.36.0 |
-| `golang.org/x/net` | v0.56.0 |
-| `golang.org/x/oauth2` | v0.36.0 |
-| `golang.org/x/sync` | v0.20.0 |
-| `golang.org/x/sys` | v0.46.0 |
-| `golang.org/x/text` | v0.38.0 |
-| `golang.org/x/tools` | v0.45.0 |
-| `google.golang.org/protobuf` | v1.36.11 |
-| `gopkg.in/check.v1` | v1.0.0-20180628173108-788fd7840127 |
-| `gopkg.in/yaml.v3` | v3.0.1 |
-| `go.uber.org/goleak` | v1.3.0 |
-| `go.yaml.in/yaml/v2` | v2.4.4 |
-| `modernc.org/ccgo/v4` | v4.34.4 |
-| `modernc.org/cc/v4` | v4.28.4 |
-| `modernc.org/fileutil` | v1.4.0 |
-| `modernc.org/gc/v2` | v2.6.5 |
-| `modernc.org/gc/v3` | v3.1.3 |
-| `modernc.org/goabi0` | v0.2.0 |
-| `modernc.org/libc` | v1.73.4 |
-| `modernc.org/mathutil` | v1.7.1 |
-| `modernc.org/memory` | v1.11.0 |
-| `modernc.org/opt` | v0.2.0 |
-| `modernc.org/sortutil` | v1.2.1 |
-| `modernc.org/sqlite` | v1.53.0 |
-| `modernc.org/strutil` | v1.2.1 |
-| `modernc.org/token` | v1.1.0 |
-| `nhooyr.io/websocket` | v1.8.17 |
+| Module | Version | Licence |
+|---|---|---|
+| `bitbucket.org/creachadair/shell` | v0.0.8 | — |
+| `cel.dev/expr` | v0.25.1 | — |
+| `cloud.google.com/go/auth/oauth2adapt` | v0.2.8 | — |
+| `cloud.google.com/go/auth` | v0.20.0 | — |
+| `cloud.google.com/go/compute/metadata` | v0.9.0 | — |
+| `cloud.google.com/go/iam` | v1.11.0 | — |
+| `cloud.google.com/go/kms` | v1.31.0 | — |
+| `cloud.google.com/go/longrunning` | v1.0.0 | — |
+| `cloud.google.com/go/monitoring` | v1.25.0 | — |
+| `cloud.google.com/go/profiler` | v0.6.0 | — |
+| `cloud.google.com/go/pubsub` | v1.50.2 | — |
+| `cloud.google.com/go/pubsub/v2` | v2.6.0 | — |
+| `cloud.google.com/go/security` | v1.25.0 | — |
+| `cloud.google.com/go/spanner` | v1.91.0 | — |
+| `cloud.google.com/go/storage` | v1.62.2 | — |
+| `cloud.google.com/go/trace` | v1.11.3 | — |
+| `cloud.google.com/go` | v0.123.0 | — |
+| `contrib.go.opencensus.io/exporter/stackdriver` | v0.13.14 | — |
+| `filippo.io/edwards25519` | v1.2.0 | — |
+| `filippo.io/mldsa` | v0.0.0-20260215214346-43d0283efc3e | — |
+| `github.com/AdamKorcz/go-fuzz-headers-1` | v0.0.0-20230919221257-8b5d3ce2d11d | — |
+| `github.com/alecthomas/kingpin/v2` | v2.4.0 | — |
+| `github.com/alecthomas/units` | v0.0.0-20240927000941-0f3dac36c52b | — |
+| `github.com/alessio/shellescape` | v1.4.1 | — |
+| `github.com/antihax/optional` | v1.0.0 | — |
+| `github.com/asaskevich/govalidator` | v0.0.0-20230301143203-a9d515a09cc2 | MIT |
+| `github.com/aws/aws-sdk-go` | v1.55.5 | — |
+| `github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream` | v1.7.11 | — |
+| `github.com/aws/aws-sdk-go-v2/config` | v1.32.20 | — |
+| `github.com/aws/aws-sdk-go-v2/credentials` | v1.19.19 | — |
+| `github.com/aws/aws-sdk-go-v2/feature/ec2/imds` | v1.18.25 | — |
+| `github.com/aws/aws-sdk-go-v2/feature/s3/manager` | v1.20.12 | — |
+| `github.com/aws/aws-sdk-go-v2/internal/configsources` | v1.4.25 | — |
+| `github.com/aws/aws-sdk-go-v2/internal/endpoints/v2` | v2.7.25 | — |
+| `github.com/aws/aws-sdk-go-v2/internal/ini` | v1.8.4 | — |
+| `github.com/aws/aws-sdk-go-v2/internal/v4a` | v1.4.26 | — |
+| `github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding` | v1.13.10 | — |
+| `github.com/aws/aws-sdk-go-v2/service/internal/checksum` | v1.9.18 | — |
+| `github.com/aws/aws-sdk-go-v2/service/internal/presigned-url` | v1.13.25 | — |
+| `github.com/aws/aws-sdk-go-v2/service/internal/s3shared` | v1.19.25 | — |
+| `github.com/aws/aws-sdk-go-v2/service/kms` | v1.52.0 | — |
+| `github.com/aws/aws-sdk-go-v2/service/s3` | v1.102.2 | — |
+| `github.com/aws/aws-sdk-go-v2/service/signin` | v1.1.1 | — |
+| `github.com/aws/aws-sdk-go-v2/service/ssooidc` | v1.36.2 | — |
+| `github.com/aws/aws-sdk-go-v2/service/sso` | v1.30.19 | — |
+| `github.com/aws/aws-sdk-go-v2/service/sts` | v1.42.3 | — |
+| `github.com/aws/aws-sdk-go-v2` | v1.41.9 | — |
+| `github.com/aws/smithy-go` | v1.26.0 | — |
+| `github.com/AzureAD/microsoft-authentication-library-for-go` | v1.7.0 | — |
+| `github.com/Azure/azure-sdk-for-go/sdk/azcore` | v1.21.1 | — |
+| `github.com/Azure/azure-sdk-for-go/sdk/azidentity` | v1.13.1 | — |
+| `github.com/Azure/azure-sdk-for-go/sdk/internal` | v1.12.0 | — |
+| `github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys` | v1.5.0 | — |
+| `github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/internal` | v1.2.0 | — |
+| `github.com/beevik/ntp` | v1.5.0 | — |
+| `github.com/beorn7/perks` | v1.0.1 | — |
+| `github.com/bgentry/speakeasy` | v0.2.0 | — |
+| `github.com/blang/semver` | v3.5.1+incompatible | MIT |
+| `github.com/bmatcuk/doublestar/v4` | v4.0.2 | — |
+| `github.com/bufbuild/protocompile` | v0.14.1 | — |
+| `github.com/BurntSushi/toml` | v1.6.0 | MIT |
+| `github.com/cavaliercoder/badio` | v0.0.0-20160213150051-ce5280129e9e | — |
+| `github.com/cavaliercoder/go-rpm` | v0.0.0-20200122174316-8cb9fd9c31a8 | — |
+| `github.com/cavaliergopher/cpio` | v1.0.1 | — |
+| `github.com/cenkalti/backoff/v4` | v4.3.0 | — |
+| `github.com/cenkalti/backoff/v5` | v5.0.3 | MIT |
+| `github.com/census-instrumentation/opencensus-proto` | v0.4.1 | — |
+| `github.com/cespare/xxhash/v2` | v2.3.0 | MIT |
+| `github.com/chainguard-dev/clog` | v1.8.0 | — |
+| `github.com/cheggaaa/pb/v3` | v3.1.6 | — |
+| `github.com/cncf/xds/go` | v0.0.0-20260202195803-dba9d589def2 | — |
+| `github.com/codahale/rfc6979` | v0.0.0-20141003034818-6a90f24967eb | — |
+| `github.com/common-nighthawk/go-figure` | v0.0.0-20210622060536-734e95fb86be | — |
+| `github.com/containerd/errdefs/pkg` | v0.3.0 | — |
+| `github.com/containerd/errdefs` | v1.0.0 | — |
+| `github.com/coreos/go-oidc/v3` | v3.17.0 | — |
+| `github.com/coreos/go-semver` | v0.3.1 | — |
+| `github.com/coreos/go-systemd/v22` | v22.5.0 | — |
+| `github.com/cpuguy83/go-md2man/v2` | v2.0.7 | — |
+| `github.com/cyberphone/json-canonicalization` | v0.0.0-20241213102144-19d51d7fe467 | — |
+| `github.com/danieljoos/wincred` | v1.2.0 | — |
+| `github.com/DATA-DOG/go-sqlmock` | v1.5.2 | — |
+| `github.com/davecgh/go-spew` | v1.1.2-0.20180830191138-d8f796af33cc | — |
+| `github.com/dgraph-io/badger/v4` | v4.9.1 | — |
+| `github.com/dgraph-io/ristretto/v2` | v2.2.0 | — |
+| `github.com/dgryski/go-rendezvous` | v0.0.0-20200823014737-9f7001d12a5f | — |
+| `github.com/digitorus/pkcs7` | v0.0.0-20230818184609-3a137a874352 | MIT |
+| `github.com/digitorus/timestamp` | v0.0.0-20231217203849-220c5c2851b7 | BSD-2-Clause |
+| `github.com/distribution/reference` | v0.6.0 | — |
+| `github.com/docker/cli` | v29.5.3+incompatible | — |
+| `github.com/docker/docker-credential-helpers` | v0.9.3 | — |
+| `github.com/docker/go-connections` | v0.7.0 | — |
+| `github.com/docker/go-units` | v0.5.0 | — |
+| `github.com/dustin/go-humanize` | v1.0.1 | MIT |
+| `github.com/eggsampler/acme/v3` | v3.6.2 | — |
+| `github.com/envoyproxy/go-control-plane/envoy` | v1.37.0 | — |
+| `github.com/envoyproxy/go-control-plane/ratelimit` | v0.1.0 | — |
+| `github.com/envoyproxy/go-control-plane` | v0.14.0 | — |
+| `github.com/envoyproxy/protoc-gen-validate` | v1.3.3 | — |
+| `github.com/fatih/color` | v1.18.0 | — |
+| `github.com/felixge/httpsnoop` | v1.0.4 | — |
+| `github.com/flynn/go-docopt` | v0.0.0-20140912013429-f6dd2ebbb31e | — |
+| `github.com/fsnotify/fsnotify` | v1.9.0 | — |
+| `github.com/fullstorydev/grpcurl` | v1.9.3 | — |
+| `github.com/fxamacker/cbor/v2` | v2.9.0 | — |
+| `github.com/gabriel-vasile/mimetype` | v1.4.13 | — |
+| `github.com/go-chi/chi/v5` | v5.3.1 | MIT |
+| `github.com/godbus/dbus/v5` | v5.1.0 | — |
+| `github.com/gogo/protobuf` | v1.3.2 | — |
+| `github.com/go-jose/go-jose/v4` | v4.1.4 | — |
+| `github.com/golang/glog` | v1.2.5 | — |
+| `github.com/golang/groupcache` | v0.0.0-20241129210726-2c02b8208cf8 | — |
+| `github.com/golang-jwt/jwt/v5` | v5.3.1 | — |
+| `github.com/golang/mock` | v1.7.0-rc.1 | — |
+| `github.com/golang/protobuf` | v1.5.4 | — |
+| `github.com/golang/snappy` | v0.0.4 | — |
+| `github.com/go-logr/logr` | v1.4.4 | Apache-2.0 |
+| `github.com/go-logr/stdr` | v1.2.2 | Apache-2.0 |
+| `github.com/google/addlicense` | v1.1.1 | — |
+| `github.com/googleapis/enterprise-certificate-proxy` | v0.3.16 | — |
+| `github.com/googleapis/gax-go/v2` | v2.22.0 | — |
+| `github.com/google/btree` | v1.1.3 | — |
+| `github.com/google/certificate-transparency-go` | v1.3.3 | Apache-2.0 |
+| `github.com/GoogleCloudPlatform/grpc-gcp-go/grpcgcp` | v1.6.0 | — |
+| `github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp` | v1.32.0 | — |
+| `github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric` | v0.55.0 | — |
+| `github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping` | v0.55.0 | — |
+| `github.com/google/flatbuffers` | v25.2.10+incompatible | — |
+| `github.com/google/go-cmp` | v0.7.0 | — |
+| `github.com/google/go-containerregistry` | v0.21.7 | — |
+| `github.com/google/gofuzz` | v1.2.0 | — |
+| `github.com/google/pprof` | v0.0.0-20260402051712-545e8a4df936 | — |
+| `github.com/google/rpmpack` | v0.7.1 | — |
+| `github.com/google/s2a-go` | v0.1.9 | — |
+| `github.com/google/trillian` | v1.7.3 | — |
+| `github.com/google/uuid` | v1.6.0 | BSD-3-Clause |
+| `github.com/google/wire` | v0.7.0 | — |
+| `github.com/go-openapi/analysis` | v0.25.5 | Apache-2.0 |
+| `github.com/go-openapi/errors` | v0.22.8 | Apache-2.0 |
+| `github.com/go-openapi/jsonpointer` | v1.0.0 | Apache-2.0 |
+| `github.com/go-openapi/jsonreference` | v1.0.0 | Apache-2.0 |
+| `github.com/go-openapi/loads` | v0.25.0 | Apache-2.0 |
+| `github.com/go-openapi/runtime/server-middleware` | v0.30.0 | Apache-2.0 |
+| `github.com/go-openapi/runtime` | v0.33.0 | Apache-2.0 |
+| `github.com/go-openapi/spec` | v0.22.9 | Apache-2.0 |
+| `github.com/go-openapi/strfmt` | v0.27.0 | Apache-2.0 |
+| `github.com/go-openapi/swag/cmdutils` | v0.27.0 | Apache-2.0 |
+| `github.com/go-openapi/swag/conv` | v0.27.3 | Apache-2.0 |
+| `github.com/go-openapi/swag/fileutils` | v0.27.3 | Apache-2.0 |
+| `github.com/go-openapi/swag/jsonname` | v0.26.1 | Apache-2.0 |
+| `github.com/go-openapi/swag/jsonutils/fixtures_test` | v0.27.3 | — |
+| `github.com/go-openapi/swag/jsonutils` | v0.27.3 | Apache-2.0 |
+| `github.com/go-openapi/swag/loading` | v0.27.3 | Apache-2.0 |
+| `github.com/go-openapi/swag/mangling` | v0.27.3 | Apache-2.0 |
+| `github.com/go-openapi/swag/netutils` | v0.27.0 | Apache-2.0 |
+| `github.com/go-openapi/swag/pools` | v0.27.3 | Apache-2.0 |
+| `github.com/go-openapi/swag/stringutils` | v0.27.3 | Apache-2.0 |
+| `github.com/go-openapi/swag/typeutils` | v0.27.3 | Apache-2.0 |
+| `github.com/go-openapi/swag` | v0.26.1 | Apache-2.0 |
+| `github.com/go-openapi/swag/yamlutils` | v0.27.3 | Apache-2.0 |
+| `github.com/go-openapi/testify/enable/yaml/v2` | v2.6.0 | — |
+| `github.com/go-openapi/testify/v2` | v2.6.0 | — |
+| `github.com/go-openapi/validate` | v0.26.1 | Apache-2.0 |
+| `github.com/go-playground/locales` | v0.14.1 | — |
+| `github.com/go-playground/universal-translator` | v0.18.1 | — |
+| `github.com/go-playground/validator/v10` | v10.30.3 | — |
+| `github.com/go-redis/redismock/v9` | v9.2.0 | — |
+| `github.com/gorilla/websocket` | v1.5.1 | — |
+| `github.com/go-rod/rod` | v0.116.2 | — |
+| `github.com/go-sql-driver/mysql` | v1.9.3 | — |
+| `github.com/go-test/deep` | v1.1.1 | — |
+| `github.com/go-viper/mapstructure/v2` | v2.5.0 | MIT |
+| `github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus` | v1.1.0 | — |
+| `github.com/grpc-ecosystem/go-grpc-middleware` | v1.4.0 | — |
+| `github.com/grpc-ecosystem/go-grpc-middleware/v2` | v2.3.3 | — |
+| `github.com/grpc-ecosystem/grpc-gateway/v2` | v2.29.0 | BSD-3-Clause |
+| `github.com/hashicorp/errwrap` | v1.1.0 | — |
+| `github.com/hashicorp/go-cleanhttp` | v0.5.2 | — |
+| `github.com/hashicorp/golang-lru/v2` | v2.0.7 | — |
+| `github.com/hashicorp/go-multierror` | v1.1.1 | — |
+| `github.com/hashicorp/go-retryablehttp` | v0.7.8 | — |
+| `github.com/hashicorp/go-rootcerts` | v1.0.2 | — |
+| `github.com/hashicorp/go-secure-stdlib/parseutil` | v0.2.0 | — |
+| `github.com/hashicorp/go-secure-stdlib/strutil` | v0.1.2 | — |
+| `github.com/hashicorp/go-sockaddr` | v1.0.7 | — |
+| `github.com/hashicorp/hcl` | v1.0.1-vault-7 | — |
+| `github.com/hashicorp/vault/api` | v1.22.0 | — |
+| `github.com/howeyc/gopass` | v0.0.0-20210920133722-c8aef6fb66ef | — |
+| `github.com/huandu/xstrings` | v1.2.0 | — |
+| `github.com/imdario/mergo` | v0.3.16 | — |
+| `github.com/inconshreveable/mousetrap` | v1.1.0 | — |
+| `github.com/in-toto/attestation` | v1.2.0 | — |
+| `github.com/in-toto/in-toto-golang` | v0.11.0 | — |
+| `github.com/jackc/pgpassfile` | v1.0.0 | — |
+| `github.com/jackc/pgservicefile` | v0.0.0-20240606120523-5a60cdf6a761 | — |
+| `github.com/jackc/pgx/v5` | v5.8.0 | — |
+| `github.com/jackc/puddle/v2` | v2.2.2 | — |
+| `github.com/jedisct1/go-minisign` | v0.0.0-20211028175153-1c139d1cc84b | — |
+| `github.com/jellydator/ttlcache/v3` | v3.4.0 | — |
+| `github.com/jhump/protoreflect` | v1.17.0 | — |
+| `github.com/jmespath/go-jmespath` | v0.4.1-0.20220621161143-b0104c826a24 | — |
+| `github.com/jmhodges/clock` | v1.2.0 | — |
+| `github.com/jmoiron/sqlx` | v1.4.0 | — |
+| `github.com/jonboulle/clockwork` | v0.5.0 | — |
+| `github.com/jpillora/backoff` | v1.0.0 | — |
+| `github.com/julienschmidt/httprouter` | v1.3.0 | — |
+| `github.com/klauspost/compress` | v1.19.0 | Apache-2.0 |
+| `github.com/klauspost/pgzip` | v1.2.6 | — |
+| `github.com/kr/pretty` | v0.3.1 | — |
+| `github.com/kr/text` | v0.2.0 | — |
+| `github.com/kylelemons/godebug` | v1.1.0 | — |
+| `github.com/leodido/go-urn` | v1.4.0 | — |
+| `github.com/letsencrypt/borp` | v0.0.0-20251118150929-89c6927051ae | — |
+| `github.com/letsencrypt/boulder` | v0.20260309.0 | — |
+| `github.com/letsencrypt/challtestsrv` | v1.4.2 | — |
+| `github.com/letsencrypt/pkcs11key/v4` | v4.0.0 | — |
+| `github.com/letsencrypt/validator/v10` | v10.0.0-20230215210743-a0c7dfc17158 | — |
+| `github.com/lib/pq` | v1.10.9 | — |
+| `github.com/Masterminds/goutils` | v1.1.1 | — |
+| `github.com/Masterminds/semver` | v1.5.0 | — |
+| `github.com/Masterminds/sprig` | v2.22.0+incompatible | — |
+| `github.com/mattn/go-colorable` | v0.1.14 | — |
+| `github.com/mattn/go-isatty` | v0.0.20 | — |
+| `github.com/mattn/go-runewidth` | v0.0.16 | — |
+| `github.com/mattn/go-sqlite3` | v1.14.24 | — |
+| `github.com/Microsoft/go-winio` | v0.6.2 | — |
+| `github.com/miekg/dns` | v1.1.62 | — |
+| `github.com/miekg/pkcs11` | v1.1.1 | — |
+| `github.com/mitchellh/copystructure` | v1.0.0 | — |
+| `github.com/mitchellh/go-homedir` | v1.1.0 | — |
+| `github.com/mitchellh/mapstructure` | v1.5.0 | — |
+| `github.com/mitchellh/reflectwalk` | v1.0.1 | — |
+| `github.com/moby/docker-image-spec` | v1.3.1 | — |
+| `github.com/moby/moby/api` | v1.54.2 | — |
+| `github.com/moby/moby/client` | v0.4.1 | — |
+| `github.com/munnerz/goautoneg` | v0.0.0-20191010083416-a7dc8b61c822 | — |
+| `github.com/mwitkow/go-conntrack` | v0.0.0-20190716064945-2f068394615f | — |
+| `github.com/mwitkow/go-proto-validators` | v0.2.0 | — |
+| `github.com/natefinch/atomic` | v1.0.1 | — |
+| `github.com/ncruces/go-strftime` | v1.0.0 | — |
+| `github.com/nxadm/tail` | v1.4.11 | — |
+| `github.com/oklog/ulid/v2` | v2.1.1 | Apache-2.0 |
+| `github.com/olekukonko/tablewriter` | v0.0.5 | — |
+| `github.com/opencontainers/go-digest` | v1.0.0 | Apache-2.0 |
+| `github.com/opencontainers/image-spec` | v1.1.1 | — |
+| `github.com/pborman/getopt` | v0.0.0-20170112200414-7148bc3a4c30 | — |
+| `github.com/pelletier/go-toml` | v1.9.5 | — |
+| `github.com/pelletier/go-toml/v2` | v2.2.4 | — |
+| `github.com/pkg/browser` | v0.0.0-20240102092130-5ac0b6a4141c | — |
+| `github.com/pkg/errors` | v0.9.1 | BSD-2-Clause |
+| `github.com/planetscale/vtprotobuf` | v0.6.1-0.20240319094008-0393e58bdf10 | — |
+| `github.com/pmezard/go-difflib` | v1.0.1-0.20181226105442-5d4384ee4fb2 | — |
+| `github.com/poy/onpar` | v1.1.2 | — |
+| `github.com/prometheus/client_golang` | v1.23.2 | — |
+| `github.com/prometheus/client_model` | v0.6.2 | — |
+| `github.com/prometheus/common` | v0.70.0 | — |
+| `github.com/prometheus/otlptranslator` | v1.0.0 | — |
+| `github.com/prometheus/procfs` | v0.21.0 | — |
+| `github.com/prometheus/prometheus` | v0.51.0 | — |
+| `github.com/pseudomuto/protoc-gen-doc` | v1.5.1 | — |
+| `github.com/pseudomuto/protokit` | v0.2.0 | — |
+| `github.com/redis/go-redis/extra/rediscmd/v9` | v9.5.3 | — |
+| `github.com/redis/go-redis/extra/redisotel/v9` | v9.5.3 | — |
+| `github.com/redis/go-redis/v9` | v9.20.1 | — |
+| `github.com/remyoudompheng/bigfft` | v0.0.0-20230129092748-24d4a6f8daec | BSD-3-Clause |
+| `github.com/rivo/uniseg` | v0.4.7 | — |
+| `github.com/rogpeppe/fastuuid` | v1.2.0 | — |
+| `github.com/rogpeppe/go-internal` | v1.14.1 | — |
+| `github.com/rs/cors` | v1.11.1 | — |
+| `github.com/russross/blackfriday/v2` | v2.1.0 | — |
+| `github.com/ryanuber/go-glob` | v1.0.0 | — |
+| `github.com/sagikazarmark/locafero` | v0.11.0 | — |
+| `github.com/sassoftware/relic` | v7.2.1+incompatible | — |
+| `github.com/sassoftware/relic/v7` | v7.6.2 | — |
+| `github.com/secure-systems-lab/go-securesystemslib` | v0.11.0 | MIT |
+| `github.com/sergi/go-diff` | v1.4.0 | — |
+| `github.com/shibumi/go-pathspec` | v1.3.0 | Apache-2.0 |
+| `github.com/sigstore/protobuf-specs` | v0.5.1 | — |
+| `github.com/sigstore/rekor-tiles/v2` | v2.3.0 | Apache-2.0 |
+| `github.com/sigstore/rekor` | v1.5.3 | — |
+| `github.com/sigstore/sigstore-go` | v1.3.0 | Apache-2.0 |
+| `github.com/sigstore/sigstore/pkg/signature/kms/aws` | v1.10.8 | — |
+| `github.com/sigstore/sigstore/pkg/signature/kms/azure` | v1.10.8 | — |
+| `github.com/sigstore/sigstore/pkg/signature/kms/gcp` | v1.10.8 | — |
+| `github.com/sigstore/sigstore/pkg/signature/kms/hashivault` | v1.10.8 | — |
+| `github.com/sigstore/sigstore` | v1.10.8 | — |
+| `github.com/sigstore/timestamp-authority/v2` | v2.1.3 | — |
+| `github.com/sirupsen/logrus` | v1.9.4 | — |
+| `github.com/soheilhy/cmux` | v0.1.5 | — |
+| `github.com/sourcegraph/conc` | v0.3.1-0.20240121214520-5f936abd7ae8 | — |
+| `github.com/spf13/afero` | v1.15.0 | — |
+| `github.com/spf13/cast` | v1.10.0 | — |
+| `github.com/spf13/cobra` | v1.10.2 | — |
+| `github.com/spf13/pflag` | v1.0.10 | — |
+| `github.com/spf13/viper` | v1.21.0 | — |
+| `github.com/spiffe/go-spiffe/v2` | v2.6.0 | — |
+| `github.com/stretchr/testify` | v1.11.1 | — |
+| `github.com/subosito/gotenv` | v1.6.0 | — |
+| `github.com/syndtr/goleveldb` | v1.0.1-0.20220721030215-126854af5e6d | — |
+| `github.com/theupdateframework/go-tuf` | v0.7.0 | — |
+| `github.com/theupdateframework/go-tuf/v2` | v2.4.2 | — |
+| `github.com/tink-crypto/tink-go-awskms/v3` | v3.0.0 | — |
+| `github.com/tink-crypto/tink-go-gcpkms/v2` | v2.3.0 | — |
+| `github.com/tink-crypto/tink-go-hcvault/v2` | v2.5.0 | — |
+| `github.com/tink-crypto/tink-go/v2` | v2.7.0 | — |
+| `github.com/titanous/rocacheck` | v0.0.0-20171023193734-afe73141d399 | — |
+| `github.com/tmc/grpc-websocket-proxy` | v0.0.0-20220101234140-673ab2c3ae75 | — |
+| `github.com/tomasen/realip` | v0.0.0-20180522021738-f0c99a92ddce | — |
+| `github.com/transparency-dev/formats` | v0.1.1 | — |
+| `github.com/transparency-dev/merkle` | v0.0.2 | Apache-2.0 |
+| `github.com/transparency-dev/tessera` | v1.0.2 | — |
+| `github.com/ulikunitz/xz` | v0.5.14 | — |
+| `github.com/urfave/negroni` | v1.0.0 | — |
+| `github.com/veraison/go-cose` | v1.3.0 | — |
+| `github.com/vishvananda/netlink` | v1.3.1 | Apache-2.0 |
+| `github.com/vishvananda/netns` | v0.0.5 | Apache-2.0 |
+| `github.com/VividCortex/ewma` | v1.2.0 | — |
+| `github.com/weppos/publicsuffix-go` | v0.50.2 | — |
+| `github.com/x448/float16` | v0.8.4 | — |
+| `github.com/xhit/go-str2duration/v2` | v2.1.0 | — |
+| `github.com/xiang90/probing` | v0.0.0-20221125231312-a49e3df8f510 | — |
+| `github.com/youmark/pkcs8` | v0.0.0-20240726163527-a2c0da244d78 | MIT |
+| `github.com/ysmood/fetchup` | v0.2.3 | — |
+| `github.com/ysmood/goob` | v0.4.0 | — |
+| `github.com/ysmood/got` | v0.40.0 | — |
+| `github.com/ysmood/gson` | v0.7.3 | — |
+| `github.com/ysmood/leakless` | v0.9.0 | — |
+| `github.com/zalando/go-keyring` | v0.2.3 | — |
+| `github.com/zmap/zcrypto` | v0.0.0-20250129210703-03c45d0bae98 | — |
+| `github.com/zmap/zlint/v3` | v3.6.6 | — |
+| `gocloud.dev` | v0.45.0 | — |
+| `go.etcd.io/bbolt` | v1.4.3 | — |
+| `go.etcd.io/etcd/api/v3` | v3.6.8 | — |
+| `go.etcd.io/etcd/client/pkg/v3` | v3.6.8 | — |
+| `go.etcd.io/etcd/client/v3` | v3.6.8 | — |
+| `go.etcd.io/etcd/etcdctl/v3` | v3.6.8 | — |
+| `go.etcd.io/etcd/etcdutl/v3` | v3.6.8 | — |
+| `go.etcd.io/etcd/pkg/v3` | v3.6.8 | — |
+| `go.etcd.io/etcd/server/v3` | v3.6.8 | — |
+| `go.etcd.io/etcd/tests/v3` | v3.6.8 | — |
+| `go.etcd.io/etcd/v3` | v3.6.8 | — |
+| `go.etcd.io/gofail` | v0.2.0 | — |
+| `go.etcd.io/raft/v3` | v3.6.0 | — |
+| `golang.org/x/crypto` | v0.54.0 | BSD-3-Clause |
+| `golang.org/x/exp` | v0.0.0-20251023183803-a4bb9ffd2546 | — |
+| `golang.org/x/mod` | v0.40.0 | BSD-3-Clause |
+| `golang.org/x/net` | v0.57.0 | BSD-3-Clause |
+| `golang.org/x/oauth2` | v0.36.0 | — |
+| `golang.org/x/sync` | v0.22.0 | — |
+| `golang.org/x/sys` | v0.47.0 | — |
+| `golang.org/x/telemetry` | v0.0.0-20260409153401-be6f6cb8b1fa | — |
+| `golang.org/x/term` | v0.45.0 | BSD-3-Clause |
+| `golang.org/x/text` | v0.40.0 | BSD-3-Clause |
+| `golang.org/x/time` | v0.15.0 | — |
+| `golang.org/x/tools` | v0.49.0 | — |
+| `golang.org/x/xerrors` | v0.0.0-20240903120638-7835f813f4da | — |
+| `gonum.org/v1/gonum` | v0.17.0 | — |
+| `google.golang.org/api` | v0.283.0 | — |
+| `google.golang.org/genproto/googleapis/api` | v0.0.0-20260526163538-3dc84a4a5aaa | Apache-2.0 |
+| `google.golang.org/genproto/googleapis/rpc` | v0.0.0-20260523011958-0a33c5d7ca68 | — |
+| `google.golang.org/genproto` | v0.0.0-20260319201613-d00831a3d3e7 | — |
+| `google.golang.org/grpc/cmd/protoc-gen-go-grpc` | v1.6.1 | — |
+| `google.golang.org/grpc` | v1.82.1 | Apache-2.0 |
+| `google.golang.org/protobuf` | v1.36.11 | BSD-3-Clause |
+| `go.opencensus.io` | v0.24.0 | — |
+| `go.opentelemetry.io/auto/sdk` | v1.2.1 | Apache-2.0 |
+| `go.opentelemetry.io/contrib/detectors/gcp` | v1.43.0 | — |
+| `go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc` | v0.67.0 | — |
+| `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` | v0.67.0 | — |
+| `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc` | v1.38.0 | — |
+| `go.opentelemetry.io/otel/exporters/otlp/otlptrace` | v1.38.0 | — |
+| `go.opentelemetry.io/otel/exporters/prometheus` | v0.66.0 | — |
+| `go.opentelemetry.io/otel/metric` | v1.44.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel/sdk/metric` | v1.44.0 | — |
+| `go.opentelemetry.io/otel/sdk` | v1.44.0 | — |
+| `go.opentelemetry.io/otel/trace` | v1.44.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel` | v1.44.0 | Apache-2.0 |
+| `go.opentelemetry.io/proto/otlp` | v1.7.1 | — |
+| `gopkg.in/check.v1` | v1.0.0-20201130134442-10cb98267c6c | — |
+| `gopkg.in/ini.v1` | v1.67.3 | — |
+| `gopkg.in/natefinch/lumberjack.v2` | v2.2.1 | — |
+| `gopkg.in/tomb.v1` | v1.0.0-20141024135613-dd632973f1e7 | — |
+| `gopkg.in/yaml.v2` | v2.4.0 | — |
+| `gopkg.in/yaml.v3` | v3.0.1 | MIT |
+| `go.step.sm/crypto` | v0.77.7 | — |
+| `go.uber.org/atomic` | v1.11.0 | — |
+| `go.uber.org/goleak` | v1.3.0 | — |
+| `go.uber.org/multierr` | v1.11.0 | — |
+| `go.uber.org/zap` | v1.28.0 | — |
+| `go.yaml.in/yaml/v2` | v2.4.4 | — |
+| `go.yaml.in/yaml/v3` | v3.0.4 | MIT |
+| `k8s.io/klog/v2` | v2.140.0 | Apache-2.0 |
+| `modernc.org/ccgo/v4` | v4.34.4 | — |
+| `modernc.org/cc/v4` | v4.28.4 | — |
+| `modernc.org/fileutil` | v1.4.0 | — |
+| `modernc.org/gc/v2` | v2.6.5 | — |
+| `modernc.org/gc/v3` | v3.1.3 | — |
+| `modernc.org/goabi0` | v0.2.0 | — |
+| `modernc.org/libc` | v1.73.4 | BSD-2-Clause |
+| `modernc.org/mathutil` | v1.7.1 | BSD-2-Clause |
+| `modernc.org/memory` | v1.11.0 | BSD-2-Clause |
+| `modernc.org/opt` | v0.2.0 | — |
+| `modernc.org/sortutil` | v1.2.1 | — |
+| `modernc.org/sqlite` | v1.53.0 | BSD-3-Clause |
+| `modernc.org/strutil` | v1.2.1 | — |
+| `modernc.org/token` | v1.1.0 | — |
+| `nhooyr.io/websocket` | v1.8.17 | ISC |
+| `sigs.k8s.io/json` | v0.0.0-20241010143419-9aa6b5e7a4b3 | — |
+| `sigs.k8s.io/release-utils` | v0.12.4 | — |
+| `sigs.k8s.io/yaml` | v1.6.0 | — |
+| `software.sslmate.com/src/go-pkcs12` | v0.4.0 | — |
 
 ## npm packages bundled into the SPA
 
-Production dependency tree only (`license-checker --production`).
+Production dependency tree only (`license-checker-rseidelsohn --production`
+— T-3801 pinned this in web/package.json's devDependencies; it is the
+maintained fork of the now-archived `license-checker`, and the same tool
+`scripts/check-licenses.sh`'s CI gate uses, so this file and that gate can
+never disagree about what a package's license is).
 Build- and test-only tooling — Vite, Vitest, Playwright, ESLint,
 TypeScript, axe-core, lightningcss — is **not** redistributed and is
 therefore excluded.
@@ -224,6 +580,7 @@ therefore excluded.
 | `set-cookie-parser` | 2.7.2 | MIT |
 | `tiny-invariant` | 1.3.3 | MIT |
 | `tslib` | 2.8.1 | 0BSD |
+| `typescript` | 5.9.3 | Apache-2.0 |
 | `use-callback-ref` | 1.3.3 | MIT |
 | `use-sidecar` | 1.1.3 | MIT |
 | `use-sync-external-store` | 1.6.0 | MIT |

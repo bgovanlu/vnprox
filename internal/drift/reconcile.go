@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // reconcile.go implements T-2703's finding: the one that names all THREE
 // positions.
 //

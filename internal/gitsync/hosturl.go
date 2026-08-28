@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package gitsync
 
 // hosturl.go holds exactly what the READ source (source.go, T-2701) and the

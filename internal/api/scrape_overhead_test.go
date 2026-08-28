@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 // scrape_overhead_test.go is T-1903 AC4: "Scrape overhead is measured and

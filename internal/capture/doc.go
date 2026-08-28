@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package capture implements T-1301's distributed packet-capture engine:
 // server-side capture orchestration on the local node or any peer, behind a
 // dedicated `capture` capability (internal/auth), with server-enforced,

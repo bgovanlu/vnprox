@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The digest-schedule form's logic, kept out of the component so the two
 // things worth pinning are testable on their own:
 //

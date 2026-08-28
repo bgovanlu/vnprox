@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1402: resolves one WireGuard peer's live status into the map-edge
 // paint the "WireGuard" topology layer uses — the three states T-1401's
 // findings define (docs/features/topology.md's new wg-tunnel edge kind):

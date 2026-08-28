@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package mcp implements T-1701's Model Context Protocol (MCP) server: a
 // first-class, capability-scoped surface that lets an AI operator (or any
 // MCP-speaking automation) reach vnprox's READ surfaces (topology, findings,

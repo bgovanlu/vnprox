@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3402: exercises the actual persistence mechanism behind Sidebar.tsx's
 // "collapse state persisted in localStorage" requirement — zustand's
 // `persist` middleware round-tripping through localStorage. Mirrors

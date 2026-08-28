@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package xnode holds the pure cross-node comparison families that both
 // internal/drift (run against live inventory state) and internal/change
 // (run against a changeset's *projected* state, as validator class 4 —

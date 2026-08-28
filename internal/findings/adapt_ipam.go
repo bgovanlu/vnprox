@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package findings
 
 // IPAMProvider is the seam internal/ipam's subnet/allocation conflict

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // schedule.go implements T-1103's scheduled changesets & maintenance
 // windows: stage now, apply inside a later window, reusing T-205's Apply/
 // Confirm and T-304's per-node local-timer machinery completely unchanged —

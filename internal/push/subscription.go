@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // subscription.go validates and normalizes what a browser's
 // `PushManager.subscribe()` call hands back — the shape POST
 // /push/subscriptions (internal/api/push.go) accepts on the wire — before

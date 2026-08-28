@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // fdb.go implements T-306's MAC/FDB browser support: flattening the
 // per-bridge FDB tables embedded in Links()' BridgeDetail into a single
 // bridge-tagged list, the shape the peer API's GET /api/peer/host/fdb route

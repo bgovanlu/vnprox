@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // collect.go is the collection seam T-1902's support bundle is meant to
 // reuse.
 //

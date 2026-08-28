@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Network posture score & report API (T-1607). Read-only: the posture score
 // is a derived artifact recomputed by the daemon on a schedule, never written
 // through a request. The exact JSON contract is internal/posture/posture.go +

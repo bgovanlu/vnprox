@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // adapt_baseline.go implements T-1601's flow-baseline anomaly findings
 // (source "baseline", its own top-level source — see SourceBaseline's doc
 // comment): a learned per-guest/per-segment traffic baseline

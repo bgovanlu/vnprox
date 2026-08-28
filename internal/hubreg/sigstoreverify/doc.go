@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package sigstoreverify is T-3709's Sigstore-dependent verification code:
 // full sigstore-go verification (Fulcio-issued, OIDC-bound certificate
 // chain; Rekor transparency-log inclusion; a signed observer timestamp) of

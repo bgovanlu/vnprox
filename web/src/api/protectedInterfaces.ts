@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Protected-interfaces API calls (docs/api.md §"Protected interfaces";
 // internal/api/protected.go). Backs the onboarding walkthrough's step 2
 // (docs/user-guide.md §1.2: "vnprox detected which interfaces carry each

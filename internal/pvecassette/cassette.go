@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package pvecassette is T-2502's on-disk format for one observed PVE
 // request/response pair, plus the matching rule that decides whether a
 // later request is the same request.

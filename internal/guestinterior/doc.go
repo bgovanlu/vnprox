@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package guestinterior implements T-1304's guest network interior
 // inspector: a guest's own inside view of its network — interfaces,
 // addresses, routing table, DNS config, listening sockets, and

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package wan implements T-1405's WAN & upstream health: per-uplink
 // availability/latency/loss to operator-configured external reference
 // targets, so an operator can tell "it's the ISP, not the cluster" apart

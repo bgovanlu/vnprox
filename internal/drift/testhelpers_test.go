@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package drift_test
 
 // Shared graph-building helpers for the check-family golden tests. Every

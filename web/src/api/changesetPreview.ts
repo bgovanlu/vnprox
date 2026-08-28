@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2605's post-apply topology preview: `GET /changesets/{id}/preview`.
 //
 // The blast radius (T-2404) answers "what breaks" and the diff answers "what

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shareable simulation state (T-504 AC4: "Simulation URL round-trips
 // (paste -> same result rendered)"). Encodes/decodes a SimulateRequest to
 // and from the same `/tools` route's query string the Trace-path map

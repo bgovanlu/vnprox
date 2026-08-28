@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package devports parses testdata/dev-ports.tsv, the single source of truth
 // for every port this repository's development and test tooling binds on a
 // developer's machine.

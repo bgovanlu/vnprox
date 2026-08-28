@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // VXLAN zone wizard (docs/features/sdn.md §2): "peer address list
 // auto-suggested from cluster node IPs; MTU math shown explicitly
 // (underlay MTU − 50) with a one-click 'set VNet MTU accordingly'." —

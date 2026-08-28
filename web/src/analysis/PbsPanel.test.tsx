@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The PBS panel's own honesty invariants: an unresolved carrier and an
 // unknown link speed each render as unknown, and "hosts exist but no path
 // resolved" is a distinct state from "no PBS at all".

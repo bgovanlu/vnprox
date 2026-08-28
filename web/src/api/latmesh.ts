@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Latency mesh API calls (docs/api.md's Latency mesh section, T-1303;
 // internal/api/latmesh.go's GET /latmesh/heatmap, GET /latmesh/history).
 // Node-local only (no cluster fan-out) — see that section's own doc

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { Moon, Sun } from "lucide-react";
 import { useThemeStore } from "../store/theme";
 import { Button } from "../components/Button";

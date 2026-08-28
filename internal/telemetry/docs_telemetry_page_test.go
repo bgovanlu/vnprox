@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package telemetry
 
 // docs_telemetry_page_test.go extends T-2503 AC6's drift guard (docs.go) to

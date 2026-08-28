@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // sdn.go implements docs/features/topology.md §6's third check family:
 // "SDN zone node-membership vs. actual realization" — a zone lists a node
 // as a member (SdnZone.Nodes), but that node has no bridge named

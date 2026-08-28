@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // One `spec_reconciliation` finding, rendered as the three positions it
 // actually reports rather than as a two-way diff.
 //

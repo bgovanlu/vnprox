@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The verdict mapping is the load-bearing judgement in the whole failure-
 // simulation surface, so it is tested directly rather than only through the
 // panel. The property under test throughout: an impact the simulator could

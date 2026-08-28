@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 // redmetrics.go implements T-1903's HTTP RED (Rate/Errors/Duration)

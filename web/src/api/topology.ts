@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Topology & inventory API calls (docs/api.md §Inventory & topology; the
 // exact JSON contract is internal/topology/types.go + internal/api/topology.go).
 import { apiFetch } from "./client";

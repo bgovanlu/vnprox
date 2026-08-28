@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3102: ControllersView renders the controller list (type + ASN/peers),
 // and the type-conditional create form.
 import { afterEach, describe, expect, it, vi } from "vitest";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2805 — the presence query and its WS bridge.
 //
 // Subscribing to `presence:<scope>` is BOTH the declaration "I am looking at

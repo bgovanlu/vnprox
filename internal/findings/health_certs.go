@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_certs.go adapts internal/certs' check results into the unified
 // findings stream as source "cert" (T-2302).
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Guest-group pill expand logic.
 //
 // internal/topology/collapse.go drops collapsed guests' individual node

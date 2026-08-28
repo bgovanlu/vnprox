@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package metrics implements interface counters, rate computation, and
 // history rings (docs/features/monitoring.md §1-2, docs/architecture.md's
 // MON component). Sampler is the entry point: it is fed raw counter

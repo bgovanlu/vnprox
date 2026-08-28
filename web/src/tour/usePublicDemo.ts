@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2802: whether this instance is the hosted public demo.
 //
 // Same shape and same reasoning as demo/useDemoMode.ts: a property of the

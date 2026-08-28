@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package pve_test
 
 // Integration tests for internal/pve, exercised against a real

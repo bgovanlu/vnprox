@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // bundleschema.go is T-1902 AC2: "adding a new field to a collected
 // structure without declaring it fails a test".
 //

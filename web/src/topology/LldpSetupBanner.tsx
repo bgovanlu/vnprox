@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3602: the "no LLDP data" notice, and the button that does something
 // about it.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // twoperson.go implements T-2604's enforced two-person rule on protected op
 // classes, plus its emergency break-glass override.
 //

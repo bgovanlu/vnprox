@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Explanatory copy for the "connect two clusters" wizard (T-1402) — kept
 // separate from the component like sdn/wizards/strings.ts's own precedent,
 // written for a non-networking-expert reader (docs/features/sdn.md §2's

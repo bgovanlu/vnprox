@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2805 — "who else is looking at this", in the changeset drawer.
 //
 // Mounting this component is what declares presence: the WS bridge below

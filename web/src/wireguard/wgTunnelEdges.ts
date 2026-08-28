@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1402: turns GET /wireguard/tunnels' live tunnels into the map's
 // "WireGuard" layer overlay — synthetic {nodes, edges} merged into the real
 // topology canvas via TopologyPage's existing extraNodes/extraEdges seam

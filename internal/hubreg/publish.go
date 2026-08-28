@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // publish.go is the publisher/reviewer half of the registry: turning an
 // artifact file into a reviewable submission, and folding a reviewed
 // submission into the signed index idempotently (T-2803 AC4).

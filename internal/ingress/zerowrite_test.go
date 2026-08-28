@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // zerowrite_test.go is T-1406 AC4's regression test: no IngressDiscoverer
 // implementation in this package ever issues a mutating call to a
 // configured target. Two independent checks, per the card's own wording

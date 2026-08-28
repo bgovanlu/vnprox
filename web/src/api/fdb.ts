@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // MAC/FDB browser API calls (docs/features/lldp-discovery.md §4;
 // internal/api/fdb.go's GET /fdb).
 import { apiFetch } from "./client";

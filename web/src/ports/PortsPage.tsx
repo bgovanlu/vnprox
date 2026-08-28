@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The LLDP Ports page (roadmap: "LLDP Ports-view frontend page — API
 // already ships GET /ports"). A flat, sortable-by-nature table pairing each
 // cluster NIC with the switch/port LLDP reports for it — the read-only

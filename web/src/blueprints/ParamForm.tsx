@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The blueprint instantiate param form: one input per ParamDef, inline
 // validation (T-603 AC4: "bad CIDR/VID rejected at the form"), and an
 // IPAM-aware "Suggest" button for addressSuggest-eligible params

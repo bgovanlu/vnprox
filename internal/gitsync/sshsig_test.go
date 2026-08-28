@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package gitsync_test
 
 // Signature-verification tests (T-2701 AC5).

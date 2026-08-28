@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The Analysis screen (T-3004): five read-mostly analyses that had a
 // backend and no way in — failure simulation, capacity history export, QoS
 // shaping, PBS backup paths, and IPv6 segments. WAN health is the sixth of

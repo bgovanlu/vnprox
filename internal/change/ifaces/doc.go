@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package ifaces turns changeset ops that affect a node's
 // /etc/network/interfaces(5) file (the "iface", "bond", "bridge", and
 // "vlan" op groups in docs/data-model.md §3) into minimal AST edits on top

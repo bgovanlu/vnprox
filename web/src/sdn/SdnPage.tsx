@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // SDN cockpit: zone -> vnet -> subnet tree with per-node realization status
 // plus a detail panel rendering the staged-vs-running pending diff
 // (docs/features/sdn.md §1). Read-only for T-401 — T-402 added the plain

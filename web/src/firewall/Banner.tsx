@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The "Datacenter firewall is OFF: none of these rules are active" banner
 // (docs/features/firewall.md §2 — "the classic PVE footgun made visible")
 // and its cascaded variants at node/guest scope. Pure/presentational: all

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // SDN cockpit API calls (docs/features/sdn.md; internal/api/sdn.go's
 // GET /sdn).
 import { apiFetch } from "./client";

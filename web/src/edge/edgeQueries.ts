@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for T-1403's Edge & NAT cockpit (docs/development.md's
 // TypeScript standards: "server state via TanStack Query only — no fetch in
 // components"). No WS event backs either route (a config-derived read, not

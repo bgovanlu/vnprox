@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package gitsync_test
 
 // hostmock_test.go is the hardware-free git host T-2702's acceptance tests

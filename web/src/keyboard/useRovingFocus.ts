@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-903: wires rovingFocus.ts's pure ordering logic to real DOM entities.
 // Every clickable topology entity — EntityNode.tsx (Graph view) and
 // SwitchFaceplate.tsx/SwitchView.tsx's uplink/port/VLAN/VNet buttons

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // A minimal, self-contained right-click context menu — positioned at the
 // pointer rather than anchored to a trigger element, which is why this
 // isn't built on the already-used @radix-ui/react-dropdown-menu (that

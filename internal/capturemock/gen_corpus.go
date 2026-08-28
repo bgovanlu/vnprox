@@ -1,5 +1,7 @@
 //go:build ignore
 
+// SPDX-License-Identifier: Apache-2.0
+
 // Command gen_corpus regenerates the committed pcap sample corpus under
 // testdata/captures/. Run from the repo root:
 //

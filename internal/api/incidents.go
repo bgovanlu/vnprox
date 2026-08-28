@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // incidents.go serves T-2804's incident view: one timeline stitching the
 // diagnosis ladder, captures, findings, recent flows, the changeset history
 // and the T-2704 point-in-time diff into a single chronological account of a

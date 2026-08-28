@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package verify
 
 // run_test.go covers AC3 (a skip is never a pass) and AC6 (an unknown --only

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Unit coverage for the v2 canvas scene geometry (canvasScene.ts): the
 // viewport transforms, fit-to-view, zoom-at-cursor, and — the load-bearing
 // one for T-901's "hit-testing at all zoom levels, incl. overlapping chips"

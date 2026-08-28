@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Simple/SNAT zone wizard (docs/features/sdn.md §2): "isolated bridge per
 // node, optional SNAT." The most minimal of the five — no VLAN/VXLAN
 // concepts to explain, just naming + which nodes + an optional address

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002: tenant administration — the eight admin routes as a management
 // screen (T-1703).
 //

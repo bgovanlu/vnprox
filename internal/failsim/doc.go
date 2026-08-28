@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package failsim implements T-1604's failure-impact simulation core: a
 // pure, static "what breaks if X dies?" analysis over a live inventory
 // snapshot. Given a target entity (node, bond, uplink NIC, bridge, switch,

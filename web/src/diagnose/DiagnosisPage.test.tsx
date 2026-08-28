@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1307 AC6's Vitest coverage: the step-by-step ladder result renders
 // (statuses, per-step summaries, expandable detail), the verdict renders
 // with its confidence, and a `suggestedFixRef` "Review suggested fix"

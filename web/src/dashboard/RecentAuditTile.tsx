@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Recent audit tile (T-904 deliverables: "recent audit entries (GET
 // /audit?limit=5)"). Note the capability nuance for the report: `/audit`
 // is gated on the `audit` capability (docs/api.md: "requires the `audit`

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package collect_test
 
 // T-1506 acceptance criterion 1: a PF/VF topology fixture produces the

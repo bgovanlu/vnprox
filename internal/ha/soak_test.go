@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package ha_test
 
 // T-1707 v3.0 release: HA failover soak. Drives the two-daemon failover harness

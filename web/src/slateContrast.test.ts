@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3406-followup-02: bare `text-slate-400` / `text-slate-500`, guarded at
 // the source.
 //

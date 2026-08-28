@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // classify.go implements T-1504's service-network attribution: classifying
 // migration, backup (PBS), Ceph, and corosync traffic in the flow explorer
 // and history playback (both of which render straight off GET /flows —

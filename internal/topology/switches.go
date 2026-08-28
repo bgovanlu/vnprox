@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // switches.go implements docs/features/lldp-discovery.md §2's map upgrade:
 // "switch chassis rendered as physical-layer nodes; identical chassis IDs
 // seen from multiple nodes/NICs merge into one switch entity — this is what

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // This device's own push_subscriptions row id, remembered locally so
 // "disable push on this device" (PushSettingsSection.tsx) knows which
 // server-side row to DELETE without the server ever having to echo back

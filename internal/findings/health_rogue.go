@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_rogue.go implements T-1605's rogue-service / L2-anomaly detection
 // producer (source "rogue"): rogue DHCP servers, unexpected IPv6 RAs,
 // ARP/ND spoofing, and unknown MACs on operator-flagged protected segments.

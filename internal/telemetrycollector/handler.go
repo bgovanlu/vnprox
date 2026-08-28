@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package telemetrycollector
 
 // handler.go is the collector's HTTP surface: three routes plus a health

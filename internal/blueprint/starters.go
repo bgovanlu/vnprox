@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // starters.go implements docs/features/blueprints.md §1's "ship with
 // starters (bundled, read-only, copy-to-edit)": the five documented
 // templates, each with a description and (via the wizard-preview

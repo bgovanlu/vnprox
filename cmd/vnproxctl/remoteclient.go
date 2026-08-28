@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // remoteclient.go implements T-1105's HTTP-backed command family's shared
 // transport: a thin client over vnproxd's documented /api/v1 surface
 // (docs/api.md), authenticated exclusively with a T-1104 bearer token (never

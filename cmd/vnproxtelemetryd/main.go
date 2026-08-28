@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command vnproxtelemetryd runs T-3710's compatibility-telemetry
 // collector: the one genuinely dynamic service T-3707's hosted-service
 // decision requires. Every other hosted-service group (the plugin/

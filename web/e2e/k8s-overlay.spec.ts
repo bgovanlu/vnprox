@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1502 AC3: end-to-end verification of the Kubernetes map layer +
 // PodDrilldown against the REAL stack — the three-node-vlan pvemock/
 // vnproxd pair (ports 8006/8007) every other core topology spec shares,

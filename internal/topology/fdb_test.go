@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package topology_test
 
 // T-306 MAC/FDB browser acceptance tests. TestFDB_OwnershipLabels_Guest,

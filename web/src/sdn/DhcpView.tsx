@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // DHCP reservations + live leases view (docs/features/sdn.md §5): "static
 // reservations bound to guest MACs ... and a live leases view (parsed
 // per-node via peer API)". Lives alongside T-401's tree/detail panels and

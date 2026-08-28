@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Inline, as-you-type validation for the guided SDN wizards (issue #3:
 // "Guided should always verify input inline to warn and guide users at time
 // of input"). Every check here mirrors a real PVE constraint that would

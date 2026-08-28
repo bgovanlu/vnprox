@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package topology
 
 // Direct table tests for the status-derivation and badge helpers

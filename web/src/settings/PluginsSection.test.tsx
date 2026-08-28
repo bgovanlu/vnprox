@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3003: plugin lifecycle, the capability ceiling, and — the part that is
 // easy to get wrong — "the registry is not wired here" rendered as something
 // other than "no plugins are installed".

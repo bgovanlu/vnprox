@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // installer_test.go covers T-2801 AC4 and AC5 against the real
 // packaging/install.sh:
 //

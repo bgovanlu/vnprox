@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Onboarding walkthrough progress persistence. Reuses the existing
 // GET/PUT /layouts/{name} mechanism (internal/api/layouts.go; T-107) under
 // the reserved name "onboarding" rather than adding a new backend

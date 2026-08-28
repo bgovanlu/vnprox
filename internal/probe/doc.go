@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package probe implements T-802's guest-agent live path probe engine:
 // running a real, explicit ICMP/TCP probe from a source guest via the QEMU
 // guest agent (internal/pve's AgentExec/AgentExecStatus) toward a

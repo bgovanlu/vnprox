@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3402: which of Sidebar.tsx's collapsible groups are expanded, persisted
 // across reloads via zustand's `persist` middleware — mirrors
 // src/store/theme.ts's identical shape/convention (a small, named

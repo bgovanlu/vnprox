@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // One virtual switch (a Proxmox bridge) drawn as a switch faceplate.
 //
 // T-3503 rewrote this from a card-with-text-sections into an actual device

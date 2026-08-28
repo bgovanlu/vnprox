@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 // T-2807's HTTP surface, added at the wave-6 merge rather than by the card

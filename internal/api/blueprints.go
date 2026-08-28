@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // blueprints.go implements docs/api.md's Blueprints section
 // (`GET/POST /blueprints`, `POST /blueprints/{id}/instantiate`) plus a
 // handful of additive routes this task's UI needs that weren't in the

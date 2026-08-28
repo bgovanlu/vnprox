@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // DaemonMetricsPanel (T-1903): the render body of vnprox's daemon self-
 // observability Grafana panel — the exit demo's "the daemon's own Grafana
 // dashboard shows the apply that caused it." Shipped alongside

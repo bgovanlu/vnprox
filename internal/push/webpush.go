@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // webpush.go implements RFC 8291 (message encryption, aes128gcm) and RFC
 // 8292 (VAPID request authentication) end to end, and the HTTP delivery
 // that uses both. No third-party web-push library is used — this

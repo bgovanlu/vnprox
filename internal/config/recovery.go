@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // recovery.go adds LoadRecoveryOnly, the config reader T-1901's
 // `vnproxctl backup` / `vnproxctl restore` use.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-806's "Verify live" result rendering: the simulated verdict and the
 // observed live-probe outcome shown side by side, plus a distinct
 // divergence callout when they disagree. Deliberately a separate small

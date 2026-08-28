@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package publicdemo implements T-2802's edge for a hosted, read-only
 // vnprox demo: `vnproxd --demo --public-demo`.
 //

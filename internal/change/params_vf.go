@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change
 
 // params_vf.go defines T-1506's SR-IOV VF provisioning op params. vf.* is

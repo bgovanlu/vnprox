@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2704's point-in-time topology diff: `GET /topology/diff?from=&to=`.
 //
 // Changesets record what vnprox did; the history timeline plays those back.

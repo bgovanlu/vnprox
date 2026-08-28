@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-306 MAC/FDB browser: query-driven list-vs-search behavior and the
 // guest/vnprox-known deep-link.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure unified-diff line classification, in its own module (not
 // DiffView.tsx) so the component file only exports components
 // (react-refresh) and the parser is directly unit-testable.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2403's entity change history: `GET /inventory/history?ref=…`.
 //
 // The ref travels as a QUERY parameter, not a path segment. Refs legitimately

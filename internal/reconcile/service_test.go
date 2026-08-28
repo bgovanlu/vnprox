@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package reconcile_test
 
 // T-2703 AC3: neither reconciliation action fires without an explicit request,

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // status_json.go implements `vnproxctl status -o json` (T-1105's "-o json
 // on EVERY command, retrofit the existing three too"). It deliberately does
 // not touch runStatus's existing table-rendering code path (status.go) at

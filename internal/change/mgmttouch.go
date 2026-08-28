@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // mgmttouch.go implements T-703's server-computed `touchesMgmtPath` flag
 // (docs/api.md's changesets section): whether a changeset's ops intersect
 // any node's resolved management path — T-702's carrier refs plus every

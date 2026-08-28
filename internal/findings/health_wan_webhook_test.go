@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package findings
 
 // T-1405 AC3 ("A wan_degraded finding routed through an alert_rules entry

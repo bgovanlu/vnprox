@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Single source of truth for the keyboard bindings documented in
 // docs/user-guide.md §6: "`/` search · `1–4` toggle layers · `f` VLAN
 // filter · `g` then `t/s/f/i` go to Topology/SDN/Firewall/IPAM · `⌘K`/

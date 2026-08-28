@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // churn.go is the mutation surface T-2504's soak gate drives the mock
 // through: guests created and destroyed, cluster members flapping offline
 // and back, and an SDN VNet whose zone comes and goes (which makes the

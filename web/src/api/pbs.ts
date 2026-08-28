@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // PBS backup-path awareness (T-1206, internal/api/pbs.go's GET /pbs).
 //
 // Read-only forever, and read-only in a specific sense: vnprox stores no PBS

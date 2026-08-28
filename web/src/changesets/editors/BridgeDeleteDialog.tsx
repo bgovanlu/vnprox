@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The bridge delete-with-reattach flow (docs/features/change-management.md
 // §5: "Deleting a bridge with attached guests requires choosing a
 // reattachment target (generates the guest ops in the same changeset)").

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Embed-mode authentication state (T-1706). When the app boots at an
 // /embed/* route (see EmbedFrame.tsx), the embed token from the `?token=`
 // query string is stashed here so the shared apiFetch wrapper (api/client.ts)

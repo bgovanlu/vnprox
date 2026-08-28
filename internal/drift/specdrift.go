@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // specdrift.go implements T-1102's sixth drift check family: live state vs.
 // a pinned declarative spec (internal/spec, T-1101's "one versionable YAML
 // document capturing cluster-wide network intent"). Unlike the five

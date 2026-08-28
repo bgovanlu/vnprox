@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-907 AC1/AC2 (Vitest half of the UI wiring — savedViews.test.ts covers
 // the pure encode/decode/round-trip logic this component builds on).
 import { render, screen } from "@testing-library/react";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2808 AC2, at the unit the render path depends on: an answer that cites
 // nothing real never becomes a renderable value in the first place.
 import { describe, expect, it } from "vitest";

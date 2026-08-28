@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // History playback API calls (docs/api.md's "History" section, T-1007;
 // internal/api/history.go's GET /history/events).
 import { apiFetch } from "./client";

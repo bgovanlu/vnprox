@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // vlancheck.go implements docs/features/lldp-discovery.md §2's VLAN
 // cross-check: "VLANs the bridge/bond expects vs. VLANs the switch
 // advertises on that port, with mismatches flagged (\"bridge vmbr1 is

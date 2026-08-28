@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package telemetry implements T-2503: the opt-in compatibility report.
 //
 // One cluster validated by us is an anecdote. The compatibility matrix

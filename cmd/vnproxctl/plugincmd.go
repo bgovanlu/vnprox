@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // plugincmd.go implements `vnproxctl plugin scaffold <name>` (T-3811): it
 // stamps out examples/plugin-template's exact, tested source — a minimal,
 // compiling findingProducer plugin — into a new directory, renamed to

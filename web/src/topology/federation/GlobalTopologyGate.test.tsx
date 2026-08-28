@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1202 AC2: the capsule (global) view renders only with >=2 clusters
 // attached. With exactly one cluster (or none / federation unwired), the gate
 // renders the ordinary <TopologyPage/> with no wrapper — federation is

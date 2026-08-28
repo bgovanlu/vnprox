@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pending / awaiting-confirm changesets tile (T-904 deliverables:
 // "pending/awaiting-confirm changesets (GET /changesets, client-filtered
 // to non-terminal statuses)"). Deviation from the task card's prose

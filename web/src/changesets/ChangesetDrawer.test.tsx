@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Component-level tests for the persistent changeset drawer: op-list
 // rendering (summaries + validation badges), reorder, remove, and the
 // review/discard affordances gating on the drawer state machine. The

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The VXLAN wizard's "MTU math shown explicitly" requirement
 // (docs/features/sdn.md §2), reusing T-402's own derivation rather than
 // reimplementing it: internal/change/validate_sdn.go's underlayMTU (1500)

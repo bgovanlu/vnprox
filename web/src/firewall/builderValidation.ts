@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure client-side validation for the rule builder row (docs/features/
 // firewall.md §2: "builder row: direction, action, source/dest ..., proto/
 // ports, interface, macro picker ..., log level, comment"). This mirrors

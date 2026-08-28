@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-907's named saved views: capturing/restoring the topology page's own
 // layer/filter/zoom/selection/view-mode state, either as a `layouts`-table
 // row (a named saved view, GET/PUT /layouts/{name}) or as flat URL query

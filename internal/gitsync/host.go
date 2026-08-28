@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package gitsync
 
 // host.go is T-2702's WRITE seam: the branch/commit/pull-request surface a

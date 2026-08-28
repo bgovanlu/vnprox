@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Unit coverage for findingBadges.ts's pure parsing/decision helpers — the
 // shared vocabulary EntityNode.tsx, EntityEdge.tsx, canvasDraw.ts,
 // SwitchFaceplate.tsx, and a11yBridge.ts all key their T-3501 rendering off,

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package flow implements T-1002's flow ingestion engine: stdlib-only wire
 // decoders for sFlow v5, NetFlow v5, NetFlow v9, and IPFIX
 // (encoding/binary over a net.UDPConn — no third-party flow library, per

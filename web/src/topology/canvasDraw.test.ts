@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // canvasDraw.ts's own doc comment explains why the module as a whole isn't
 // unit-tested directly (it needs a real CanvasRenderingContext2D, which
 // jsdom lacks). `pulseAlphaForPhase` (T-905's drift/mgmt "pulse") is the one

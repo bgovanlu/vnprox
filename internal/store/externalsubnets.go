@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // externalsubnets.go implements T-1203's external_subnets table
 // (docs/data-model.md §2, migration 0023_external_subnets.sql). App-owned
 // intent only per CLAUDE.md's storage rule: IP space vnprox tracks that

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3402: replaces NavRail.tsx with the Stripe-dashboard idiom (see
 // docs/development.md's "Visual language (Phase 34, T-3401)" section) — a
 // light, grouped sidebar with muted section labels, collapsible groups,

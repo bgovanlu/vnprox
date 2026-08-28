@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-605's read-only-mode UX sweep found this page's "Take snapshot" and
 // "Restore…"/"Create restore draft" affordances had no capability gating
 // at all — this test pins the fix: all three are disabled-with-tooltip

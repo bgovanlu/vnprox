@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3001: `GET /gitsync/status` as a panel — repo, ref, path, last sync, last
 // error, and the draft the sync currently has open.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Live per-ref metrics for the map's "traffic" paint mode and the entity
 // inspector's sparklines/counters (docs/features/monitoring.md §1):
 // GET /metrics/live seeds the initial snapshot, then the shared /api/ws

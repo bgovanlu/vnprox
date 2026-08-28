@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_schedulemissed.go implements the "schedule_missed" health check
 // (T-1103): one finding per changeset whose scheduled maintenance window
 // elapsed entirely without ever firing (missedWindowPolicy "skip" — the

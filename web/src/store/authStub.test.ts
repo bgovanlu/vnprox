@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The demo-mode bypass must be OFF unless explicitly opted into with
 // VITE_AUTH_STUB=true (audit finding F-18a: real auth landed in T-105, so
 // default-on stub scaffolding is stale). AUTH_STUB_ENABLED is a module-level

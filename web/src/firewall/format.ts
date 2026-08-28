@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure formatting helpers shared by the rule/resolved-view tables — kept
 // separate from the presentational components so they're trivially unit
 // testable without rendering React.

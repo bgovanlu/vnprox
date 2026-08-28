@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package topology projects the T-103 inventory graph into the renderable
 // contract docs/features/topology.md §3 documents: nodes[] carrying
 // id/kind/label/layer/nodeGroup/status/badges, and edges[] carrying

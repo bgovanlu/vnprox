@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Audit — filterable table over vnprox's own audit log (T-206,
 // docs/features/change-management.md §8: "Filterable table (user, date
 // range, target, result) over the merged cluster audit log; each row

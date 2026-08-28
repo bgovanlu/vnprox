@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change_test
 
 // T-1506 acceptance criterion 4: vf.provision stages, validates, diffs,

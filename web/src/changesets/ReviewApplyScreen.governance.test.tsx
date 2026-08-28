@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002 AC1 and AC2, asserted on the rendered review screen.
 //
 // AC1 — a changeset blocked by a `deny` policy shows the rule id AND its

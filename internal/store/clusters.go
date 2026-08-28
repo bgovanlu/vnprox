@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // clusters.go implements T-1201's clusters table (docs/data-model.md §2,
 // migration 0021_clusters.sql). App-owned registration intent only per
 // CLAUDE.md's storage rule: which PVE clusters this vnprox primary attaches

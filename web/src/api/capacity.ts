@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Capacity history export (docs/api.md's `GET /capacity/export?ref=&kind=
 // link|ipam_pool[&format=csv|json]`, T-1606; internal/api/capacity.go).
 //

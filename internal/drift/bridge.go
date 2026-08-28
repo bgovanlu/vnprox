@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // bridge.go implements docs/features/topology.md §6's first check family:
 // "bridge presence/VLAN-awareness/VID sets for same-named bridges". The
 // comparison itself now lives in internal/xnode (BridgeDivergences), shared

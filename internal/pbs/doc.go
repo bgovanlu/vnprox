@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package pbs implements T-1206's Proxmox Backup Server network awareness:
 // read-only discovery of the PBS hosts PVE already knows about (its own
 // storage.cfg entries of type "pbs") and the backup jobs targeting them,

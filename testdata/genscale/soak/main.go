@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command soak is T-607's churn-and-sample harness: a real HTTP client
 // driving a real running vnproxd (booted against testdata/clusters/
 // scale-lab.yaml, per docs/development.md's dev-loop pattern —

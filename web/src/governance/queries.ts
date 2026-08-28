@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for T-3002's governance surfaces. Every server read on
 // the governance screen goes through here; no component fetches.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

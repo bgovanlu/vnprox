@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_ceph.go implements docs/features/monitoring.md §5's three T-1503
 // Ceph-networking health checks (extending T-803's pack, same source
 // "health" and continuously-computed, hysteresis-gated convention every

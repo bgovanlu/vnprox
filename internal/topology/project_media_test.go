@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package topology
 
 // T-3503: pins the media-port/speed independence rule the evidence

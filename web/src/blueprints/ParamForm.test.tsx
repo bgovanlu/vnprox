@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Component-level test for the blueprint param form: T-603 AC4's "bad
 // CIDR/VID rejected at the form" and the "next-free suggestion" wiring.
 // The backend is mocked at the api/blueprints.ts boundary.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3503: the two pure decisions behind a drawn port — which jack, and what
 // speed marking. Kept out of the render tests because they are the part that
 // can be wrong *silently*: a faceplate that draws an SFP cage for a copper

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // vfmarker.go backs T-1506's SR-IOV VF provisioning: the shared plan
 // resolution (internal/change's schema/referential validators and
 // internal/change/ifaces' file mutator must agree on exactly which VFs a

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package store
 
 // T-606 (planning/tasks/phase-6.md#T-606) established this harness: "upgrade

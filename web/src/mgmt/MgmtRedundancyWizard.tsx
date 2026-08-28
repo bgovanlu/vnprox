@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-703's guided management-redundancy wizard, built on T-403's WizardShell
 // step engine. Launched from the mgmt_single_path finding, the inspector's
 // "Management path" section, and the topology New menu (all via

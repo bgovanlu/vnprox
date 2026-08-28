@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // policies.go is the HTTP surface of T-2601's policy-as-code guardrail:
 // read the cluster's installed rule set, replace it (audited), and evaluate
 // a candidate rule set against a real changeset without staging anything.

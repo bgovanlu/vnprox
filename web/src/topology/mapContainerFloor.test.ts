@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The topology map's height floor, guarded at the source.
 //
 // TopologyPage.tsx's map container is the only `flex-1` child of a

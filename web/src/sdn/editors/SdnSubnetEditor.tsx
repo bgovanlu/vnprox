@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // SDN subnet editor: CIDR (create-only — resizing is a delete+create,
 // params_sdn.go's doc comment), gateway, DNS zone prefix, DHCP ranges, SNAT.
 import { useState } from "react";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Every explanatory string T-703's management-redundancy wizard and its
 // apply-side acknowledgement show a user, in one file for copy review
 // (T-403's non-expert bar, carried into this task's card). Nothing here

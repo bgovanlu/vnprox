@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1304 acceptance criterion 6: enabling the interior tab on a
 // three-node-vlan fixture guest (app01, pve1/200 — see that fixture
 // YAML's own "T-1304 guest network interior inspector fixtures" comment)

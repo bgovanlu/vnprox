@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3101: FabricsView renders the fabric list (protocol + per-node
 // membership), the protocol-conditional create form, and the read-only
 // prefix-list/route-map tables.

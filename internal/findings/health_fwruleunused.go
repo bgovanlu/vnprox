@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_fwruleunused.go implements docs/features/monitoring.md §5's
 // "fw_rule_unused" health check (T-1006): one informational finding per
 // enabled firewall rule — reachable in some known guest's current resolved

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Flow explorer + map-painting API calls (docs/api.md's `GET /flows`;
 // internal/api/flows.go, T-1002). Read-only — T-1003 adds no backend
 // surface of its own.

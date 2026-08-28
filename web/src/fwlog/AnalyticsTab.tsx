@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Firewall log analytics tab (T-1006, docs/features/firewall.md §4): a
 // hit-count table, top-blocked source/destination bar charts (recharts,
 // per docs/development.md's approved chart library), and an unused-rule

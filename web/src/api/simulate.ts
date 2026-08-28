@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Path simulator API call (docs/api.md §"Path simulator"; T-503's
 // `POST /simulate/path`). netRead-gated but read-only — a static analysis
 // over the poll-cached inventory snapshot that mutates nothing, so unlike

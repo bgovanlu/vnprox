@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1805 (UI half): the apply dialog states plainly when a changeset will NOT
 // self-revert, and for how long it will — and the countdown banner then shows
 // the server's real coverage report once the change is in its confirm window.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3005: the client-side mirror of internal/change/apply_staged.go's
 // validateApplyStrategy, and the request-body builder.
 //

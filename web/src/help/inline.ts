@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // A two-rule inline formatter for help prose.
 //
 // Help bodies need to emphasise UI labels ("hit **Review & apply**") and

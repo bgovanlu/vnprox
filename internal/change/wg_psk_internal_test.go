@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change
 
 // Finding 1 (T-1401 adversarial review): a wg.peer.add op's preshared key is a

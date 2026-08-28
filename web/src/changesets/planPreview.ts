@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Client-side preview of the apply plan for the review screen's Plan tab
 // (docs/features/change-management.md §3: "Plan (the exact ordered steps:
 // which PVE API calls, which nodes reload, in what order). Nothing applies

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3002: the compliance profiles — `GET /compliance` and
 // `GET /compliance/{profile}`.
 //

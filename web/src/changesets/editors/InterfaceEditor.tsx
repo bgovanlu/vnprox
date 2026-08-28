@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Physical-interface editor (docs/features/change-management.md §5): MTU,
 // addresses/gateway, autostart, comment. "Renaming NICs is out of scope v1
 // ... document the manual procedure instead" — done via the help text

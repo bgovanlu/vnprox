@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package mcp
 
 // T-2705's acceptance tests: the mutating MCP tools stage, and never apply.

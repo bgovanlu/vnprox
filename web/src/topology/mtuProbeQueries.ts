@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Polls GET /mtuprobe/results while the "Verified MTU" layer is active
 // (T-1306) — like latMeshQueries.ts's heatmap poll, there is no WS event
 // for this data (docs/api.md's Path MTU prober section documents no such

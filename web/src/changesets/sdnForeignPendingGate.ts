@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3101-followup-01's client-side echo of the server's foreign-SDN-pending
 // "surface and confirm" gate — mirrors approvalGate.ts's own doc note
 // exactly: this is UI convenience ONLY. internal/change's beginApply is the

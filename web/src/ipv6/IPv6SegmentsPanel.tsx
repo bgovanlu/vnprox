@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // IPv6 segment visibility (GET /ipv6/segments, T-1404): which segments are
 // actually advertising IPv6, and what they are advertising.
 //

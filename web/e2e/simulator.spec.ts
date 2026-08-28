@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-504 acceptance criteria, against the real stack (pvemock
 // testdata/clusters/sim-lab.yaml -> vnproxd collectors -> the production
 // SPA build), on this task's own webServer pair (web/playwright.config.ts,

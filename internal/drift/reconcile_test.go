@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package drift_test
 
 // T-2703 at the detection layer: the three-position finding (spec / config /

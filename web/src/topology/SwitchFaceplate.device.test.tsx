@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3503: the faceplate as a device model. Three things are under test here
 // that the pre-existing SwitchView.render.test.tsx does not cover:
 //

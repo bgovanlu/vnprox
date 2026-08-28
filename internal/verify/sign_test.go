@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package verify
 
 // sign_test.go is T-2501 AC5: the report round-trips through the parser, its

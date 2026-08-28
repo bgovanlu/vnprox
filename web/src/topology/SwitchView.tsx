@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The "virtual switch" view: the same GET /topology graph the elk canvas
 // renders, re-drawn as a stack of switch faceplates per cluster node
 // (docs/features/topology.md §2). Pure/presentational — it receives an

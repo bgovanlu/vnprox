@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package plugin
 
 // Host is the capability-scoped handle the registry hands to plugin code that

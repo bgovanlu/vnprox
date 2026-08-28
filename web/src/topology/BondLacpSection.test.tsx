@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-804 acceptance criterion 4: the bond inspector's live LACP section
 // rendering both states (matched/negotiated, and mismatched) from fixture
 // data. __fixtures__/inventory-detail-bond0-lacp-ok.json and

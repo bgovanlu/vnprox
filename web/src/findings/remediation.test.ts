@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Phase 36. This resolver's failure mode is silence — an unresolved remedy
 // renders no button, and the finding still looks perfectly fine — so every
 // branch that returns `undefined` is asserted deliberately rather than being

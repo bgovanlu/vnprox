@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // client.go implements Client: a net/http-only, GET-only REST reader
 // against a k8s API server's four fixed paths (see doc.go's read-only
 // invariant). No other exported method exists on Client, and every one

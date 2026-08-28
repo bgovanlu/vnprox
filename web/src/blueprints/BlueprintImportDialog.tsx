@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1107's import dialog: surfaces POST /blueprints/import's three
 // non-error signature states (docs/features/blueprints.md §5) and gates
 // the actual import behind an explicit trust step for two of them —

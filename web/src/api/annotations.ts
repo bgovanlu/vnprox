@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Annotation API calls against internal/api/annotations.go (T-907's
 // entity-pinned sticky notes — docs/api.md's Saved views & annotations
 // section). Shared across every user (not per-user data like layouts), so

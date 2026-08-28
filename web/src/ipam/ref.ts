@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Ref-string helpers for IPAM (docs/api.md's Ref triplet scheme,
 // internal/inventory/ref.go's Ref.String: "kind:node:id", empty node for
 // cluster-scoped kinds like sdn-subnet). GET /ipam/subnets doesn't carry a

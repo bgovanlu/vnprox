@@ -1,5 +1,7 @@
 //go:build soakleak
 
+// SPDX-License-Identifier: Apache-2.0
+
 // soakleak.go holds T-2504's deliberate resource-leak fixtures. It is
 // compiled ONLY under the `soakleak` build tag, which nothing in this
 // repository's build, test, lint, package, or release path ever sets — see

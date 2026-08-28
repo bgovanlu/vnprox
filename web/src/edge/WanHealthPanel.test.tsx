@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3004's WAN half: the verdict vocabulary is rendered honestly (an
 // unrecognised verdict is not coerced into a known one, and "likely your
 // ISP" is never shown for the plainer "WAN degraded"), and a target the

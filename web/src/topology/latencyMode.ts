@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Latency heatmap paint mode (docs/features/monitoring.md §1, T-1303): a
 // second, independent map overlay from trafficMode.ts's "traffic" paint
 // mode — edge color-scaled by a node-to-node link's *rolling* RTT/loss

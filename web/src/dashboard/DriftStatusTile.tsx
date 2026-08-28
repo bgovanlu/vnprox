@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Drift-status tile (T-904 deliverables: "drift status (/findings?source=
 // drift)"). Rather than issuing a second request with a server-side
 // `?source=drift` filter, this reuses the exact same cached

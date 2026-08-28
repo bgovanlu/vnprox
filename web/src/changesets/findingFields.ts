@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Maps a validation Finding's stable code (internal/change/validate_codes.go
 // — `<class>.<check>` dotted identifiers) to the editor form field that
 // originated it, so an error can render on that field itself and not just as

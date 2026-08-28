@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // annotations.go implements the map annotation layer: T-907's free-text
 // sticky notes pinned to a map entity Ref, and T-2806's labelled canvas
 // regions plus the notes' optional expiry and orphan reporting. Both are

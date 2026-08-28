@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package blueprint_test
 
 // Shared inventory-graph builders for this package's tests. Mirrors

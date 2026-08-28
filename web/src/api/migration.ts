@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1507's migration network planner API call (docs/api.md's "Migration
 // planner" section; internal/api/migration.go). `POST /migration/preflight`
 // is a netRead-gated read (a purely advisory, read-only pre-flight check —

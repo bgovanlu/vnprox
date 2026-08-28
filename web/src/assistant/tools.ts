@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2808: the in-app assistant's tool catalogue.
 //
 // This is a CLIENT-SIDE MIRROR of the MCP read tools (internal/mcp/

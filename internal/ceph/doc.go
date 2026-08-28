@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package ceph implements T-1503's Ceph network awareness: reading PVE's
 // own knowledge of its Ceph public/cluster network declaration and per-OSD
 // node placement (internal/pve.Client.CephConfig/CephOSDs — no new Ceph API

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package redact is the single implementation of "what does a credential
 // look like" that every vnprox surface which writes potentially-sensitive
 // material to disk shares.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package sim
 
 import "github.com/bgovanlu/vnprox/internal/inventory"

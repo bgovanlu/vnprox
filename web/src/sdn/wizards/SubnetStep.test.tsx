@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Direct unit tests for the shared SubnetStep component (T-701) — the five
 // zone wizards' own golden-ops tests (SimpleZoneWizard.test.tsx etc.) cover
 // it end to end through one wizard each; this file drives it standalone so

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // suggest.go implements T-603 AC4's "address params get next-free
 // suggestions": SuggestAddress delegates to internal/ipam's own
 // next-free-address computation (Service.Allocations — the same call

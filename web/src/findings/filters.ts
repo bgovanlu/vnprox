@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure filter-composition logic for the unified findings stream (AC2:
 // "filter by source/severity/node works across drift+lldp+ipam+health
 // uniformly"). Kept separate from any React component so it's directly

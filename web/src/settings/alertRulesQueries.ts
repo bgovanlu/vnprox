@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for T-1005's alert rules CRUD + delivery log
 // (docs/api.md's Alert Rules section). Mirrors blueprints/queries.ts's
 // convention: one hook per API call, mutations invalidate the queries they

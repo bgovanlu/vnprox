@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // demo_test.go covers T-2801's demo world: the embedded dataset loads and
 // validates, the in-process transport reaches the fixture without a socket,
 // and — the one that matters — a chi-routed caller's request context cannot

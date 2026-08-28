@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2003 acceptance criterion 5's Playwright coverage of the change review
 // flow: per-op/changeset comments, approve/reject, and the shareable
 // review link — driven against the real stack (pvemock three-node-vlan

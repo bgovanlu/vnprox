@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package spec_test
 
 // T-2703's document-side half: RemoveEntities (the delete ApplyOps cannot

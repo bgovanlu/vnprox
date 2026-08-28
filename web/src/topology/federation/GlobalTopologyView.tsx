@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1202: the global (cross-cluster) map view — one capsule per attached
 // cluster, the outermost level of the map. Clicking a capsule drills into
 // that cluster's ordinary topology (the gate swaps this view for the

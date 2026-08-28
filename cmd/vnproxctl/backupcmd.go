@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // backupcmd.go implements `vnproxctl backup` and `vnproxctl restore`
 // (T-1901).
 //

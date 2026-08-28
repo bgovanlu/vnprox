@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package change_test
 
 // T-1604 AC6: the failure-impact pre-flight is an additive veto on unattended

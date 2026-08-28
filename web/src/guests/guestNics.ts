@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure derivation of the cluster-wide guest NIC list from an already-
 // fetched TopologyResponse (docs/features/change-management.md §6: "List +
 // map views support: reattach ... Bulk mode: select N guests (filter by

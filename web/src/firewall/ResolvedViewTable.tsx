@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The resolved view (docs/features/firewall.md §1): a guest's full
 // effective evaluation order — cluster rules, spliced-in security-group
 // rules, the guest's own rules, then the two directions' fallthrough

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Renders the switch faceplate view against the same real captured
 // three-node-vlan fixture the graph-view render test uses (see
 // threeNodeVlan.render.test.tsx), asserting the faceplate surfaces the

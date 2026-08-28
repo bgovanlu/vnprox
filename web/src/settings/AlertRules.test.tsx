@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1005 AC5: rule CRUD form validation and delivery-log rendering against
 // a mocked API — mirrors web/src/blueprints/BlueprintsPage.test.tsx's
 // pattern of mocking this feature's own query-hooks module (not the raw

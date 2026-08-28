@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package doctor implements `vnproxctl doctor` (T-1904): a preflight and
 // self-check that turns "it doesn't work" into a message naming the file,
 // port, privilege, or command involved.

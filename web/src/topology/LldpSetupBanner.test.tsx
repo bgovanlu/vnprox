@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3602. The security-relevant assertion here is the capability gate: a
 // read-only session must not be offered a button that installs software on
 // every node in the cluster. That is the kind of thing that is obvious when

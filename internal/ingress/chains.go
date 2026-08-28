@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // chains.go correlates T-1403's edge/NAT port-forward model with this
 // package's freshly discovered ProxyState list into T-1406's own exit-demo
 // shape: WAN -> port-forward -> proxy guest -> backend guest, drawn as one

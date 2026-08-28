@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-909: end-to-end verification of the narrow-viewport ("phone width")
 // on-call triage layout against the real stack (pvemock three-node-vlan
 // fixture + vnproxd + the production SPA build).

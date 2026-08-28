@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package perfbudget is T-2506's single source of performance budgets: the
 // machine-readable file both measurement sites read, the median-of-N
 // aggregation they measure with, the host normalisation that stops a budget

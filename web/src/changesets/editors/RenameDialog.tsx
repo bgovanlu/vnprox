@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Rename a logical interface (bridge/bond/vlan) — issue #2. Drafts a single
 // iface.rename op; the change engine rewrites the stanza, its auto/allow
 // references, and every in-file reference to the old name, and blocks the

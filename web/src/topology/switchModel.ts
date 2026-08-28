@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure projection for the "virtual switch" view (docs/features/topology.md
 // §2: the switch/faceplate rendering of the same GET /topology graph the
 // elk graph view renders). A Proxmox bridge *is* a virtual switch, so this

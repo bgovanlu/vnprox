@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared capability gate for every zone wizard's final "Create draft" step
 // — mirrors SdnZoneEditor.tsx's own `disabledReason` check exactly (same
 // cluster-scoped capability lookup, since sdn.* ops are cluster-scoped, not

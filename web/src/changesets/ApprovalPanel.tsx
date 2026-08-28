@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2003's review-approval panel: shows the current decision and lets a
 // reviewer approve or reject. This is a UI convenience only — whether apply
 // actually requires an approved decision is decided server-side

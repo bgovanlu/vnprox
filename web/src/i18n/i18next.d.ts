@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Module augmentation so `useTranslation("onboarding").t(...)` is checked
 // against the real resource shape at compile time — the strict-TS
 // alternative to typing `t()`'s key/value arguments as `string`/`any`.

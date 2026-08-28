@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1202 AC4/AC5: global cross-cluster topology, drill-down, and the
 // cluster-namespaced command palette against the REAL stack. Reuses two
 // pvemock instances that playwright.config.ts already starts as two

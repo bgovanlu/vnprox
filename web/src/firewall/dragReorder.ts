@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure drag-to-reorder state transitions for the rule table (docs/features/
 // firewall.md §2: "drag-to-reorder ... reorders are fw.rule.move ops").
 // Framework-free (no React import), mirroring web/src/changesets/

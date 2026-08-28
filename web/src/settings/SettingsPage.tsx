@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The Settings page (replaces the T-005 placeholder). vnprox.toml is a
 // per-node, restart-time config file, and there is no runtime preferences
 // API, so this page is deliberately: editable *client* preferences

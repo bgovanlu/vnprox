@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Plain confirm-delete for sdn.zone/sdn.subnet (no attached-guest interlock
 // the way a vnet delete has — see SdnVnetDeleteDialog for that flow. A zone
 // still carries T-402's other pre-apply validators (bridge existence, node

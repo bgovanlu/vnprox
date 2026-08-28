@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // alertpending.go implements T-2407's durable deferral queue: the alerts an
 // alert rule is holding because of quiet hours or a digest window, and which
 // must survive a daemon restart.

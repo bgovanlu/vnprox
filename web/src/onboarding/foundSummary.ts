@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure summarizer for the walkthrough's step 1 ("What we found" —
 // docs/user-guide.md §1.1: "your cluster's network, drawn. Nothing was
 // changed; vnprox only read."). Framework-free and Vitest-able, same split

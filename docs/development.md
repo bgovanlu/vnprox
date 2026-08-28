@@ -23,6 +23,39 @@ Standards for all implementation work. `CLAUDE.md` summarizes the rules; this do
 
 Adding any other dependency requires a justification note in the task report. Prefer stdlib.
 
+### License compatibility (T-3801)
+
+vnprox is Apache-2.0 (`LICENSE`, `NOTICE`). Every dependency's license must be compatible with
+distributing vnprox under Apache-2.0. The justification note required above has a second half now:
+**state the dependency's license**, not just why the dependency is needed.
+
+**Allowed by default** (no extra justification needed beyond stating it): `Apache-2.0`, `MIT`,
+`BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `0BSD`. These are permissive, carry no reciprocal
+obligation, and combine freely with Apache-2.0 in either direction. An SPDX compound expression is
+allowed if it reduces to one of these — `X OR Y` is allowed if either `X` or `Y` is (the licensee
+picks the compatible branch); `X AND Y` is allowed only if both `X` and `Y` are individually
+allowed (both terms apply simultaneously, so both must clear the bar).
+
+**Requires an explicit note, case by case:** any weak/file-scoped copyleft license — `EPL-2.0`,
+`MPL-2.0`, `LGPL-*`. These do not automatically infect a program that merely imports the library
+unmodified, but they are not rubber-stamped either: the task report must say which specific
+obligation does or doesn't apply (do we ship the library unmodified? do we redistribute its source
+form? is it a build/test-time-only dependency that never reaches the built binary?). `elkjs`
+(EPL-2.0, the canvas layout engine above) is the one such dependency already approved in this repo
+— see `scripts/check-licenses.sh`'s header comment for the specific reasoning, which any new
+weak-copyleft addition should match in rigor, not just cite by analogy.
+
+**Never allowed:** `GPL-*`, `AGPL-*`, or anything `go-licenses`/the npm license gate classifies as
+"forbidden" or fails to classify at all ("unknown" is treated as disallowed, not as a pass — an
+unrecognized license is exactly the case this gate exists to catch, not wave through).
+
+**Enforcement:** `scripts/check-licenses.sh` (wired as `job_license` in `scripts/ci-local.sh`'s
+`ALL_JOBS`) runs `go-licenses check` over the Go build graph and `license-checker-rseidelsohn` over
+web/'s production dependencies on every CI run, against exactly the allowed set above. A new
+dependency with an incompatible or unrecognized license fails CI before it fails a human review —
+the task report's license note is what a reviewer reads to understand *why* the gate passed, not
+what makes it pass.
+
 Toolchain note: the module requires Go 1.25+ (`go 1.25.0` in go.mod). A host with an older `go` binary still builds, but only via `GOTOOLCHAIN` auto-download of a matching toolchain — which needs network access and therefore fails air-gapped. Install Go 1.25+ natively for offline builds.
 
 ## Repo layout

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // The capture dialog (T-1302): the whole UX layer over T-1301's capture
 // engine. Mounted once (TopologyPage.tsx, alongside <EditorLauncher />) and
 // driven by useCaptureLauncherStore — the map's right-click menu and the

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Unified-diff rendering for the History page (and reusable by any other
 // feature that has a docs/api.md `unified` diff string to show). The line
 // classification lives in parseDiff.ts so it's unit-testable without

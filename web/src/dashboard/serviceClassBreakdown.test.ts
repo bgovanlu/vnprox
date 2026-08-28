@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure-logic coverage for the service-network-traffic tile's breakdown
 // (T-1504), independent of React/TanStack Query — see
 // serviceClassBreakdown.ts's own doc comment for why this stays

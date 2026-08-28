@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1706 AC5 (frontend half): the posture embed renders the read-only score
 // when available and the documented "not yet available" state on a 404.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

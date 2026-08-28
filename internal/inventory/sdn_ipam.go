@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package inventory
 
 // SdnIpam is one configured PVE SDN IPAM plugin instance (T-3104): a

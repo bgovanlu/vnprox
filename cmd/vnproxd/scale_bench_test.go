@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // scale_bench_test.go is T-607's backend API latency harness: real,
 // end-to-end measurements of GET /api/v1/topology, POST /api/v1/simulate/
 // path, and POST /api/v1/changesets/{id}/validate against the real

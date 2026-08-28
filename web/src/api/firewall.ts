@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Firewall read API calls (docs/api.md §"Firewall, SDN, IPAM"'s
 // `/firewall/rulesets?scope=` and `/firewall/objects`; the exact contract
 // is internal/fw + internal/api/firewall.go). Read-only for T-501 — T-502

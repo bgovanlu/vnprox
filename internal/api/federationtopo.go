@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // federationtopo.go implements T-1202's global read routes, backed by
 // T-1201's federation.Aggregator (docs/api.md's Federation section):
 //

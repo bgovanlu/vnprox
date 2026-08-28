@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // TanStack Query hooks for T-1304's guest network interior inspector
 // (internal/api/guestinterior.go, docs/api.md's Guest interior section).
 // Mirrors annotationsQueries.ts's shape: one query per concern (toggle

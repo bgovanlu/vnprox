@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PREVIEW_DEBOUNCE_MS, useDebouncedValue } from "./useDebouncedValue";

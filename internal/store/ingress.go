@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // ingress.go implements T-1406's ingress_targets storage (docs/data-model.md
 // §2, migration 0017_ingress_targets.sql). App-owned intent only per
 // CLAUDE.md's storage rule: which reverse-proxy targets to poll, and how to

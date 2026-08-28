@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_service.go implements docs/features/monitoring.md §5's
 // "dnsmasq/frr service down on a node" check. Unlike every other check in
 // this package, this one needs raw data no existing collector gathers

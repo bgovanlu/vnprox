@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // zerowrite_test.go is T-1501 AC4's regression test: every method on
 // internal/k8s.Client is GET-only — no code path in this package can issue
 // a mutating call against a k8s API server. Two independent checks (the

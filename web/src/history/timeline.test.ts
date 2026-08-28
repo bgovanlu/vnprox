@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import { groupSnapshots, kindLabel } from "./timeline";
 import type { SnapshotSummary } from "../api/snapshots";

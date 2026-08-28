@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // alertdeliveries.go implements T-1005's delivery log storage
 // (docs/data-model.md §2, migration 0008_alert_rules.sql): one row per
 // webhook delivery *attempt*, feeding the Settings UI's delivery log

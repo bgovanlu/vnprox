@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package apicontract is T-1106's conformance suite: it drives the REAL
 // production HTTP handlers (internal/api.NewRouter, internal/change.Service,
 // internal/auth.Service, internal/spec) against internal/pvemock fixtures

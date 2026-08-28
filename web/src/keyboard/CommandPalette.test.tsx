@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-903 AC1: typing a bridge name surfaces both the spotlight entity
 // result (GET /inventory/search) and its registered palette action
 // ("Edit vmbr0") in the same merged list, against a three-node-vlan-style

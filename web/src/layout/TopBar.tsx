@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import * as RadixDropdown from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, CircleHelp, Keyboard, Search, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";

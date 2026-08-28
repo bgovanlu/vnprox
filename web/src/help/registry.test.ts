@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import { getHelpTopic, searchHelp, allHelpTopics } from "./registry";
 import { helpTopicForPath, DEFAULT_HELP_TOPIC } from "./routeTopics";

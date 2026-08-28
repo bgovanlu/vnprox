@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_latmesh.go implements docs/features/monitoring.md §5's
 // "path_latency_degraded"/"path_loss" health checks (T-1303): one finding
 // per node-to-node link (internal/latmesh.LinkHeat.LinkID) whose *rolling*

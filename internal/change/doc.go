@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package change implements changesets: the v1 op vocabulary, the
 // changeset aggregate and its status state machine, store-backed draft
 // CRUD, and (in later tasks, T-202/T-205) validators, the differ, the

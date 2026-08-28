@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Regression e2e for the EVPN/BGP tab blank-screen bug: on a cluster whose
 // nodes have no FRR (the three-node-vlan fixture), the EVPN status endpoint
 // returned nodes with `null` peers/vnis, which the EVPN view iterated

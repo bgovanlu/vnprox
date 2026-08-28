@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-607: frontend performance + progressive-disclosure verification at the
 // docs/features/topology.md §4 scale target (8 nodes x 6 NICs, 4
 // bridges/node, 300 guests, 40 VNets — testdata/clusters/scale-lab.yaml,

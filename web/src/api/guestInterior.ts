@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Guest network interior inspector API calls (docs/api.md's Guest interior
 // section, T-1304; internal/api/guestinterior.go). Like the annotations/
 // layouts routes, the toggle is app-owned UI preference state, not a

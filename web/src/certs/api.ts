@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Client types and query for `GET /certs` (T-2304), the cluster-wide TLS
 // certificate inventory.
 //

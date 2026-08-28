@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure Ref-string helpers for T-502's firewall editor navigation.
 
 /**

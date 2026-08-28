@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package spec
 
 // adopt.go is the "move the DOCUMENT to where the cluster already is"

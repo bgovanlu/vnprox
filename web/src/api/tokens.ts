@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Automation-token API calls (T-1104/T-2903; docs/api.md's "Tokens &
 // Webhooks" section, internal/api/tokens.go).
 //

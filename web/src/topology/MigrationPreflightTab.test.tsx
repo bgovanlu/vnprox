@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1507: MigrationPreflightTab.test.tsx covers the target-node input,
 // triggering the pre-flight check, and rendering the returned verdict/
 // headroom/caveats against a mocked API response — mirrors

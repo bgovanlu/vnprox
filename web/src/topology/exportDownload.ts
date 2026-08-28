@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Browser-only glue for T-906's map export: turns an ExportScene (export.ts
 // — pure, Vitest-tested) into an actual file download. Deliberately kept
 // separate from export.ts per the task card ("a testable module ...

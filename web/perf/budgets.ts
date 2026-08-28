@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2506: the browser half of the one-file performance budget.
 //
 // perf/budgets.json is the single source; internal/perfbudget reads it for the

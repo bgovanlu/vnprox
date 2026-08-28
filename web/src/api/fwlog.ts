@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Firewall log viewer + analytics API calls (docs/api.md's `GET
 // /firewall/log` and `GET /firewall/analytics`; internal/api/fwlog.go).
 // T-505 / T-1006.

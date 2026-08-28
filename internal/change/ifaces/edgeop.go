@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // edgeop.go implements T-1403's nat.masquerade.*/nat.portforward.*/
 // route.static.* mutators: each op appends (create), replaces (update), or
 // removes (delete) a post-up/post-down stanza pair inside an *existing*

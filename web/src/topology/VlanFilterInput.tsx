@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { forwardRef, useEffect, useState, type FormEvent } from "react";
 import { Button } from "../components/Button";
 

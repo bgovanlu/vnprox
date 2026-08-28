@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1305's Conntrack & NAT table explorer: a live, filterable table over
 // GET /conntrack (docs/api.md's Conntrack section) — the "what is this
 // connection doing right now" complement to T-1003's Flow Explorer

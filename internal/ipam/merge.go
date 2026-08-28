@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package ipam implements subnet/allocation views and the PVE IPAM plugin
 // bridge (docs/features/ipam.md, docs/api.md's /ipam routes): reading PVE's
 // configured IPAM plugin(s) transparently, merging in enrichment

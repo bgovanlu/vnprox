@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Data wiring for the VXLAN wizard's peer address auto-suggest
 // (peerSuggest.ts has the pure address parsing). For each member node,
 // tries that node's own bridge/VLAN interfaces (in the order the topology

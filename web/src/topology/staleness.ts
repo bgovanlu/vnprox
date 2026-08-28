@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure staleness-projection logic for docs/features/topology.md §5's
 // degraded state: "Peer node unreachable → its band renders greyed from
 // last-known data with a staleness banner and timestamp." GET /topology's

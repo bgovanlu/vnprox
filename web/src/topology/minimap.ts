@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-902: pure geometry for the topology map's minimap overlay. Framework-
 // free (no React, no canvas context) like canvasScene.ts, which this module
 // builds directly on rather than reinventing viewport math: the minimap is

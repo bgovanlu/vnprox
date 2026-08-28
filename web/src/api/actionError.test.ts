@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Phase 36. The rule is "report what the cluster said, verbatim" — with one
 // exception, and this pins both halves of it.
 import { describe, expect, it } from "vitest";

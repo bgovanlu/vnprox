@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import type { SimBlockingRule, SimResolvedEndpoint } from "../api/types";
 import { blockingRuleDeepLinkPath, blockingRuleGuestRef } from "./deeplink";

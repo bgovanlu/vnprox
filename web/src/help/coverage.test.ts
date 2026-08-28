@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2203 — the coverage gate. Extended by T-3006 to see panels.
 //
 // The claim this phase makes is "100% of the product's screens have online

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package drift implements T-305's cross-node consistency engine
 // (docs/features/topology.md §6): a set of pure check functions that run
 // over an inventory.Snapshot and produce Findings, plus a Service that

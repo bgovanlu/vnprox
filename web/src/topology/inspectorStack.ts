@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-908: pure pane-selection logic for the pinnable multi-inspector stack
 // (InspectorStack.tsx). Kept in its own module, out of the React
 // component, so the container's core state-transition rules — the task

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // EVPN zone wizard (docs/features/sdn.md §2): "controller (ASN, peers),
 // VRF-VXLAN tag, exit nodes, primary exit, route-target explanation. The
 // wizard renders the resulting BGP session graph before creation." —

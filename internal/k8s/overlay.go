@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // overlay.go implements Overlay: the pod/service CIDR model, node<->guest
 // correlation, and detected CNI GET /k8s/{clusterId}/overlay serves — the
 // data T-1502's map layer renders and K8sResolver (resolver.go) indexes

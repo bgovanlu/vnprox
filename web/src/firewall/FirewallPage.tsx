@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Firewall hierarchy navigation across the three PVE scopes (Datacenter/
 // Node/Guest) plus the Objects tab, per docs/features/firewall.md §1/§2.
 // T-501 built the read-only tables/resolved view/object usage tracking;

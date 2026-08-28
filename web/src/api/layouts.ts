@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Saved-layout API calls against internal/api/layouts.go (an additive route
 // this task added — see that file's doc comment: docs/api.md had no
 // `/layouts` entry before T-107, and internal/store's LayoutRepo (T-003)

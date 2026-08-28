@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // bundledocs.go declares every structured document a support bundle can
 // contain.
 //

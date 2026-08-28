@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Human-readable labels + Tailwind color classes for IPAM cell states and
 // confidence labels (docs/features/ipam.md §2's grid legend: "free /
 // allocated / observed-unallocated / reserved / gateway / conflict").

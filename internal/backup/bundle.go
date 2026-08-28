@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // bundle.go is T-1902: `vnproxctl support-bundle`.
 //
 // One command producing one redacted archive that lets someone diagnose a

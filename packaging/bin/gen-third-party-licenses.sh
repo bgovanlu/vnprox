@@ -54,21 +54,32 @@ HEADER
   echo
   echo "Modules in the build graph, from \`go list -m all\`. Includes"
   echo "test-only and transitive modules; not all are linked into the shipped"
-  echo "binaries."
+  echo "binaries — the Licence column is populated only for modules"
+  echo "\`go-licenses\` (T-3801, the same tool \`scripts/check-licenses.sh\`'s CI"
+  echo "gate uses) can actually resolve to an importable package in the real"
+  echo "build graph; a blank cell means \`go list -m all\`'s module-requirement"
+  echo "graph named it but no vnprox package imports any of its code."
   echo
-  echo "| Module | Version |"
-  echo "|---|---|"
+  echo "| Module | Version | Licence |"
+  echo "|---|---|---|"
+  go_licenses_report="$(go run github.com/google/go-licenses@v1.6.0 report ./... \
+    --confidence_threshold=0.8 2>/dev/null || true)"
   go list -m -f '{{.Path}}|{{.Version}}' all 2>/dev/null \
     | grep -v '^github.com/bgovanlu/vnprox' \
     | sort -f \
     | while IFS='|' read -r path ver; do
-        printf '| `%s` | %s |\n' "$path" "$ver"
+        lic="$(printf '%s\n' "$go_licenses_report" | awk -F, -v p="$path" '$1==p{print $3}')"
+        printf '| `%s` | %s | %s |\n' "$path" "$ver" "${lic:-—}"
       done
 
   echo
   echo "## npm packages bundled into the SPA"
   echo
-  echo "Production dependency tree only (\`license-checker --production\`)."
+  echo "Production dependency tree only (\`license-checker-rseidelsohn --production\`"
+  echo "— T-3801 pinned this in web/package.json's devDependencies; it is the"
+  echo "maintained fork of the now-archived \`license-checker\`, and the same tool"
+  echo "\`scripts/check-licenses.sh\`'s CI gate uses, so this file and that gate can"
+  echo "never disagree about what a package's license is)."
   echo "Build- and test-only tooling — Vite, Vitest, Playwright, ESLint,"
   echo "TypeScript, axe-core, lightningcss — is **not** redistributed and is"
   echo "therefore excluded."
@@ -77,7 +88,7 @@ HEADER
   echo "|---|---|---|"
   (
     cd web
-    npx --yes license-checker --production --json 2>/dev/null
+    npx --yes license-checker-rseidelsohn@4.4.2 --production --json 2>/dev/null
   ) | node -e '
 let s = "";
 process.stdin.on("data", (d) => (s += d)).on("end", () => {

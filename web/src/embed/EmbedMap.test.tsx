@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1706 AC2 (frontend half) + AC3: the embed map renders read-only with
 // zero changeset/edit affordances, and an embed token authenticates via a
 // bearer header with the session cookie omitted (the ceiling/scoping is

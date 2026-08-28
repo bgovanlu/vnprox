@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2403's inspector History tab: what has been done to this entity, and by
 // whom.
 //

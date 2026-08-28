@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // IPAM API calls (docs/features/ipam.md; internal/api/ipam.go's
 // GET /ipam/subnets, GET /ipam/subnets/{cidr}/allocations).
 import { API_BASE, apiFetch } from "./client";

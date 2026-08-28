@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // demo_test.go covers T-2801's API half.
 //
 // AC2: "Every mutating API in demo mode returns a 'would have' result and

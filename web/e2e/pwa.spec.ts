@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2901 AC2/AC3: the browser-level assertions that would have caught the
 // v4.0.0 CSP defect. T-604's policy pinned worker-src/manifest-src 'none'
 // before T-2005 existed; every Go-level test kept passing while a real

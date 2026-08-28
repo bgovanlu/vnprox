@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-909's responsive-triage seam: the one place "is this a narrow (phone/
 // small-tablet) viewport" is decided, so every consumer (the route guard,
 // Sidebar's reachable-page filter, ToolsPage's restricted Findings-only

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Ceph network overlay (docs/features/topology.md §1's ninth, client-only
 // map layer, T-1503): paints `ceph-public`/`ceph-cluster` badges onto the
 // existing bond/PhysNic map nodes a node's Ceph traffic rides

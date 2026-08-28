@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3001's screen tests. The claims they pin are the ones the card is about,
 // not that the markup rendered:
 //

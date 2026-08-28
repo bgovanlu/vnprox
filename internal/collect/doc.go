@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package collect implements vnprox's poll loops: the PVE poller and the
 // local-host poller that keep internal/inventory's Graph current
 // (docs/architecture.md §3 "Data flow — read path", docs/deployment.md's

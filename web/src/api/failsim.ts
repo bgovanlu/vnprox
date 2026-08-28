@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Failure-impact simulation API calls (docs/api.md's Failure-impact
 // simulation section, T-1604; internal/api/failsim.go's GET
 // /failsim/spof-score). Pure read-only synthesis: this route never induces

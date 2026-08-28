@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_wireguard.go implements T-1401's WireGuard monitoring findings
 // (source "wireguard"): wg_handshake_stale (a peer whose last handshake is
 // past the stale threshold) and wg_endpoint_drift (a peer whose live observed

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // browserPush.ts wraps the browser's native Push API (no client library —
 // this is a handful of calls against `navigator.serviceWorker`/
 // `PushManager`, the same "stdlib first" preference

@@ -1,5 +1,7 @@
 //go:build !perfslow
 
+// SPDX-License-Identifier: Apache-2.0
+
 package collect_test
 
 import "testing"

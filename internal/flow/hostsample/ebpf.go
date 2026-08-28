@@ -1,5 +1,7 @@
 //go:build ebpf
 
+// SPDX-License-Identifier: Apache-2.0
+
 // This file is only compiled with `-tags ebpf` (excluded from the default
 // `go test ./...`/`make build`/`make check` matrix — see the Makefile's
 // test target comment and this package's doc comment). Without the tag,

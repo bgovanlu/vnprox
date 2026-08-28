@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1302 acceptance criteria against the real stack (pvemock
 // three-node-vlan.yaml -> vnproxd collectors -> the production SPA build),
 // this task's own capture engine (T-1301's internal/capturemock scripted

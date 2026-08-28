@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1502: "why is this pod unreachable" — traces a correlated k8s node's
 // PVE guest down through the real topology graph: node-guest -> its
 // attached bridge -> that bridge's bond, the underlay half nobody else

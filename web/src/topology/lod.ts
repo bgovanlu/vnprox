@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-902: zoom-driven level-of-detail for the v2 canvas renderer
 // (TopologyCanvasV2.tsx). Deliberately framework-free and canvas-free (like
 // canvasScene.ts/a11yBridge.ts) — a pure `FlowElements -> FlowElements`

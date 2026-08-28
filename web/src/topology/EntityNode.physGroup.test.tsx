@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1907 acceptance criterion 4 (graph-view render test): a "phys-group:
 // <node>" per-node physical-layer summary pill (internal/topology/
 // collapse_physical.go) renders with the exact same "pill" treatment

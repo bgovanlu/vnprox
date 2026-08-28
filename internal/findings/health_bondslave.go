@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_bondslave.go implements docs/features/monitoring.md §5's "bond
 // slave down" check: a bond member interface whose MII/link status has
 // dropped, straight from data already in inventory.Bond.SlaveDetail (no new

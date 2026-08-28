@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // adapters.go implements per-Kind create/diff logic: given one
 // expandedEntity's substituted Fields and the live inventory.Snapshot, it
 // returns the []change.Op that converges the live state to the blueprint's

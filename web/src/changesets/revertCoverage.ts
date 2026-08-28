@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1805 / roadmap-proven D1 — the UI half of the apply-time revert ticket.
 //
 // The product's central promise is "if the change locks you out, it reverts

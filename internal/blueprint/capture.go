@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // capture.go implements "blueprint-ify" (docs/features/blueprints.md §1:
 // "capture from current state ... parameterizing addresses"): given a
 // live inventory.Snapshot and one node, produce an (unsaved) Blueprint

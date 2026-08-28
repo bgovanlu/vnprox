@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command vnproxd is the vnprox daemon: it loads config, serves the HTTPS
 // UI/API (with the embedded frontend and a security-hardened middleware
 // stack), and shuts down gracefully on SIGTERM/SIGINT. See

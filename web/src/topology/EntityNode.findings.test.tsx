@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3501: the map must say which KIND of finding an entity carries and HOW
 // BAD, not paint the single literal word "drift" (and pulse uniformly)
 // regardless of source/severity. Mirrors EntityNode.mgmt.test.tsx/EntityNode

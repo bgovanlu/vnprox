@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package gitsync_test
 
 // Shared doubles and fixtures for T-2701's acceptance tests.

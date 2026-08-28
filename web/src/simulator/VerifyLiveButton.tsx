@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-806's "Verify live" action: gated on the current source endpoint
 // resolving to a qemu guest with a reachable guest agent (verifyEligibility.ts's
 // pure gating logic backs this), calling POST /simulate/verify on click.

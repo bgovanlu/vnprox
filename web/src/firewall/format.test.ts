@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import { macroExpansionLabel, macroPortLabel, ruleMatchLabel } from "./format";
 import type { RuleView } from "../api/types";

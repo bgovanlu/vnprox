@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // health_stpburst.go implements docs/features/monitoring.md §5's "STP
 // topology change bursts" check.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2802: the guided tour panel for the hosted read-only demo.
 //
 // Renders nothing unless this instance is the public demo (usePublicDemo),

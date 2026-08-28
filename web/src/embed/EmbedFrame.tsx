@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // EmbedFrame (T-1706): the boot wrapper every /embed/* route renders inside.
 // It pulls the embed token from the `?token=` query string, stashes it via
 // setEmbedToken so the shared apiFetch wrapper authenticates with it (and

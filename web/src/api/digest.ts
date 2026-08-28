@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-2807's scheduled digest: `GET`/`PUT /digest/schedule` (docs/api.md
 // §"Scheduled digests").
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-1307's guided diagnosis ladder API call (docs/api.md's "Diagnosis"
 // section; internal/api/diagnose.go). `POST /diagnose` is a mutating route
 // (it may start a real capture session when `escalateToCapture: true`), so

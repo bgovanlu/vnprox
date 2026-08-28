@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // T-3106 acceptance criterion 4: proves the i18n pipeline round-trips
 // end-to-end — real bundled `fr` resources, real i18next pluralization,
 // a real <Trans> interpolation, and a real Testing Library assertion that

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Top-talkers tile (T-904 deliverables: "top talkers (per
 // docs/features/monitoring.md §3: rank guest-NIC refs on the busiest
 // bridge(s) by GET /metrics/live rates — a client-side computation over an
