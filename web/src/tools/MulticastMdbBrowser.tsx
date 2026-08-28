@@ -14,6 +14,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchMDB } from "../api/mdb";
 import type { MDBBridge, MDBEntry } from "../api/types";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 
@@ -39,6 +40,8 @@ function SnoopingBridgesTable({ bridges }: { bridges: MDBBridge[] }) {
   if (bridges.length === 0) {
     return (
       <EmptyState
+        icon="bridge"
+        variant="empty"
         title="No bridge snooping state reported"
         description="No reachable node returned any bridge multicast configuration."
         density="compact"
@@ -101,7 +104,7 @@ function EntryRow({ entry }: { entry: MDBEntry }) {
 export function MulticastMdbBrowser() {
   const [query, setQuery] = useState("");
   const trimmed = query.trim();
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["mdb", trimmed],
     queryFn: () => fetchMDB({ group: trimmed }),
     staleTime: 10_000,
@@ -136,14 +139,35 @@ export function MulticastMdbBrowser() {
       )}
 
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
-      {isError && <EmptyState title="Could not load the MDB table" description="Try again in a moment." />}
+      {isError && (
+        <EmptyState
+          icon="bridge"
+          variant="failed"
+          title="Could not load the MDB table"
+          description="Try again in a moment."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
+        />
+      )}
       {!isLoading && !isError && entries.length === 0 && (
         <EmptyState
+          icon="bridge"
+          variant={trimmed ? "filtered" : "empty"}
           title={trimmed ? "No matches" : "No MDB entries"}
           description={
             trimmed
               ? `Nothing matched "${trimmed}" on any reachable node's bridges.`
               : "Bridges report multicast group membership once IGMP/MLD-snooping has learned some — an empty table is the common state on a host with no active multicast traffic."
+          }
+          action={
+            trimmed ? (
+              <Button variant="secondary" size="sm" onClick={() => { setQuery(""); }}>
+                Clear filters
+              </Button>
+            ) : undefined
           }
         />
       )}

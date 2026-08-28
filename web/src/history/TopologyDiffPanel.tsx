@@ -21,6 +21,7 @@ import {
   type TopologyDiffResponse,
   type TopologyEntityDiff,
 } from "../api/topologyDiff";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { HelpAnchor } from "../help/HelpAnchor";
 
@@ -146,8 +147,15 @@ export function TopologyDiffPanel({ from, to }: TopologyDiffPanelProps) {
     // thing that tells the operator which range to ask for instead.
     return (
       <EmptyState
+        icon="node"
+        variant="failed"
         title="Could not diff this range"
         description={query.error instanceof ApiError ? query.error.message : "unexpected error"}
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void query.refetch()}>
+            Retry
+          </Button>
+        }
       />
     );
   }
@@ -192,6 +200,8 @@ export function TopologyDiffPanel({ from, to }: TopologyDiffPanelProps) {
 
       {rows.length === 0 ? (
         <EmptyState
+          icon="node"
+          variant="empty"
           title="No differences"
           description={`Nothing changed on ${diff.coverage.nodes.join(", ") || "the compared nodes"} between these two points.`}
         />

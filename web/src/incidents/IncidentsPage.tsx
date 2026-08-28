@@ -148,6 +148,8 @@ export function IncidentsPage() {
       <div className="p-6">
         <PageHeader title="Incidents" />
         <EmptyState
+          icon="node"
+          variant="failed"
           title="You cannot read incidents"
           description={disabledReason ?? "This view needs the audit capability."}
         />
@@ -214,7 +216,13 @@ export function IncidentsPage() {
       <div className="flex min-h-0 flex-1 gap-4">
         <nav aria-label="Incidents" className="w-72 shrink-0 overflow-y-auto rounded border border-slate-700">
           {incidents.length === 0 ? (
-            <EmptyState density="compact" title="No incidents yet" description="Start one above, live or over a past window." />
+            <EmptyState
+              density="compact"
+              icon="node"
+              variant="empty"
+              title="No incidents yet"
+              description="Start one above, live or over a past window."
+            />
           ) : (
             <ul>
               {incidents.map((incident) => (
@@ -245,7 +253,17 @@ export function IncidentsPage() {
           ) : timelineQuery.isPending ? (
             <p className="text-sm text-slate-600 dark:text-slate-400">Assembling the timeline…</p>
           ) : timelineQuery.isError ? (
-            <EmptyState title="Could not load this timeline" description={timelineQuery.error.message} />
+            <EmptyState
+              icon="node"
+              variant="failed"
+              title="Could not load this timeline"
+              description={timelineQuery.error.message}
+              action={
+                <Button variant="secondary" size="sm" onClick={() => void timelineQuery.refetch()}>
+                  Retry
+                </Button>
+              }
+            />
           ) : timeline ? (
             <div className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -339,6 +357,8 @@ export function IncidentsPage() {
               {events.length === 0 ? (
                 <EmptyState
                   density="compact"
+                  icon="node"
+                  variant="empty"
                   title="No events in this window"
                   description="Nothing vnprox records happened between these two times."
                 />

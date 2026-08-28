@@ -18,6 +18,7 @@
 //      that value is not on `GET /config` — so the note names the setting
 //      and its default without claiming to know this daemon's value.
 import { useMemo, useState } from "react";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { HelpAnchor } from "../help/HelpAnchor";
@@ -121,6 +122,8 @@ export function CapacityExportPanel() {
 
       {entities.length === 0 ? (
         <EmptyState
+          icon={kind === "link" ? "physnic" : "sdn-subnet"}
+          variant="empty"
           title={kind === "link" ? "No speed-bearing links discovered" : "No sized IPAM pools"}
           description={
             kind === "link"
@@ -139,21 +142,30 @@ export function CapacityExportPanel() {
 /** The JSON form of exactly what the CSV download contains — so an operator
  * can see whether there is any history before downloading an empty file. */
 function ExportPreview({ entityRef, kind }: { entityRef: string; kind: CapacityKind }) {
-  const { data, isLoading, error } = useCapacityExportQuery(entityRef, kind);
+  const { data, isLoading, error, refetch } = useCapacityExportQuery(entityRef, kind);
 
   if (isLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading history…</p>;
   if (error) {
     return (
       <EmptyState
+        icon={kind === "link" ? "physnic" : "sdn-subnet"}
+        variant="failed"
         title="Could not read this entity's history"
         description="The daemon rejected or could not answer the export request. The entity may not be one it rolls up."
         density="compact"
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        }
       />
     );
   }
   if (!data || data.aggregates.length === 0) {
     return (
       <EmptyState
+        icon={kind === "link" ? "physnic" : "sdn-subnet"}
+        variant="empty"
         title="No history within the retention window"
         description="Nothing has been rolled up for this entity inside the retention bound. The daily rollup writes one bucket per complete UTC day, so a recently-discovered entity has none yet."
         density="compact"

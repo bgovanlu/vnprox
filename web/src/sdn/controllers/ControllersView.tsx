@@ -282,18 +282,27 @@ function ControllersTable({
   gateTitle,
   onEdit,
   onDelete,
+  onCreate,
 }: {
   controllers: SdnController[];
   gateDisabled: boolean;
   gateTitle: string | undefined;
   onEdit: (controller: SdnController) => void;
   onDelete: (controller: SdnController) => void;
+  onCreate: () => void;
 }) {
   if (controllers.length === 0) {
     return (
       <EmptyState
+        icon="sdn-zone"
+        variant="unconfigured"
         title="No SDN controllers configured"
         description="A controller configures a BGP/EVPN/Faucet/IS-IS underlay control plane a zone can reference by id. Create one to get started."
+        action={
+          <Button variant="secondary" size="sm" disabled={gateDisabled} title={gateTitle} onClick={onCreate}>
+            + New controller
+          </Button>
+        }
       />
     );
   }
@@ -327,7 +336,7 @@ function ControllersTable({
 
 export function ControllersView() {
   const { data: session } = useSession();
-  const { data: tree, isLoading, isError } = useSdnQuery();
+  const { data: tree, isLoading, isError, refetch } = useSdnQuery();
   const [createOpen, setCreateOpen] = useState(false);
   const [editingController, setEditingController] = useState<SdnController | undefined>(undefined);
   const [deletingController, setDeletingController] = useState<SdnController | undefined>(undefined);
@@ -341,8 +350,15 @@ export function ControllersView() {
   if (isError || !tree) {
     return (
       <EmptyState
+        icon="sdn-zone"
+        variant="failed"
         title="Could not load SDN controllers"
         description="Check that vnproxd can reach the local PVE API, then reload."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        }
       />
     );
   }
@@ -371,6 +387,7 @@ export function ControllersView() {
         gateTitle={gateTitle}
         onEdit={setEditingController}
         onDelete={setDeletingController}
+        onCreate={() => { setCreateOpen(true); }}
       />
 
       {createOpen && <ControllerFormDialog open={createOpen} onOpenChange={setCreateOpen} />}

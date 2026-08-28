@@ -54,6 +54,8 @@ export function EntityHistoryTab({ entityRef, enabled = true }: EntityHistoryTab
   if (data.items.length === 0) {
     return (
       <EmptyState
+        icon="node"
+        variant="empty"
         title="No recorded history"
         description="vnprox has no changeset, audit entry, or snapshot touching this entity."
       />

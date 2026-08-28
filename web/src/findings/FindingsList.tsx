@@ -10,8 +10,9 @@
 // needs this file to change.
 import clsx from "clsx";
 import { Button } from "../components/Button";
-import { EmptyState } from "../components/EmptyState";
+import { EmptyState, type EmptyStateVariant } from "../components/EmptyState";
 import { Tooltip } from "../components/Tooltip";
+import type { PictogramKind } from "../icons/registry";
 import type { FindingAck, Severity } from "../api/types";
 
 /** The shape every findings-stream item needs — a structural subset both
@@ -81,6 +82,18 @@ export interface FindingsListProps {
   fixDisabledReason?: string;
   emptyTitle?: string;
   emptyDescription?: string;
+  /** T-4209: which EmptyIllustration to show when `findings` is empty.
+   * Defaults to "node" (a cluster-wide "nothing to report" glyph, matching
+   * AuditPage's own choice for the same "no findings recorded" shape) since
+   * this component's findings sources span drift, LLDP mismatch and IPAM
+   * conflicts, not one domain noun. */
+  emptyIcon?: PictogramKind;
+  /** T-4209: defaults to "empty". A caller whose empty state is actually a
+   * filtered-to-nothing result (e.g. FindingsStreamPanel's own
+   * "No findings match this filter" title) can pass "filtered" here to get
+   * the matching badge/tone without this component losing its
+   * source-agnostic contract. */
+  emptyVariant?: EmptyStateVariant;
   className?: string;
 }
 
@@ -108,10 +121,20 @@ export function FindingsList({
   fixDisabledReason,
   emptyTitle = "No findings",
   emptyDescription = "Nothing to report right now.",
+  emptyIcon = "node",
+  emptyVariant = "empty",
   className,
 }: FindingsListProps) {
   if (findings.length === 0) {
-    return <EmptyState title={emptyTitle} description={emptyDescription} className={className} />;
+    return (
+      <EmptyState
+        icon={emptyIcon}
+        variant={emptyVariant}
+        title={emptyTitle}
+        description={emptyDescription}
+        className={className}
+      />
+    );
   }
 
   return (

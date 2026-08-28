@@ -20,7 +20,9 @@
 // and everything else is replaced by one DesktopOnlyNotice rather than
 // silently vanishing.
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { RawEditorPanel } from "../changesets/rawEditor/RawEditorPanel";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { FindingsStreamPanel } from "../findings/FindingsStreamPanel";
@@ -34,6 +36,7 @@ import { NeighborHistoryTimeline } from "../tools/NeighborHistoryTimeline";
 import { useTopologyQuery } from "../topology/queries";
 
 export function ToolsPage() {
+  const navigate = useNavigate();
   const narrow = useNarrowViewport();
   const { data: topology } = useTopologyQuery();
   const nodes = useMemo(
@@ -122,7 +125,17 @@ export function ToolsPage() {
       {node ? (
         <RawEditorPanel key={node} node={node} />
       ) : (
-        <EmptyState title="No nodes yet" description="The raw editor needs at least one cluster node to be discovered." />
+        <EmptyState
+          icon="node"
+          variant="empty"
+          title="No nodes yet"
+          description="The raw editor needs at least one cluster node to be discovered."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => { void navigate("/management"); }}>
+              Check node connectivity
+            </Button>
+          }
+        />
       )}
 
       <hr className="border-slate-200 dark:border-slate-800" />

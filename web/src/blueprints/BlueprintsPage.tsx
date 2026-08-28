@@ -12,6 +12,7 @@ import { useSession } from "../api/useSession";
 import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { useChangesetDrawerStore } from "../changesets/store";
 import { useToast } from "../components/Toast";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { Tooltip } from "../components/Tooltip";
@@ -53,7 +54,7 @@ function parseNodes(raw: string): string[] | undefined {
 }
 
 export function BlueprintsPage() {
-  const { data, isLoading, error } = useBlueprintsQuery();
+  const { data, isLoading, error, refetch } = useBlueprintsQuery();
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [nodesValue, setNodesValue] = useState("");
   const [captureNode, setCaptureNode] = useState("");
@@ -156,7 +157,19 @@ export function BlueprintsPage() {
     return <EmptyState title="Loading…" description="Fetching blueprints." />;
   }
   if (error) {
-    return <EmptyState title="Could not load blueprints" description="Check your connection and try again." />;
+    return (
+      <EmptyState
+        icon="node"
+        variant="failed"
+        title="Could not load blueprints"
+        description="Check your connection and try again."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        }
+      />
+    );
   }
 
   return (

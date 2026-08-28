@@ -267,18 +267,27 @@ function FabricsTable({
   gateTitle,
   onEdit,
   onDelete,
+  onCreate,
 }: {
   fabrics: SdnFabric[];
   gateDisabled: boolean;
   gateTitle: string | undefined;
   onEdit: (fabric: SdnFabric) => void;
   onDelete: (fabric: SdnFabric) => void;
+  onCreate: () => void;
 }) {
   if (fabrics.length === 0) {
     return (
       <EmptyState
+        icon="sdn-fabric"
+        variant="unconfigured"
         title="No SDN fabrics configured"
         description="A fabric configures underlay routing a vxlan/evpn zone can ride on. Create one to get started."
+        action={
+          <Button variant="secondary" size="sm" disabled={gateDisabled} title={gateTitle} onClick={onCreate}>
+            + New fabric
+          </Button>
+        }
       />
     );
   }
@@ -311,7 +320,7 @@ function FabricsTable({
 
 function PrefixListsTable({ items }: { items: SdnPrefixList[] }) {
   if (items.length === 0) {
-    return <EmptyState title="No prefix-lists configured" />;
+    return <EmptyState icon="sdn-fabric" variant="unconfigured" title="No prefix-lists configured" />;
   }
   return (
     <Table aria-label="SDN prefix-lists">
@@ -333,7 +342,7 @@ function PrefixListsTable({ items }: { items: SdnPrefixList[] }) {
 
 function RouteMapsTable({ items }: { items: SdnRouteMap[] }) {
   if (items.length === 0) {
-    return <EmptyState title="No route-maps configured" />;
+    return <EmptyState icon="sdn-fabric" variant="unconfigured" title="No route-maps configured" />;
   }
   return (
     <Table aria-label="SDN route-maps">
@@ -355,7 +364,7 @@ function RouteMapsTable({ items }: { items: SdnRouteMap[] }) {
 
 export function FabricsView() {
   const { data: session } = useSession();
-  const { data: tree, isLoading, isError } = useSdnQuery();
+  const { data: tree, isLoading, isError, refetch } = useSdnQuery();
   const [createOpen, setCreateOpen] = useState(false);
   const [editingFabric, setEditingFabric] = useState<SdnFabric | undefined>(undefined);
   const [deletingFabric, setDeletingFabric] = useState<SdnFabric | undefined>(undefined);
@@ -369,8 +378,15 @@ export function FabricsView() {
   if (isError || !tree) {
     return (
       <EmptyState
+        icon="sdn-fabric"
+        variant="failed"
         title="Could not load SDN fabrics"
         description="Check that vnproxd can reach the local PVE API, then reload."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        }
       />
     );
   }
@@ -399,6 +415,7 @@ export function FabricsView() {
         gateTitle={gateTitle}
         onEdit={setEditingFabric}
         onDelete={setDeletingFabric}
+        onCreate={() => { setCreateOpen(true); }}
       />
 
       <div>

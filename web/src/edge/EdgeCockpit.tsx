@@ -52,6 +52,10 @@ export function EdgeCockpit() {
 
   const isLoading = routesQuery.isLoading || natQuery.isLoading;
   const error = routesQuery.error ?? natQuery.error;
+  const retryEdgeData = () => {
+    void routesQuery.refetch();
+    void natQuery.refetch();
+  };
 
   const defaultRoutes = routesQuery.data?.defaultRoutes ?? [];
   const staticRoutes = routesQuery.data?.staticRoutes ?? [];
@@ -72,7 +76,19 @@ export function EdgeCockpit() {
       />
 
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
-      {error && <EmptyState title="Could not load edge data" description="Try again in a moment." />}
+      {error && (
+        <EmptyState
+          icon="gateway"
+          variant="failed"
+          title="Could not load edge data"
+          description="Try again in a moment."
+          action={
+            <Button variant="secondary" size="sm" onClick={retryEdgeData}>
+              Retry
+            </Button>
+          }
+        />
+      )}
 
       {!isLoading && !error && (
         <>
@@ -120,7 +136,12 @@ function DefaultRoutesTable({ routes }: { routes: EdgeDefaultRoute[] }) {
     <section>
       <h3 className="mb-2 text-sm font-semibold">Default routes</h3>
       {routes.length === 0 ? (
-        <EmptyState title="No default routes configured" description="Set a gateway on a node's uplink interface." />
+        <EmptyState
+          icon="gateway"
+          variant="unconfigured"
+          title="No default routes configured"
+          description="Set a gateway on a node's uplink interface."
+        />
       ) : (
         <Table>
           <TableHeader>
@@ -212,7 +233,12 @@ function PortForwardsTable({ rules }: { rules: EdgePortForward[] }) {
     <section>
       <h3 className="mb-2 text-sm font-semibold">Port forwards (inbound exposure)</h3>
       {rules.length === 0 ? (
-        <EmptyState title="No port forwards configured" description="Nothing on this cluster is exposed inbound." />
+        <EmptyState
+          icon="port"
+          variant="empty"
+          title="No port forwards configured"
+          description="Nothing on this cluster is exposed inbound."
+        />
       ) : (
         <Table>
           <TableHeader>
@@ -317,6 +343,8 @@ function IngressChainList({ chains }: { chains: IngressChain[] }) {
   if (chains.length === 0) {
     return (
       <EmptyState
+        icon="gateway"
+        variant="empty"
         title="No connected ingress chains"
         description="Add a discovery target whose address matches a port-forward's internal IP to draw the full inbound path."
       />
@@ -390,7 +418,12 @@ function IngressTargetsPanel({ targets }: { targets: IngressTarget[] }) {
         Discovery targets
       </h4>
       {targets.length === 0 ? (
-        <EmptyState title="No ingress targets configured" description="Add a target below to discover it." />
+        <EmptyState
+          icon="gateway"
+          variant="unconfigured"
+          title="No ingress targets configured"
+          description="Add a target below to discover it."
+        />
       ) : (
         <Table>
           <TableHeader>

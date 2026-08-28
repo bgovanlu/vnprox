@@ -13,6 +13,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { FwLogRuleRef, FwRuleHitCount, FwTopBlocked, FwUnusedRule } from "../api/types";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { OriginBadge } from "../firewall/ResolvedViewTable";
@@ -45,7 +46,15 @@ function formatLastSeen(unixSeconds: number | undefined): string {
 
 function HitCountsTable({ hitCounts }: { hitCounts: FwRuleHitCount[] }) {
   if (hitCounts.length === 0) {
-    return <EmptyState title="No rule hits in this window" description="Nothing correlated to a specific rule in the selected window." density="compact" />;
+    return (
+      <EmptyState
+        icon="fw-ruleset"
+        variant="empty"
+        title="No rule hits in this window"
+        description="Nothing correlated to a specific rule in the selected window."
+        density="compact"
+      />
+    );
   }
   return (
     <Table>
@@ -102,7 +111,15 @@ function TopBlockedChart({ title, data }: { title: string; data: { value: number
 
 function UnusedRulesList({ unusedRules }: { unusedRules: FwUnusedRule[] }) {
   if (unusedRules.length === 0) {
-    return <EmptyState title="No unused rules" description="Every enabled rule reachable in a known guest's evaluation order has matched something within the window." density="compact" />;
+    return (
+      <EmptyState
+        icon="fw-ruleset"
+        variant="empty"
+        title="No unused rules"
+        description="Every enabled rule reachable in a known guest's evaluation order has matched something within the window."
+        density="compact"
+      />
+    );
   }
   return (
     <Table>
@@ -139,7 +156,7 @@ function toChartData(entries: FwTopBlocked["sources"]): { value: number; label: 
 
 export function AnalyticsTab() {
   const [windowHours, setWindowHours] = useState(24);
-  const { data, isLoading, error } = useFwAnalyticsQuery({ windowHours });
+  const { data, isLoading, error, refetch } = useFwAnalyticsQuery({ windowHours });
 
   return (
     <div className="flex flex-col gap-4">
@@ -166,7 +183,19 @@ export function AnalyticsTab() {
       </div>
 
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading analytics…</p>}
-      {error && <EmptyState title="Could not load firewall analytics" description="Try again in a moment." />}
+      {error && (
+        <EmptyState
+          icon="fw-ruleset"
+          variant="failed"
+          title="Could not load firewall analytics"
+          description="Try again in a moment."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
+        />
+      )}
 
       {data && (
         <>

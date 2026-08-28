@@ -166,7 +166,7 @@ function FreeRow({ range, readOnly, onReserve }: { range: IpamFreeRange; readOnl
  * a filter/search toolbar, and the interleaved occupied/free rows, with the
  * reserve/release workflow driven off any row. */
 export function AddressList({ subnetCidr, readOnly }: AddressListProps) {
-  const { data, isLoading, isError } = useIpamAllocationsQuery(subnetCidr);
+  const { data, isLoading, isError, refetch } = useIpamAllocationsQuery(subnetCidr);
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   // The address whose detail/reserve dialog is open. A real occupied entry
@@ -198,7 +198,19 @@ export function AddressList({ subnetCidr, readOnly }: AddressListProps) {
     return <p className="text-sm text-slate-600 dark:text-slate-400">Loading addresses…</p>;
   }
   if (isError || !data) {
-    return <EmptyState title="Could not load addresses" description="Check that vnproxd can reach the local PVE API, then reload." />;
+    return (
+      <EmptyState
+        icon="sdn-subnet"
+        variant="failed"
+        title="Could not load addresses"
+        description="Check that vnproxd can reach the local PVE API, then reload."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        }
+      />
+    );
   }
 
   const firstFree = data.freeRanges[0]?.start;

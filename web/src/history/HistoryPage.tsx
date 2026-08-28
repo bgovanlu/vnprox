@@ -178,13 +178,22 @@ export function HistoryPage() {
             <p className="text-sm text-slate-600 dark:text-slate-400">Loading snapshots…</p>
           ) : snapshotsQuery.isError ? (
             <EmptyState
+              icon="node"
+              variant="failed"
               title="Could not load snapshots"
               description={
                 snapshotsQuery.error instanceof ApiError ? snapshotsQuery.error.message : "unexpected error"
               }
+              action={
+                <Button variant="secondary" size="sm" onClick={() => void snapshotsQuery.refetch()}>
+                  Retry
+                </Button>
+              }
             />
           ) : groups.length === 0 ? (
             <EmptyState
+              icon="node"
+              variant="empty"
               title="No snapshots yet"
               description="Snapshots are captured automatically before and after every applied changeset. You can also take one manually."
             />
@@ -321,8 +330,15 @@ export function HistoryPage() {
             <p className="text-sm text-slate-600 dark:text-slate-400">Computing diff…</p>
           ) : diffQuery.isError ? (
             <EmptyState
+              icon="node"
+              variant="failed"
               title="Diff failed"
               description={diffQuery.error instanceof ApiError ? diffQuery.error.message : "unexpected error"}
+              action={
+                <Button variant="secondary" size="sm" onClick={() => void diffQuery.refetch()}>
+                  Retry
+                </Button>
+              }
             />
           ) : (
             (diffQuery.data?.files ?? []).map((file) => (

@@ -15,6 +15,7 @@
 // the exact same proposal shape as the guest-scoped one (T-2002 AC3) — not
 // a contract this component has to keep in sync by hand.
 import { useState } from "react";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { HelpAnchor } from "../help/HelpAnchor";
@@ -28,7 +29,7 @@ export interface GroupInspectorProps {
 }
 
 export function GroupInspector({ name, onBack }: GroupInspectorProps) {
-  const { data, isLoading, error } = useGroupRulesetQuery(name);
+  const { data, isLoading, error, refetch } = useGroupRulesetQuery(name);
   const { data: effects, isLoading: effectsLoading } = useFirewallEffectsQuery(name);
   const [selectedGuest, setSelectedGuest] = useState<string | undefined>(undefined);
 
@@ -50,8 +51,15 @@ export function GroupInspector({ name, onBack }: GroupInspectorProps) {
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading group…</p>}
       {error && (
         <EmptyState
+          icon="firewall-group"
+          variant="failed"
           title="Could not load this group"
           description="It may have been deleted or renamed since you opened this page."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
         />
       )}
 
@@ -62,7 +70,12 @@ export function GroupInspector({ name, onBack }: GroupInspectorProps) {
           <div>
             <h3 className="mb-1 text-sm font-semibold">This group&apos;s own rules</h3>
             {data.rules.length === 0 ? (
-              <EmptyState title="No rules" description="This security group has no rules of its own yet." />
+              <EmptyState
+                icon="fw-ruleset"
+                variant="empty"
+                title="No rules"
+                description="This security group has no rules of its own yet."
+              />
             ) : (
               <Table>
                 <TableHeader>

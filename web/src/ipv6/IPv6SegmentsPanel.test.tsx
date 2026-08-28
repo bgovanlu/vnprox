@@ -4,6 +4,7 @@
 // same house rule from a different angle: an absence of observation is not
 // an observation of absence.
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { IPv6SegmentsView, SdnTree } from "../api/types";
 import { IPv6SegmentsPanel } from "./IPv6SegmentsPanel";
@@ -31,7 +32,11 @@ vi.mock("./DualStackWizard", () => ({
 describe("IPv6SegmentsPanel", () => {
   it("reads an empty result as 'none observed', not as 'IPv6 is off'", () => {
     segmentsResult = { data: { items: [], generatedAt: 0 }, isLoading: false, error: null };
-    render(<IPv6SegmentsPanel />);
+    render(
+      <MemoryRouter>
+        <IPv6SegmentsPanel />
+      </MemoryRouter>,
+    );
 
     const empty = screen.getByText("No router advertisements observed");
     expect(empty).toBeInTheDocument();
@@ -49,7 +54,11 @@ describe("IPv6SegmentsPanel", () => {
       isLoading: false,
       error: null,
     };
-    render(<IPv6SegmentsPanel />);
+    render(
+      <MemoryRouter>
+        <IPv6SegmentsPanel />
+      </MemoryRouter>,
+    );
 
     expect(screen.getByRole("status")).toHaveTextContent("pve3");
     expect(screen.getByRole("status")).toHaveTextContent("not absent from the cluster");
@@ -76,14 +85,22 @@ describe("IPv6SegmentsPanel", () => {
       isLoading: false,
       error: null,
     };
-    render(<IPv6SegmentsPanel />);
+    render(
+      <MemoryRouter>
+        <IPv6SegmentsPanel />
+      </MemoryRouter>,
+    );
 
     expect(screen.getByText(/DHCPv6 server implied by the RA, not observed/)).toBeInTheDocument();
   });
 
   it("says a failed read failed, rather than showing an empty segment list", () => {
     segmentsResult = { data: undefined, isLoading: false, error: new Error("fan-out broke") };
-    render(<IPv6SegmentsPanel />);
+    render(
+      <MemoryRouter>
+        <IPv6SegmentsPanel />
+      </MemoryRouter>,
+    );
 
     expect(screen.getByText("Could not read IPv6 segments")).toBeInTheDocument();
     expect(screen.queryByText("No router advertisements observed")).not.toBeInTheDocument();

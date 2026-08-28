@@ -71,7 +71,7 @@ export function SimulatorPage() {
   }, [src, dst, proto, port]);
 
   const request = useMemo(() => simUrlStateToRequest({ src, dst, proto, port }), [src, dst, proto, port]);
-  const { data: result, isFetching, error } = useSimulateQuery(request);
+  const { data: result, isFetching, error, refetch } = useSimulateQuery(request);
 
   useEffect(() => {
     setVerifyResult(undefined);
@@ -256,8 +256,15 @@ export function SimulatorPage() {
       {request && isFetching && <p className="text-sm text-slate-600 dark:text-slate-400">Simulating…</p>}
       {request && !isFetching && error && (
         <EmptyState
+          icon="static-route"
+          variant="failed"
           title="Could not run this simulation"
           description={error instanceof Error ? error.message : "Check the endpoints and try again."}
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
         />
       )}
       {request && !isFetching && result && (

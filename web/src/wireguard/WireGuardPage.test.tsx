@@ -198,7 +198,12 @@ describe("WireGuardPage", () => {
     renderPage();
 
     await waitFor(() => { expect(screen.getByText("No WireGuard tunnels configured")).toBeInTheDocument(); });
-    await user.click(screen.getByRole("button", { name: "+ New tunnel" }));
+    // T-4209: the empty state now also renders a "+ New tunnel" action
+    // (same handler as the page header's), so two buttons share this name —
+    // click the header's, the first in document order.
+    const [headerNewTunnelButton] = screen.getAllByRole("button", { name: "+ New tunnel" });
+    if (!headerNewTunnelButton) throw new Error("expected a \"+ New tunnel\" button");
+    await user.click(headerNewTunnelButton);
 
     await waitFor(() => { expect(screen.getByRole("option", { name: "pve1" })).toBeInTheDocument(); });
     await user.selectOptions(screen.getByRole("combobox", { name: /Node/ }), "pve1");

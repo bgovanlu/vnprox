@@ -9,6 +9,7 @@
 // completion report states the grep-verifiable regression check).
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
@@ -107,7 +108,7 @@ export function ConntrackExplorer() {
     setFilter((prev) => ({ ...prev, ...patch }));
   }
 
-  const { data, isLoading, error } = useConntrackQuery(filter);
+  const { data, isLoading, error, refetch } = useConntrackQuery(filter);
   const items = data?.items ?? [];
 
   return (
@@ -126,10 +127,32 @@ export function ConntrackExplorer() {
       )}
 
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
-      {error && <EmptyState title="Could not load conntrack data" description="Try again in a moment." />}
+      {error && (
+        <EmptyState
+          icon="static-route"
+          variant="failed"
+          title="Could not load conntrack data"
+          description="Try again in a moment."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
+        />
+      )}
 
       {!isLoading && !error && items.length === 0 && (
-        <EmptyState title="No live connections match the current filter" description="Try widening or clearing a filter." />
+        <EmptyState
+          icon="static-route"
+          variant="filtered"
+          title="No live connections match the current filter"
+          description="Try widening or clearing a filter."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => { setFilter({}); }}>
+              Clear filters
+            </Button>
+          }
+        />
       )}
 
       {!isLoading && !error && items.length > 0 && (

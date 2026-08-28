@@ -11,6 +11,7 @@
 // The one honesty rule this panel carries: an unresolved carrier and an
 // unknown link speed each render as unknown. `linkSpeedKnown` is a separate
 // field from `linkMbps` precisely so a missing speed cannot be shown as 0.
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { HelpAnchor } from "../help/HelpAnchor";
@@ -19,7 +20,7 @@ import { MapLink } from "./MapLink";
 import { usePbsOverlayQuery } from "./analysisQueries";
 
 export function PbsPanel() {
-  const { data, isLoading, error } = usePbsOverlayQuery();
+  const { data, isLoading, error, refetch } = usePbsOverlayQuery();
 
   return (
     <section aria-labelledby="pbs-heading" className="flex flex-col gap-3">
@@ -37,9 +38,16 @@ export function PbsPanel() {
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {error && (
         <EmptyState
+          icon="static-route"
+          variant="failed"
           title="Could not read PBS status"
           description="The daemon could not resolve the PBS overlay from PVE's storage configuration. Try again in a moment."
           density="compact"
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
         />
       )}
 
@@ -57,6 +65,8 @@ function PbsHostsTable({ hosts }: { hosts: PbsHost[] }) {
   if (hosts.length === 0) {
     return (
       <EmptyState
+        icon="static-route"
+        variant="unconfigured"
         title="No PBS hosts configured"
         description="No Proxmox Backup Server storage is defined on this cluster, so there is no backup path to draw."
         density="compact"
@@ -100,6 +110,8 @@ function PbsPathsTable({ paths, hostCount }: { paths: PbsPath[]; hostCount: numb
     if (hostCount === 0) return null;
     return (
       <EmptyState
+        icon="static-route"
+        variant="empty"
         title="No backup path resolved"
         description="PBS hosts are configured, but vnprox could not resolve which interface a node's backup traffic leaves by. The hosts above are still real; the path is what is unknown."
         density="compact"

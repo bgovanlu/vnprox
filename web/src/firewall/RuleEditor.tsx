@@ -233,7 +233,14 @@ export function RuleEditor({ rules, target, objects, focusPos, compiledLinkScope
   }
 
   if (rules.length === 0 && !target) {
-    return <EmptyState title="No rules" description="This ruleset has no rules configured at this scope." />;
+    return (
+      <EmptyState
+        icon="fw-ruleset"
+        variant="empty"
+        title="No rules"
+        description="This ruleset has no rules configured at this scope."
+      />
+    );
   }
 
   return (

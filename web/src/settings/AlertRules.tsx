@@ -201,7 +201,7 @@ function FilterCheckboxGroup<T extends string>({
 }
 
 export function AlertRules() {
-  const { data: rulesData, isLoading, error } = useAlertRulesQuery();
+  const { data: rulesData, isLoading, error, refetch } = useAlertRulesQuery();
   const { data: session } = useSession();
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [creating, setCreating] = useState(false);
@@ -303,7 +303,18 @@ export function AlertRules() {
     return <EmptyState title="Loading…" description="Fetching alert rules." />;
   }
   if (error) {
-    return <EmptyState title="Could not load alert rules" description="Check your connection and try again." />;
+    return (
+      <EmptyState
+        variant="failed"
+        title="Could not load alert rules"
+        description="Check your connection and try again."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        }
+      />
+    );
   }
 
   return (

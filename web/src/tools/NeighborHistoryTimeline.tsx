@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchNeighborHistory } from "../api/neighborHistory";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { findMacClaims, groupNeighborHistory } from "./neighborHistoryFlap";
 
@@ -24,7 +25,8 @@ export function NeighborHistoryTimeline() {
   const [node, setNode] = useState("");
 
   const filter = { ip: ip.trim(), mac: mac.trim(), node: node.trim(), limit: DEFAULT_PAGE_LIMIT };
-  const { data, isLoading, isError } = useQuery({
+  const hasFilter = filter.ip !== "" || filter.mac !== "" || filter.node !== "";
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["neighbor-history", filter.ip, filter.mac, filter.node],
     queryFn: () =>
       fetchNeighborHistory({
@@ -87,11 +89,40 @@ export function NeighborHistoryTimeline() {
       </div>
 
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
-      {isError && <EmptyState title="Could not load binding history" description="Try again in a moment." />}
+      {isError && (
+        <EmptyState
+          icon="lldp-neighbor"
+          variant="failed"
+          title="Could not load binding history"
+          description="Try again in a moment."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
+        />
+      )}
       {!isLoading && !isError && groups.length === 0 && (
         <EmptyState
+          icon="lldp-neighbor"
+          variant={hasFilter ? "filtered" : "empty"}
           title="No binding history yet"
           description="A transition is recorded once a node's own resolved neighbor table shows a new or changed IP<->MAC binding."
+          action={
+            hasFilter ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setIp("");
+                  setMac("");
+                  setNode("");
+                }}
+              >
+                Clear filters
+              </Button>
+            ) : undefined
+          }
         />
       )}
 

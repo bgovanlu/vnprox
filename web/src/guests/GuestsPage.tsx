@@ -68,6 +68,7 @@ export function GuestsPage() {
     ].sort();
   }, [topology]);
   const filtered = useMemo(() => filterGuestNicRows(rows, filter), [rows, filter]);
+  const hasActiveFilter = filter.node !== undefined || filter.bridgeOrVnet !== undefined;
 
   const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.ref));
 
@@ -161,8 +162,26 @@ export function GuestsPage() {
       />
 
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading guest NICs…</p>}
-      {!isLoading && filtered.length === 0 && (
-        <EmptyState title="No guest NICs match" description="Try clearing a filter, or check that guests exist on this cluster." />
+      {!isLoading && filtered.length === 0 && hasActiveFilter && (
+        <EmptyState
+          icon="guest-nic"
+          variant="filtered"
+          title="No guest NICs match"
+          description="Try clearing a filter, or check that guests exist on this cluster."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => { setFilter({}); }}>
+              Clear filters
+            </Button>
+          }
+        />
+      )}
+      {!isLoading && filtered.length === 0 && !hasActiveFilter && (
+        <EmptyState
+          icon="guest-nic"
+          variant="empty"
+          title="No guest NICs match"
+          description="Try clearing a filter, or check that guests exist on this cluster."
+        />
       )}
 
       {!isLoading && filtered.length > 0 && (

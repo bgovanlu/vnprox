@@ -8,6 +8,7 @@
 // cockpit's T-40x observability surfaces.
 import { useState } from "react";
 import clsx from "clsx";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { HelpAnchor } from "../help/HelpAnchor";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
@@ -52,6 +53,8 @@ function PeeringMatrix({
   if (matrix.peerAddrs.length === 0) {
     return (
       <EmptyState
+        icon="vxlan"
+        variant="empty"
         title="No BGP/EVPN sessions observed"
         description="No node in this cluster reports an active FRR peering session."
       />
@@ -162,7 +165,7 @@ function SessionDetail({ status, selection }: { status: EvpnStatus; selection: E
 function VniList({ status }: { status: EvpnStatus }) {
   const rows = status.nodes.flatMap((n) => n.vnis.map((v) => ({ node: n.node, ...v })));
   if (rows.length === 0) {
-    return <EmptyState title="No EVPN VNIs observed" />;
+    return <EmptyState icon="vxlan" variant="unconfigured" title="No EVPN VNIs observed" />;
   }
   return (
     <Table aria-label="EVPN VNI list">
@@ -196,7 +199,7 @@ function VniList({ status }: { status: EvpnStatus }) {
 
 function ExitNodeHealth({ status }: { status: EvpnStatus }) {
   if (status.exitNodes.length === 0) {
-    return <EmptyState title="No EVPN exit nodes configured" />;
+    return <EmptyState icon="vxlan" variant="unconfigured" title="No EVPN exit nodes configured" />;
   }
   return (
     <ul className="flex flex-col gap-1">
@@ -216,7 +219,7 @@ function ExitNodeHealth({ status }: { status: EvpnStatus }) {
 }
 
 export function EvpnView({ enabled = true }: { enabled?: boolean }) {
-  const { data: status, isLoading, isError } = useEvpnStatusQuery({ enabled });
+  const { data: status, isLoading, isError, refetch } = useEvpnStatusQuery({ enabled });
   const [selection, setSelection] = useState<EvpnSelection | undefined>(undefined);
 
   if (isLoading) {
@@ -225,8 +228,15 @@ export function EvpnView({ enabled = true }: { enabled?: boolean }) {
   if (isError || !status) {
     return (
       <EmptyState
+        icon="vxlan"
+        variant="failed"
         title="Could not load EVPN/BGP status"
         description="Check that vnproxd can reach FRR on the cluster's nodes, then reload."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        }
       />
     );
   }

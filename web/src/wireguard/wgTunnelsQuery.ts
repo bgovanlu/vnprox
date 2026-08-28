@@ -6,7 +6,7 @@
 // documents none), so a plain refetch-interval poll is the whole freshness
 // mechanism, same "only fetch while genuinely paintable" scope every other
 // topology overlay layer already uses.
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { fetchWireGuardPeerConfig, fetchWireGuardPubkey, fetchWireGuardTunnels } from "../api/wireguard";
 import type { WireGuardTunnel } from "../api/types";
 
@@ -19,15 +19,22 @@ const REFETCH_MS = 30_000;
 
 export function useWireGuardTunnelsQuery(
   enabled: boolean,
-): { data: WireGuardTunnel[] | undefined; isLoading: boolean; isError: boolean } {
-  const { data, isLoading, isError } = useQuery({
+): {
+  data: WireGuardTunnel[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  /** T-4209: exposed so the page-level "could not load" empty state can
+   * offer a real retry action instead of just "reload the page". */
+  refetch: UseQueryResult<WireGuardTunnel[]>["refetch"];
+} {
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: wireGuardTunnelsKey,
     queryFn: fetchWireGuardTunnels,
     enabled,
     staleTime: 10_000,
     refetchInterval: enabled ? REFETCH_MS : false,
   });
-  return { data, isLoading, isError };
+  return { data, isLoading, isError, refetch };
 }
 
 /** T-4015: the general management surface's "view public key" affordance —

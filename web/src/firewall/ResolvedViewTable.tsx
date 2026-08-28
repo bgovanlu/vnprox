@@ -94,6 +94,8 @@ export function ResolvedViewTable({ resolved, focusRule }: { resolved: ResolvedV
     return (
       <div className="flex flex-col gap-2">
         <EmptyState
+          icon="fw-ruleset"
+          variant="empty"
           title="No rules apply"
           description="Neither the cluster nor this guest defines any rules — only the default policy applies."
         />

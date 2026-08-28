@@ -10,6 +10,7 @@
 // same filtered/sorted/aggregated view.
 import { useEffect, useMemo, useReducer } from "react";
 import { useSearchParams } from "react-router-dom";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
@@ -25,6 +26,7 @@ import {
 } from "../topology/layers/k8sFlowAttribution";
 import {
   aggregateConversations,
+  emptyFlowFilter,
   flowReducer,
   initialFlowViewState,
   selectVisibleFlows,
@@ -176,7 +178,7 @@ export function FlowExplorer() {
     [state.filter.guest, state.filter.vlan, state.filter.subnet, state.filter.port, state.filter.protocol],
   );
 
-  const { data, isLoading, error } = useFlowsQuery(apiFilter);
+  const { data, isLoading, error, refetch } = useFlowsQuery(apiFilter);
   const k8sIndex = useK8sAttributionIndex();
 
   useEffect(() => {
@@ -305,10 +307,24 @@ export function FlowExplorer() {
       )}
 
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
-      {error && <EmptyState title="Could not load flow records" description="Try again in a moment." />}
+      {error && (
+        <EmptyState
+          icon="port"
+          variant="failed"
+          title="Could not load flow records"
+          description="Try again in a moment."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
+        />
+      )}
 
       {noFlowsAtAll && (
         <EmptyState
+          icon="port"
+          variant="empty"
           title="No flow records yet"
           description="vnprox has no ingested flow records cluster-wide. Configure an sFlow/NetFlow/IPFIX exporter (or host-local sampling) pointed at a node, then enable it in that node's vnprox.toml [flows] section."
           action={
@@ -320,10 +336,30 @@ export function FlowExplorer() {
       )}
 
       {!isLoading && !error && !noFlowsAtAll && !isConversationView && renderedRaw.length === 0 && (
-        <EmptyState title="No flows match the current filter" description="Try widening or clearing a filter." />
+        <EmptyState
+          icon="port"
+          variant="filtered"
+          title="No flows match the current filter"
+          description="Try widening or clearing a filter."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => { dispatch({ type: "setFilter", filter: emptyFlowFilter }); }}>
+              Clear filters
+            </Button>
+          }
+        />
       )}
       {!isLoading && !error && !noFlowsAtAll && isConversationView && renderedConversations.length === 0 && (
-        <EmptyState title="No conversations match the current filter" description="Try widening or clearing a filter." />
+        <EmptyState
+          icon="port"
+          variant="filtered"
+          title="No conversations match the current filter"
+          description="Try widening or clearing a filter."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => { dispatch({ type: "setFilter", filter: emptyFlowFilter }); }}>
+              Clear filters
+            </Button>
+          }
+        />
       )}
 
       {!isConversationView && renderedRaw.length > 0 && (

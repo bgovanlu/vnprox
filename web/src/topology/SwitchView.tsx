@@ -113,6 +113,8 @@ export function SwitchView({
     return (
       <div className="flex h-full items-center justify-center">
         <EmptyState
+          icon="bridge"
+          variant="empty"
           title="No bridges to show"
           description="No Linux or OVS bridges were discovered. Switch to the Graph view to see NICs, LLDP neighbors, and SDN entities on their own."
         />

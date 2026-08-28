@@ -60,7 +60,14 @@ function UsageTable({ items, onNavigate, onInspect }: UsageTableProps) {
   const fwWriteTooltip = fwWrite ? undefined : missingCapTooltip(session, "", "fwWrite");
 
   if (items.length === 0) {
-    return <EmptyState title="None defined" description="No objects of this kind are configured anywhere in the cluster." />;
+    return (
+      <EmptyState
+        icon="firewall-group"
+        variant="unconfigured"
+        title="None defined"
+        description="No objects of this kind are configured anywhere in the cluster."
+      />
+    );
   }
 
   function handleDelete(item: ObjectUsageView): void {

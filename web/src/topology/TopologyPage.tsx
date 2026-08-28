@@ -173,7 +173,13 @@ function TopologyPageContent() {
   // this is undefined and the fetch is the unchanged local GET /topology.
   const [clusterSearchParams] = useSearchParams();
   const drilledClusterId = clusterSearchParams.get("cluster") ?? undefined;
-  const { data: liveTopology, isLoading, isError, dataUpdatedAt } = useTopologyQuery(drilledClusterId);
+  const {
+    data: liveTopology,
+    isLoading,
+    isError,
+    dataUpdatedAt,
+    refetch: refetchTopology,
+  } = useTopologyQuery(drilledClusterId);
   // T-2605 preview mode: `?previewChangeset=<id>` renders the map as it would
   // be with that changeset applied. Carried in the URL — like T-2704's diff
   // range — so the changeset drawer's "show on map" is an ordinary link and the
@@ -1465,16 +1471,30 @@ function TopologyPageContent() {
         {isError && (
           <div className="flex h-full items-center justify-center">
             <EmptyState
+              icon="node"
+              variant="failed"
               title="Could not load the topology"
               description="Check that vnproxd is reachable and try reloading."
+              action={
+                <Button variant="secondary" size="sm" onClick={() => void refetchTopology()}>
+                  Retry
+                </Button>
+              }
             />
           </div>
         )}
         {!isLoading && !isError && topology && topology.nodes.length === 0 && (
           <div className="flex h-full items-center justify-center">
             <EmptyState
+              icon="node"
+              variant="empty"
               title="Nothing discovered yet"
               description="vnproxd hasn't polled any inventory yet — check node connectivity, or wait for the next poll cycle."
+              action={
+                <Button variant="secondary" size="sm" onClick={() => { void navigate("/management"); }}>
+                  Check node connectivity
+                </Button>
+              }
             />
           </div>
         )}

@@ -17,6 +17,7 @@
 // say" rather than "could not determine."
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
@@ -247,11 +248,23 @@ export function CompiledRulesetPage() {
 
       {rulesetQuery.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading compiled ruleset…</p>}
       {rulesetQuery.error && (
-        <EmptyState title="Could not load the compiled ruleset" description="Try again in a moment, or pick a different node." />
+        <EmptyState
+          icon="fw-ruleset"
+          variant="failed"
+          title="Could not load the compiled ruleset"
+          description="Try again in a moment, or pick a different node."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void rulesetQuery.refetch()}>
+              Retry
+            </Button>
+          }
+        />
       )}
 
       {ruleset?.empty && (
         <EmptyState
+          icon="fw-ruleset"
+          variant="empty"
           title="No compiled nftables output found on this node"
           description={
             "This can mean either that the firewall is disabled at every scope on this node, or that this node's pve-firewall is running the legacy iptables engine rather than the nftables tech-preview — vnprox's compiled-ruleset inspector reads nftables output only. Check the node's firewall status to tell the two apart."

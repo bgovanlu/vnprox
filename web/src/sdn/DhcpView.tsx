@@ -9,6 +9,8 @@
 // renders as allocated cells (internal/ipam/dhcp.go's doc comment: "one
 // dataset"), not a separate reservation store.
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { HelpAnchor } from "../help/HelpAnchor";
 import { inputClass } from "../changesets/editors/EditorDialog";
@@ -24,12 +26,19 @@ function GuestCell({ guestRef }: { guestRef?: string }) {
   return <span className="text-emerald-600 dark:text-emerald-400">{guestRef}</span>;
 }
 
-function ReservationsTable({ reservations }: { reservations: DhcpReservation[] }) {
+function ReservationsTable({ reservations, onGoToIpam }: { reservations: DhcpReservation[]; onGoToIpam: () => void }) {
   if (reservations.length === 0) {
     return (
       <EmptyState
+        icon="sdn-subnet"
+        variant="unconfigured"
         title="No reservations"
         description="No MAC-bound IPAM allocation exists on a DHCP-enabled subnet — reserve one from the IPAM grid's cell detail."
+        action={
+          <Button variant="secondary" size="sm" onClick={onGoToIpam}>
+            Go to IPAM
+          </Button>
+        }
       />
     );
   }
@@ -67,6 +76,8 @@ function LeasesTable({ leases }: { leases: DhcpLease[] }) {
   if (leases.length === 0) {
     return (
       <EmptyState
+        icon="sdn-subnet"
+        variant="empty"
         title="No active leases"
         description="No dnsmasq lease was observed on any cluster node for a DHCP-enabled subnet."
       />
@@ -103,9 +114,10 @@ function LeasesTable({ leases }: { leases: DhcpLease[] }) {
 }
 
 export function DhcpView() {
+  const navigate = useNavigate();
   const { data: tree } = useSdnQuery();
   const [zone, setZone] = useState("");
-  const { data, isLoading, isError } = useDhcpViewQuery(zone || undefined);
+  const { data, isLoading, isError, refetch } = useDhcpViewQuery(zone || undefined);
   const zones = useMemo(() => zoneOptions(tree), [tree]);
 
   return (
@@ -135,8 +147,15 @@ export function DhcpView() {
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading DHCP data…</p>}
       {isError && (
         <EmptyState
+          icon="sdn-subnet"
+          variant="failed"
           title="Could not load DHCP data"
           description="Check that vnproxd can reach the local PVE API, then reload."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
         />
       )}
 
@@ -144,7 +163,7 @@ export function DhcpView() {
         <>
           <section>
             <h3 className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">Static reservations</h3>
-            <ReservationsTable reservations={data.reservations} />
+            <ReservationsTable reservations={data.reservations} onGoToIpam={() => void navigate("/ipam")} />
           </section>
 
           <section>

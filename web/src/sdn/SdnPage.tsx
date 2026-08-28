@@ -367,7 +367,7 @@ function SubnetDetail({ subnet, gate }: { subnet: SdnSubnet; gate: SdnWriteGate 
 }
 
 export function SdnPage() {
-  const { data: tree, isLoading, isError } = useSdnQuery();
+  const { data: tree, isLoading, isError, refetch: refetchSdnTree } = useSdnQuery();
   const [selection, setSelection] = useState<SdnSelection | undefined>(undefined);
   const openEditor = useSdnEditorStore((s) => s.open);
   const [tab, setTab] = useState<SdnTab>("configuration");
@@ -467,12 +467,38 @@ export function SdnPage() {
         {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading SDN configuration…</p>}
         {isError && (
           <EmptyState
+            icon="sdn-zone"
+            variant="failed"
             title="Could not load SDN configuration"
             description="Check that vnproxd can reach the local PVE API, then reload."
+            action={
+              <Button variant="secondary" size="sm" onClick={() => void refetchSdnTree()}>
+                Retry
+              </Button>
+            }
           />
         )}
         {!isLoading && !isError && tree && tree.zones.length === 0 && (
-          <EmptyState title="No SDN zones configured" description="Create a zone in Proxmox's SDN configuration to see it here." />
+          <EmptyState
+            icon="sdn-zone"
+            variant="unconfigured"
+            title="No SDN zones configured"
+            description="Create a zone in Proxmox's SDN configuration to see it here."
+            action={
+              !gate.disabled ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setWizardInitialKind(undefined);
+                    setWizardPickerOpen(true);
+                  }}
+                >
+                  New zone
+                </Button>
+              ) : undefined
+            }
+          />
         )}
 
         {!isLoading && !isError && tree && tree.zones.length > 0 && (

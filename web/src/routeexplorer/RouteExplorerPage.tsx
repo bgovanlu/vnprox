@@ -13,7 +13,8 @@
 // caveat discloses it cannot: what does this node's *actual* kernel/FRR
 // routing state do with a destination, on-fabric or not.
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
@@ -29,6 +30,7 @@ function fibRouteDisplayKey(r: FIBRoute): string {
 }
 
 export function RouteExplorerPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const nodesQuery = useRouteNodesQuery();
@@ -205,7 +207,17 @@ export function RouteExplorerPage() {
 
       {snapshotQuery.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading routing state…</p>}
       {snapshotQuery.error && (
-        <EmptyState title="Could not load routing state" description="Try again in a moment, or pick a different node." />
+        <EmptyState
+          icon="static-route"
+          variant="failed"
+          title="Could not load routing state"
+          description="Try again in a moment, or pick a different node."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void snapshotQuery.refetch()}>
+              Retry
+            </Button>
+          }
+        />
       )}
 
       {snapshot && (
@@ -222,7 +234,7 @@ export function RouteExplorerPage() {
               Kernel FIB
             </h2>
             {snapshot.fib.length === 0 ? (
-              <EmptyState title="No routes" density="compact" />
+              <EmptyState icon="static-route" variant="empty" title="No routes" density="compact" />
             ) : (
               <Table>
                 <TableHeader>
@@ -262,7 +274,7 @@ export function RouteExplorerPage() {
               Policy rules
             </h2>
             {snapshot.rules.length === 0 ? (
-              <EmptyState title="No policy rules" density="compact" />
+              <EmptyState icon="static-route" variant="empty" title="No policy rules" density="compact" />
             ) : (
               <Table>
                 <TableHeader>
@@ -292,9 +304,20 @@ export function RouteExplorerPage() {
               FRR RIB
             </h2>
             {snapshot.frrUnavailable ? (
-              <EmptyState title="FRR is not running on this node" description="No SDN EVPN zone configured — this is the common case." density="compact" />
+              <EmptyState
+                icon="static-route"
+                variant="unconfigured"
+                title="FRR is not running on this node"
+                description="No SDN EVPN zone configured — this is the common case."
+                density="compact"
+                action={
+                  <Button variant="secondary" size="sm" onClick={() => { void navigate("/sdn"); }}>
+                    Go to SDN
+                  </Button>
+                }
+              />
             ) : !snapshot.rib || snapshot.rib.length === 0 ? (
-              <EmptyState title="No RIB entries" density="compact" />
+              <EmptyState icon="static-route" variant="empty" title="No RIB entries" density="compact" />
             ) : (
               <Table>
                 <TableHeader>

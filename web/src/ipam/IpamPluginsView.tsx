@@ -192,20 +192,29 @@ function IpamsTable({
   ipams,
   gateDisabled,
   gateTitle,
+  onCreate,
   onEdit,
   onDelete,
 }: {
   ipams: SdnIpam[];
   gateDisabled: boolean;
   gateTitle: string | undefined;
+  onCreate: () => void;
   onEdit: (ipam: SdnIpam) => void;
   onDelete: (ipam: SdnIpam) => void;
 }) {
   if (ipams.length === 0) {
     return (
       <EmptyState
+        icon="sdn-subnet"
+        variant="unconfigured"
         title="No IPAM plugin instances configured"
         description="An instance is a netbox/phpipam/pve plugin object a zone can reference by id via its own ipam field. Create one to get started."
+        action={
+          <Button variant="secondary" size="sm" disabled={gateDisabled} title={gateTitle} onClick={onCreate}>
+            + New instance
+          </Button>
+        }
       />
     );
   }
@@ -238,7 +247,7 @@ function IpamsTable({
 
 export function IpamPluginsView() {
   const { data: session } = useSession();
-  const { data: tree, isLoading, isError } = useSdnQuery();
+  const { data: tree, isLoading, isError, refetch } = useSdnQuery();
   const [createOpen, setCreateOpen] = useState(false);
   const [editingIpam, setEditingIpam] = useState<SdnIpam | undefined>(undefined);
   const [deletingIpam, setDeletingIpam] = useState<SdnIpam | undefined>(undefined);
@@ -252,8 +261,15 @@ export function IpamPluginsView() {
   if (isError || !tree) {
     return (
       <EmptyState
+        icon="sdn-subnet"
+        variant="failed"
         title="Could not load IPAM plugin instances"
         description="Check that vnproxd can reach the local PVE API, then reload."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        }
       />
     );
   }
@@ -280,6 +296,7 @@ export function IpamPluginsView() {
         ipams={tree.ipams}
         gateDisabled={!canWrite}
         gateTitle={gateTitle}
+        onCreate={() => { setCreateOpen(true); }}
         onEdit={setEditingIpam}
         onDelete={setDeletingIpam}
       />

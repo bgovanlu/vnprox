@@ -61,6 +61,13 @@ export function AuditPage() {
     [auditQuery.data],
   );
 
+  // T-4209: distinguishes "nothing has ever been logged" from "a filter the
+  // operator set matched nothing" — `applied` starts as `{}` (truly no
+  // keys) and toAuditFilter always sets every key, just possibly to
+  // `undefined`, so "any key holds a defined value" is exactly "a filter is
+  // in effect".
+  const hasActiveFilter = Object.values(applied).some((v) => v !== undefined);
+
   const setField = (field: keyof FilterForm) => (value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -103,12 +110,41 @@ export function AuditPage() {
         <p className="text-sm text-slate-600 dark:text-slate-400">Loading audit log…</p>
       ) : auditQuery.isError ? (
         <EmptyState
+          icon="node"
+          variant="failed"
           title="Could not load the audit log"
           description={auditQuery.error instanceof ApiError ? auditQuery.error.message : "unexpected error"}
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void auditQuery.refetch()}>
+              Retry
+            </Button>
+          }
+        />
+      ) : entries.length === 0 && hasActiveFilter ? (
+        <EmptyState
+          icon="node"
+          variant="filtered"
+          title="No matching audit entries"
+          description="No recorded change attempt matches the current filter."
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setForm(emptyForm);
+                setApplied({});
+                setExpandedId(undefined);
+              }}
+            >
+              Clear filters
+            </Button>
+          }
         />
       ) : entries.length === 0 ? (
         <EmptyState
-          title="No matching audit entries"
+          icon="node"
+          variant="empty"
+          title="No audit entries yet"
           description="Every change attempt — including denied and rolled-back ones — is recorded here."
         />
       ) : (

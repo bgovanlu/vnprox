@@ -18,6 +18,8 @@
 // GET /sdn rather than from the segment list — see DualStackWizard.tsx's own
 // doc comment for why that inversion matters.
 import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { HelpAnchor } from "../help/HelpAnchor";
@@ -28,7 +30,8 @@ import { DualStackWizard, type DualStackVnetOption } from "./DualStackWizard";
 import { useIPv6SegmentsQuery } from "./ipv6Queries";
 
 export function IPv6SegmentsPanel() {
-  const { data, isLoading, error } = useIPv6SegmentsQuery();
+  const { data, isLoading, error, refetch } = useIPv6SegmentsQuery();
+  const navigate = useNavigate();
   const sdnQuery = useSdnQuery();
   const setActiveId = useChangesetDrawerStore((s) => s.setActiveId);
 
@@ -58,9 +61,16 @@ export function IPv6SegmentsPanel() {
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Soliciting router advertisements…</p>}
       {error && (
         <EmptyState
+          icon="sdn-subnet"
+          variant="failed"
           title="Could not read IPv6 segments"
           description="The daemon could not complete the cluster-wide RA read. This is a failed read, not evidence that no segment advertises IPv6."
           density="compact"
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
         />
       )}
 
@@ -74,6 +84,8 @@ export function IPv6SegmentsPanel() {
           )}
           {data.items.length === 0 ? (
             <EmptyState
+              icon="sdn-subnet"
+              variant="empty"
               title="No router advertisements observed"
               description="No segment on any node that answered is advertising IPv6. An interface appears here only when an RA was actually seen, so this is 'none observed' — it does not mean IPv6 is disabled, and it does not mean nothing is configured."
               density="compact"
@@ -92,9 +104,16 @@ export function IPv6SegmentsPanel() {
         </p>
         {vnets.length === 0 ? (
           <EmptyState
+            icon="sdn-vnet"
+            variant="unconfigured"
             title="No VNets to roll out to"
             description="The dual-stack wizard adds a subnet to an existing SDN VNet, and vnprox has not discovered one on this cluster yet."
             density="compact"
+            action={
+              <Button variant="secondary" size="sm" onClick={() => { void navigate("/sdn"); }}>
+                Go to SDN
+              </Button>
+            }
           />
         ) : (
           <DualStackWizard

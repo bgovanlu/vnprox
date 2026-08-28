@@ -49,6 +49,7 @@
 // (opt-in deep-dive, least urgent during a live incident).
 import { useMemo } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
@@ -101,7 +102,12 @@ function GuestPicker() {
       />
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading guests…</p>}
       {!isLoading && guests.length === 0 && (
-        <EmptyState title="No guests found" description="No guest NICs are known to this cluster yet." />
+        <EmptyState
+          icon="guest"
+          variant="empty"
+          title="No guests found"
+          description="No guest NICs are known to this cluster yet."
+        />
       )}
       {!isLoading && guests.length > 0 && (
         <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -386,7 +392,12 @@ function FindingsPanel({ guestRef, nicRefs }: { guestRef: string; nicRefs: strin
 function GuestEgoContent({ guestRef }: { guestRef: string }) {
   const navigate = useNavigate();
   const select = useTopologyStore((s) => s.select);
-  const { data: detail, isLoading: detailLoading, isError: detailError } = useInventoryDetailQuery(guestRef);
+  const {
+    data: detail,
+    isLoading: detailLoading,
+    isError: detailError,
+    refetch: refetchDetail,
+  } = useInventoryDetailQuery(guestRef);
   const { rows } = useAllGuestNicsQuery();
   const nics = useMemo(() => nicsForGuest(rows, guestRef), [rows, guestRef]);
   const targets = useMemo(() => bridgeTargetsForGuest(nics), [nics]);
@@ -441,7 +452,17 @@ function GuestEgoContent({ guestRef }: { guestRef: string }) {
 
       {detailLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading guest…</p>}
       {detailError && (
-        <EmptyState title="Could not load this guest" description="It may have just been removed, or the ref is invalid." />
+        <EmptyState
+          icon="guest"
+          variant="failed"
+          title="Could not load this guest"
+          description="It may have just been removed, or the ref is invalid."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetchDetail()}>
+              Retry
+            </Button>
+          }
+        />
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

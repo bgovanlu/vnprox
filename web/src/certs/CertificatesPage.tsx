@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useMemo } from "react";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { HelpAnchor } from "../help/HelpAnchor";
@@ -97,7 +98,7 @@ function CertRow({ cert }: { cert: Certificate }) {
 }
 
 export function CertificatesPage() {
-  const { data, isLoading, error } = useCertsQuery();
+  const { data, isLoading, error, refetch } = useCertsQuery();
 
   const byNode = useMemo(() => {
     const groups = new Map<string, Certificate[]>();
@@ -117,8 +118,15 @@ export function CertificatesPage() {
   if (error) {
     return (
       <EmptyState
+        icon="node"
+        variant="failed"
         title="Could not read the certificate inventory"
         description="The daemon could not be reached. On the node itself, `vnproxctl certs` reads the same data directly from /etc/pve and works with the daemon down."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        }
       />
     );
   }

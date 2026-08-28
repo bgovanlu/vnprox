@@ -158,6 +158,8 @@ export function CablingPlanView() {
 
       {data && rowCount === 0 && (
         <EmptyState
+          icon="physnic"
+          variant="empty"
           title="No physical NICs discovered yet"
           description="Nothing in the current topology carries a physnic entity. If nodes are visible on the map but their NICs aren't, check the host collector's status."
         />

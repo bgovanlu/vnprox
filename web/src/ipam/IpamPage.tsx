@@ -3,6 +3,7 @@
 // IPAM cockpit (docs/features/ipam.md §2): subnet list with utilization,
 // the address list for whichever subnet is selected, and CSV export.
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import { EmptyState } from "../components/EmptyState";
 import { Button } from "../components/Button";
@@ -93,7 +94,8 @@ function SubnetFacts({ subnet }: { subnet: IpamSubnet }) {
 }
 
 export function IpamPage() {
-  const { data, isLoading, isError } = useIpamSubnetsQuery();
+  const navigate = useNavigate();
+  const { data, isLoading, isError, refetch } = useIpamSubnetsQuery();
   const [selected, setSelected] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -114,10 +116,30 @@ export function IpamPage() {
 
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading IPAM subnets…</p>}
       {isError && (
-        <EmptyState title="Could not load IPAM subnets" description="Check that vnproxd can reach the local PVE API, then reload." />
+        <EmptyState
+          icon="sdn-subnet"
+          variant="failed"
+          title="Could not load IPAM subnets"
+          description="Check that vnproxd can reach the local PVE API, then reload."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
+        />
       )}
       {!isLoading && !isError && data && data.items.length === 0 && (
-        <EmptyState title="No subnets found" description="Configure an SDN subnet in Proxmox, or a bridge address, to see it here." />
+        <EmptyState
+          icon="sdn-subnet"
+          variant="unconfigured"
+          title="No subnets found"
+          description="Configure an SDN subnet in Proxmox, or a bridge address, to see it here."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => { void navigate("/sdn"); }}>
+              Go to SDN
+            </Button>
+          }
+        />
       )}
 
       {!isLoading && !isError && data && data.items.length > 0 && (

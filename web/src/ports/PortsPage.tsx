@@ -63,6 +63,8 @@ export function PortsPage() {
 
       {data && rows.length === 0 && (
         <EmptyState
+          icon="port"
+          variant="empty"
           title="No ports discovered yet"
           description="vnprox learns this table from LLDP. If it stays empty, lldpd may not be running on your nodes — the onboarding walkthrough can install it, or check your switches advertise LLDP."
         />

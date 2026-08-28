@@ -54,7 +54,7 @@ function shapeToForm(shape: QosShape): QosShapeFormValues {
 }
 
 export function QosShapesPanel() {
-  const { data: shapes, isLoading, error } = useQosShapesQuery();
+  const { data: shapes, isLoading, error, refetch } = useQosShapesQuery();
   const { data: session } = useSession();
   const canWrite = hasAnyCap(session, "netWrite");
   const writeDisabledReason = canWrite ? undefined : missingCapTooltip(session, "", "netWrite");
@@ -76,9 +76,16 @@ export function QosShapesPanel() {
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {error && (
         <EmptyState
+          icon="guest-nic"
+          variant="failed"
           title="Could not list QoS shapes"
           description="The daemon could not read the shape store. Try again in a moment."
           density="compact"
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
         />
       )}
 
@@ -114,6 +121,8 @@ export function QosShapesPanel() {
             </Table>
           ) : (
             <EmptyState
+              icon="guest-nic"
+              variant="unconfigured"
               title="No QoS shapes applied"
               description="Nothing on this cluster is currently shaped. Add a shape below to stage one."
               density="compact"
@@ -264,6 +273,8 @@ function CreateShapeForm({ canWrite, writeDisabledReason }: { canWrite: boolean;
   if (bridges.length === 0) {
     return (
       <EmptyState
+        icon="bridge"
+        variant="empty"
         title="No bridges discovered yet"
         description="A QoS shape attaches to a bridge, and vnprox has not discovered one on this cluster yet. Once the topology map has bridges, this form offers them."
         density="compact"

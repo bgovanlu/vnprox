@@ -13,6 +13,7 @@ import { useEffect, useMemo, useReducer, useState } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
 import type { FwLogEntry } from "../api/types";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { HelpAnchor } from "../help/HelpAnchor";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
@@ -21,6 +22,7 @@ import { ruleDeepLinkPath } from "./deeplink";
 import { useFwLogQuery, useFwLogWsBridge } from "./queries";
 import {
   RENDER_CAP,
+  emptyFwLogFilter,
   fwLogReducer,
   initialFwLogViewState,
   selectVisibleEntries,
@@ -155,7 +157,7 @@ export function FwLogViewer() {
     [state.filter.node, state.filter.vmid, state.filter.direction, state.filter.action],
   );
 
-  const { data, isLoading, error } = useFwLogQuery(apiFilter);
+  const { data, isLoading, error, refetch } = useFwLogQuery(apiFilter);
 
   useEffect(() => {
     if (data) {
@@ -167,6 +169,8 @@ export function FwLogViewer() {
     dispatch({ type: "batch", entries: evt.entries, droppedTotal: evt.droppedTotal });
   });
 
+  const filterActive =
+    state.filter.node !== "" || state.filter.vmid !== "" || state.filter.direction !== "" || state.filter.action !== "";
   const visible = selectVisibleEntries(state);
   const rendered = visible.slice(-RENDER_CAP);
   const trimmedFromView = visible.length - rendered.length;
@@ -237,9 +241,38 @@ export function FwLogViewer() {
           )}
 
           {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
-          {error && <EmptyState title="Could not load the firewall log" description="Try again in a moment." />}
-          {!isLoading && !error && rendered.length === 0 && (
-            <EmptyState title="No log lines yet" description="Nothing matches the current filter, or no traffic has been logged." />
+          {error && (
+            <EmptyState
+              icon="fw-ruleset"
+              variant="failed"
+              title="Could not load the firewall log"
+              description="Try again in a moment."
+              action={
+                <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+                  Retry
+                </Button>
+              }
+            />
+          )}
+          {!isLoading && !error && rendered.length === 0 && filterActive && (
+            <EmptyState
+              icon="fw-ruleset"
+              variant="filtered"
+              title="No log lines match the current filter"
+              description="Try widening or clearing a filter."
+              action={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => { dispatch({ type: "setFilter", filter: emptyFwLogFilter }); }}
+                >
+                  Clear filters
+                </Button>
+              }
+            />
+          )}
+          {!isLoading && !error && rendered.length === 0 && !filterActive && (
+            <EmptyState icon="fw-ruleset" variant="empty" title="No log lines yet" description="No traffic has been logged yet." />
           )}
 
           {rendered.length > 0 && (

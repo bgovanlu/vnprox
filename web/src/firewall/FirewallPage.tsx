@@ -17,7 +17,8 @@
 // fights a user's own subsequent tab/guest clicks (which don't rewrite the
 // URL — see focusRule.ts's doc comment).
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "../components/Tabs";
@@ -61,11 +62,23 @@ interface ClusterPanelProps {
 }
 
 function ClusterPanel({ focusPos }: ClusterPanelProps) {
-  const { data, isLoading, error } = useClusterRulesetQuery();
+  const { data, isLoading, error, refetch } = useClusterRulesetQuery();
   const { data: objects } = useFirewallObjectsQuery();
   if (isLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading datacenter firewall…</p>;
   if (error || !data) {
-    return <EmptyState title="No datacenter firewall data" description="The cluster firewall configuration has not been observed yet." />;
+    return (
+      <EmptyState
+        icon="fw-ruleset"
+        variant="failed"
+        title="No datacenter firewall data"
+        description="The cluster firewall configuration has not been observed yet."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        }
+      />
+    );
   }
   return (
     <div className="flex flex-col gap-3">
@@ -97,7 +110,14 @@ function NodePanel({ selected, onSelect, focusPos }: NodePanelProps) {
 
   if (listLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading nodes…</p>;
   if (nodes.length === 0) {
-    return <EmptyState title="No node firewall data" description="No node firewall configuration has been observed yet." />;
+    return (
+      <EmptyState
+        icon="node"
+        variant="empty"
+        title="No node firewall data"
+        description="No node firewall configuration has been observed yet."
+      />
+    );
   }
   return (
     <div className="flex flex-col gap-3">
@@ -178,7 +198,14 @@ function GuestPanel({ selected, onSelect, focusRule }: GuestPanelProps) {
 
   if (listLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading guests…</p>;
   if (guests.length === 0) {
-    return <EmptyState title="No guest firewall data" description="No guest firewall configuration has been observed yet." />;
+    return (
+      <EmptyState
+        icon="guest"
+        variant="empty"
+        title="No guest firewall data"
+        description="No guest firewall configuration has been observed yet."
+      />
+    );
   }
   return (
     <div className="flex flex-col gap-3">
@@ -257,6 +284,7 @@ interface VNetPanelProps {
 // rule table is shown — the same "raw only" treatment scope=node already
 // gets.
 function VNetPanel({ selected, onSelect }: VNetPanelProps) {
+  const navigate = useNavigate();
   const { data: list, isLoading: listLoading } = useVnetRulesetsQuery();
   const { data: objects } = useFirewallObjectsQuery();
   const vnets = useMemo(
@@ -274,7 +302,19 @@ function VNetPanel({ selected, onSelect }: VNetPanelProps) {
 
   if (listLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading vnets…</p>;
   if (vnets.length === 0) {
-    return <EmptyState title="No vnet firewall data" description="No vnet firewall configuration has been observed yet." />;
+    return (
+      <EmptyState
+        icon="sdn-vnet"
+        variant="unconfigured"
+        title="No vnet firewall data"
+        description="No vnet firewall configuration has been observed yet."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => { void navigate("/sdn"); }}>
+            Go to SDN
+          </Button>
+        }
+      />
+    );
   }
   return (
     <div className="flex flex-col gap-3">
@@ -320,10 +360,22 @@ interface ObjectsTabProps {
 }
 
 function ObjectsTab({ onNavigate, onInspectGroup }: ObjectsTabProps) {
-  const { data, isLoading, error } = useFirewallObjectsQuery();
+  const { data, isLoading, error, refetch } = useFirewallObjectsQuery();
   if (isLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading objects…</p>;
   if (error || !data) {
-    return <EmptyState title="Could not load objects" description="Try again in a moment." />;
+    return (
+      <EmptyState
+        icon="firewall-group"
+        variant="failed"
+        title="Could not load objects"
+        description="Try again in a moment."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        }
+      />
+    );
   }
   return <ObjectsPanel objects={data} onNavigate={onNavigate} onInspectGroup={onInspectGroup} />;
 }

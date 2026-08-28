@@ -136,6 +136,16 @@ export function ManagementPage() {
   const nodes = mgmtStatus ? Object.keys(mgmtStatus.nodes).sort() : [];
   const hasAny = nodes.some((n) => (mgmtStatus?.nodes[n]?.length ?? 0) > 0);
 
+  // T-4209: the same "jump into onboarding's protected-interfaces step"
+  // action, reused verbatim by both the "best-effort detection, unconfirmed"
+  // banner below and the "nothing resolved at all" empty state — neither
+  // duplicates the other's business logic.
+  const reviewProtectedInterfaces = onboardingProgress
+    ? () => {
+        saveOnboarding.mutate({ ...resumeOnboarding(onboardingProgress), currentStep: "protected" });
+      }
+    : undefined;
+
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       <PageHeader
@@ -161,13 +171,11 @@ export function ManagementPage() {
             This is vnprox&apos;s best-effort detection (from each node&apos;s IP and corosync.conf) — no one has
             confirmed it during onboarding yet, so double-check it before relying on it.
           </p>
-          {onboardingProgress && (
+          {reviewProtectedInterfaces && (
             <button
               type="button"
               className="mt-1 font-medium underline hover:no-underline"
-              onClick={() => {
-                saveOnboarding.mutate({ ...resumeOnboarding(onboardingProgress), currentStep: "protected" });
-              }}
+              onClick={reviewProtectedInterfaces}
             >
               Review protected interfaces
             </button>
@@ -177,8 +185,17 @@ export function ManagementPage() {
 
       {mgmtStatus && !hasAny && (
         <EmptyState
+          icon="node"
+          variant="unconfigured"
           title="No management interfaces resolved"
           description="vnprox hasn't resolved a management or corosync carrier on any node yet. Confirm your protected interfaces in onboarding, or check that the cluster inventory has finished loading."
+          action={
+            reviewProtectedInterfaces ? (
+              <Button variant="secondary" size="sm" onClick={reviewProtectedInterfaces}>
+                Review protected interfaces
+              </Button>
+            ) : undefined
+          }
         />
       )}
 

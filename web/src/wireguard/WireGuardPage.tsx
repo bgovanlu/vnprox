@@ -567,7 +567,7 @@ function TunnelSection({ tunnel, tunnelsUnavailable }: { tunnel: WireGuardTunnel
 
 export function WireGuardPage() {
   const { data: session } = useSession();
-  const { data: tunnels, isLoading, isError } = useWireGuardTunnelsQuery(true);
+  const { data: tunnels, isLoading, isError, refetch: refetchTunnels } = useWireGuardTunnelsQuery(true);
   const [createOpen, setCreateOpen] = useState(false);
 
   const canWriteAny = Object.values(session?.caps ?? {}).some((c) => c.netWrite);
@@ -600,13 +600,27 @@ export function WireGuardPage() {
         <p className="text-sm text-slate-600 dark:text-slate-400">Loading WireGuard tunnels…</p>
       ) : !tunnels ? (
         <EmptyState
+          icon="wg-tunnel"
+          variant="failed"
           title="Could not load WireGuard tunnels"
           description="Check that vnproxd can reach this node's live state, then reload."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetchTunnels()}>
+              Retry
+            </Button>
+          }
         />
       ) : tunnels.length === 0 ? (
         <EmptyState
+          icon="wg-tunnel"
+          variant="unconfigured"
           title="No WireGuard tunnels configured"
           description="A tunnel is a site-to-site (or road-warrior) WireGuard link this node manages. Create one to get started — federation's own Connect clusters wizard also creates tunnels here, so both surfaces show the same list."
+          action={
+            <Button variant="secondary" size="sm" disabled={!canWriteAny} title={gateTitle} onClick={() => { setCreateOpen(true); }}>
+              + New tunnel
+            </Button>
+          }
         />
       ) : (
         <div className="flex flex-col gap-3">

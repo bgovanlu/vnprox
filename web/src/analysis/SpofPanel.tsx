@@ -61,7 +61,7 @@ function sortEntries(entries: readonly SpofEntry[]): SpofEntry[] {
 }
 
 export function SpofPanel() {
-  const { data, isLoading, error } = useSpofScoreQuery();
+  const { data, isLoading, error, refetch } = useSpofScoreQuery();
 
   return (
     <section aria-labelledby="spof-heading" className="flex flex-col gap-3">
@@ -80,9 +80,16 @@ export function SpofPanel() {
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Simulating…</p>}
       {error && (
         <EmptyState
+          icon="node"
+          variant="failed"
           title="Could not compute the SPOF score"
           description="The daemon could not build a simulation over the current inventory snapshot. Try again in a moment."
           density="compact"
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
         />
       )}
 
@@ -91,6 +98,8 @@ export function SpofPanel() {
           <ResilienceScore score={data.score} spofCount={data.entries.length} generatedAt={data.generatedAt} />
           {data.entries.length === 0 ? (
             <EmptyState
+              icon="node"
+              variant="empty"
               title="No single points of failure found"
               description="Every element the simulator enumerated is redundant enough that removing it breaks nothing it could see. Elements with a known impact of zero are excluded server-side, so this is a result, not an empty read."
               density="compact"

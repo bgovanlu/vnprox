@@ -80,9 +80,16 @@ export function WanHealthPanel() {
       {statusQuery.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {statusQuery.error && (
         <EmptyState
+          icon="gateway"
+          variant="failed"
           title="Could not read WAN status"
           description="The daemon could not read the probe results. Try again in a moment."
           density="compact"
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void statusQuery.refetch()}>
+              Retry
+            </Button>
+          }
         />
       )}
 
@@ -121,6 +128,8 @@ function UplinksTable({ uplinks }: { uplinks: WanUplinkStatus[] }) {
   if (uplinks.length === 0) {
     return (
       <EmptyState
+        icon="gateway"
+        variant="empty"
         title="No uplink readings yet"
         description="An uplink appears once at least one of its configured targets has produced a probe reading. A configured target with no reading yet has no entry at all, rather than a placeholder."
         density="compact"
@@ -210,6 +219,8 @@ function TargetsEditor({ node, targets }: { node: string | undefined; targets: W
       </h4>
       {targets.length === 0 ? (
         <EmptyState
+          icon="gateway"
+          variant="unconfigured"
           title="No reference targets configured"
           description="Name a well-known host per uplink — a resolver, a gateway — and vnprox will probe it continuously so an upstream problem can be told apart from a cluster one."
           density="compact"

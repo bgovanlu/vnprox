@@ -175,7 +175,7 @@ function TunnelLinkage({
 }
 
 export function FederationClusters() {
-  const { data: clusters, isLoading, error } = useFederationClustersQuery();
+  const { data: clusters, isLoading, error, refetch } = useFederationClustersQuery();
   const { data: session } = useSession();
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [creating, setCreating] = useState(false);
@@ -281,7 +281,19 @@ export function FederationClusters() {
     return <EmptyState title="Loading…" description="Fetching attached clusters." />;
   }
   if (error) {
-    return <EmptyState title="Could not load attached clusters" description="Check your connection and try again." />;
+    return (
+      <EmptyState
+        icon="node"
+        variant="failed"
+        title="Could not load attached clusters"
+        description="Check your connection and try again."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        }
+      />
+    );
   }
 
   return (

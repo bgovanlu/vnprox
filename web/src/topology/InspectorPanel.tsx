@@ -182,7 +182,7 @@ export function InspectorPanel({
   pinned,
   onTogglePin,
 }: InspectorPanelProps) {
-  const { data, isLoading, isError } = useInventoryDetailQuery(selectedRef);
+  const { data, isLoading, isError, refetch } = useInventoryDetailQuery(selectedRef);
   const rawSourceEntries = Object.entries(data?.rawSource ?? {});
   const { data: session } = useSession();
   const openEditor = useEditorLauncherStore((s) => s.open);
@@ -409,7 +409,18 @@ export function InspectorPanel({
 
       {isLoading && <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {isError && (
-        <EmptyState className="mt-4" title="Could not load this entity" description="It may have just been removed." />
+        <EmptyState
+          className="mt-4"
+          icon="node"
+          variant="failed"
+          title="Could not load this entity"
+          description="It may have just been removed."
+          action={
+            <Button size="sm" variant="secondary" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
+        />
       )}
 
         {data && (

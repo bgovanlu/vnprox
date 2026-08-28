@@ -11,6 +11,7 @@ import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import { fetchFDB } from "../api/fdb";
 import type { FDBOwner, FDBRow } from "../api/types";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { useTopologyStore } from "../topology/store";
@@ -57,7 +58,7 @@ function OwnerBadge({ row }: { row: FDBRow }) {
 export function MacFdbBrowser() {
   const [query, setQuery] = useState("");
   const trimmed = query.trim();
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["fdb", trimmed],
     queryFn: () => fetchFDB(trimmed),
     staleTime: 10_000,
@@ -86,15 +87,34 @@ export function MacFdbBrowser() {
 
       {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {isError && (
-        <EmptyState title="Could not load the FDB" description="Try again in a moment." />
+        <EmptyState
+          icon="bridge"
+          variant="failed"
+          title="Could not load the FDB"
+          description="Try again in a moment."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
+        />
       )}
       {!isLoading && !isError && rows.length === 0 && (
         <EmptyState
+          icon="bridge"
+          variant={trimmed ? "filtered" : "empty"}
           title={trimmed ? "No matches" : "No FDB entries yet"}
           description={
             trimmed
               ? `Nothing matched "${trimmed}" on any reachable node's bridges.`
               : "Bridges report their forwarding table once traffic has been learned on them."
+          }
+          action={
+            trimmed ? (
+              <Button variant="secondary" size="sm" onClick={() => { setQuery(""); }}>
+                Clear filters
+              </Button>
+            ) : undefined
           }
         />
       )}
