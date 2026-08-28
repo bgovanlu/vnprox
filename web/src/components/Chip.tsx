@@ -15,6 +15,7 @@
 // never a health signal; that vocabulary is Badge's.
 import type { ReactNode } from "react";
 import clsx from "clsx";
+import { useDensity, type Density } from "./density";
 
 export type ChipTone = "neutral" | "accent" | "removed";
 
@@ -31,6 +32,12 @@ export interface ChipProps {
    * side so a screen reader user can tell them apart). */
   onRemove?: () => void;
   removeLabel?: string;
+  /** T-4207: joins the density.ts seam (T-905). Comfortable is byte-for-byte
+   * this component's original padding, so the prop is additive. Only
+   * padding moves — `mono` already owns the text-size decision
+   * (`text-[11px]` vs `text-xs`), so density doesn't fight it for the same
+   * property. */
+  density?: Density;
   className?: string;
 }
 
@@ -40,13 +47,21 @@ const TONE_CLASSES: Record<ChipTone, string> = {
   accent: "border border-accent-500 bg-accent-50 text-accent-700 dark:bg-accent-950/50 dark:text-accent-300",
 };
 
+// Comfortable is byte-for-byte the pre-T-4207 hardcoded `px-2 py-0.5`.
+// Compact tightens padding only; text size stays `mono`'s call (see the
+// `density` prop's doc comment).
+const PADDING_CLASSES: Record<Density, string> = { comfortable: "px-2 py-0.5", compact: "px-1.5 py-0" };
+
 /** A small pill for a name or tag — a scope, a capability, a filter, an
  * object reference. Not a status indicator; see Badge for that. */
-export function Chip({ children, tone = "neutral", mono = true, onRemove, removeLabel = "Remove", className }: ChipProps) {
+export function Chip({ children, tone = "neutral", mono = true, onRemove, removeLabel = "Remove", density, className }: ChipProps) {
+  const resolvedDensity = useDensity(density);
   return (
     <span
+      data-density={resolvedDensity}
       className={clsx(
-        "inline-flex w-fit shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
+        "inline-flex w-fit shrink-0 items-center gap-1 rounded-full text-xs font-medium whitespace-nowrap",
+        PADDING_CLASSES[resolvedDensity],
         mono && "font-mono text-[11px] font-normal",
         TONE_CLASSES[tone],
         className,

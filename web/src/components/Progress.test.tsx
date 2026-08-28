@@ -44,4 +44,24 @@ describe("Progress", () => {
     expect(container.querySelectorAll("[title]")).toHaveLength(2);
     expect(container.querySelector('[title="allocated"]')?.className).toContain("bg-accent-500");
   });
+
+  it("defaults to comfortable density, byte-for-byte the pre-T-4207 track height and gap", () => {
+    const { container } = render(<Progress value={42} label="x" />);
+    const bar = screen.getByRole("progressbar");
+    const root = container.querySelector("[data-density]");
+    expect(root?.getAttribute("data-density")).toBe("comfortable");
+    expect(root?.className).toContain("gap-2");
+    expect(bar.className).toContain("h-1.5");
+  });
+
+  it("compact density renders a shorter track and tighter gap than comfortable", () => {
+    const { container } = render(<Progress value={42} label="x" density="compact" />);
+    const bar = screen.getByRole("progressbar");
+    const root = container.querySelector("[data-density]");
+    expect(root?.getAttribute("data-density")).toBe("compact");
+    expect(root?.className).toContain("gap-1");
+    expect(root?.className).not.toContain("gap-2");
+    expect(bar.className).toContain("h-1");
+    expect(bar.className).not.toContain("h-1.5");
+  });
 });

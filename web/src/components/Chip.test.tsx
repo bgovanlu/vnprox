@@ -43,4 +43,19 @@ describe("Chip", () => {
     await user.click(screen.getByRole("button", { name: "Remove automation" }));
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
+
+  it("defaults to comfortable density, byte-for-byte the pre-T-4207 padding", () => {
+    render(<Chip>automation</Chip>);
+    const chip = screen.getByText("automation");
+    expect(chip.className).toContain("px-2 py-0.5");
+    expect(chip.dataset.density).toBe("comfortable");
+  });
+
+  it("compact density renders tighter padding than comfortable", () => {
+    render(<Chip density="compact">automation</Chip>);
+    const chip = screen.getByText("automation");
+    expect(chip.dataset.density).toBe("compact");
+    expect(chip.className).toContain("px-1.5 py-0");
+    expect(chip.className).not.toContain("px-2 py-0.5");
+  });
 });

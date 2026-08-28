@@ -24,6 +24,7 @@
 import type { ReactNode } from "react";
 import clsx from "clsx";
 import type { StatusTone } from "./statusTone";
+import { useDensity, type Density } from "./density";
 
 const TONE_CLASSES: Record<StatusTone, string> = {
   ok: "border-status-ok bg-status-ok-soft text-status-ok",
@@ -56,18 +57,32 @@ export interface BannerProps {
   role?: "status" | "alert";
   onDismiss?: () => void;
   dismissLabel?: string;
+  /** T-4207: joins the density.ts seam (T-905). Comfortable is byte-for-byte
+   * this component's original `px-3 py-2 text-sm gap-2`, so the prop is
+   * additive. Compact tightens padding and gap and steps the body text down
+   * a notch, the same shape SegmentedControl's compact step uses. */
+  density?: Density;
   className?: string;
 }
+
+// Comfortable is byte-for-byte the pre-T-4207 hardcoded
+// `gap-2 px-3 py-2 text-sm`.
+const DENSITY_CLASSES: Record<Density, string> = {
+  comfortable: "gap-2 px-3 py-2 text-sm",
+  compact: "gap-1.5 px-2 py-1.5 text-xs",
+};
 
 /** A boxed, tone-matched status message — the shared shape behind
  * StalenessBanner/LldpSetupBanner (already on-token) and FirewallBanners/
  * LockNoticeBanner/RefusalNotice (still raw amber). Not page chrome: no
  * fixed positioning, so it composes wherever the caller places it. */
-export function Banner({ tone, children, title, badge, actions, role, onDismiss, dismissLabel = "Dismiss", className }: BannerProps) {
+export function Banner({ tone, children, title, badge, actions, role, onDismiss, dismissLabel = "Dismiss", density, className }: BannerProps) {
+  const resolvedDensity = useDensity(density);
   return (
     <div
       role={role ?? DEFAULT_ROLE[tone]}
-      className={clsx("flex flex-wrap items-start gap-2 rounded-md border px-3 py-2 text-sm", TONE_CLASSES[tone], className)}
+      data-density={resolvedDensity}
+      className={clsx("flex flex-wrap items-start rounded-md border", DENSITY_CLASSES[resolvedDensity], TONE_CLASSES[tone], className)}
     >
       {badge ? (
         <span

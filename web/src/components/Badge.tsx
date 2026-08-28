@@ -28,6 +28,7 @@
 import type { ReactNode } from "react";
 import clsx from "clsx";
 import type { StatusTone } from "./statusTone";
+import { useDensity, type Density } from "./density";
 
 export type BadgeRole = "solid" | "soft";
 export type BadgeSize = "sm" | "md";
@@ -47,6 +48,11 @@ export interface BadgeProps {
    * language specifies. */
   stale?: boolean;
   size?: BadgeSize;
+  /** T-4207: joins the density.ts seam (T-905) that SegmentedControl and
+   * KeyValue already read. Comfortable is byte-for-byte this component's
+   * original `SIZE_CLASSES`, so the prop is additive. Nested per `size`
+   * rather than layered, matching Button.tsx's `sizeClasses` precedent. */
+  density?: Density;
   className?: string;
   children: ReactNode;
 }
@@ -69,21 +75,27 @@ const SOLID_CLASSES: Record<StatusTone, string> = {
   unknown: "bg-status-unknown-solid text-status-on-solid",
 };
 
-const SIZE_CLASSES: Record<BadgeSize, string> = {
-  sm: "px-1.5 py-0.5 text-[11px]",
-  md: "px-2 py-0.5 text-xs",
+// Comfortable is byte-for-byte the pre-T-4207 `SIZE_CLASSES`. Compact drops
+// padding on both axes; `sm` is already at the smallest legible text step
+// (`text-[11px]`) so it has nothing left to shed there, while `md` also
+// steps its text down a notch, matching SegmentedControl's md compact step.
+const SIZE_CLASSES: Record<BadgeSize, Record<Density, string>> = {
+  sm: { comfortable: "px-1.5 py-0.5 text-[11px]", compact: "px-1 py-0 text-[11px]" },
+  md: { comfortable: "px-2 py-0.5 text-xs", compact: "px-1.5 py-0 text-[11px]" },
 };
 
 /** The one status pill: a small filled label on the semantic status scale
  * (docs/design-language.md §2.2). Never used for anything that isn't a
  * health/severity signal — a categorical (non-health) tag is Chip, not
  * Badge with an invented status. */
-export function Badge({ status, role = "soft", stale = false, size = "md", className, children }: BadgeProps) {
+export function Badge({ status, role = "soft", stale = false, size = "md", density, className, children }: BadgeProps) {
+  const resolvedDensity = useDensity(density);
   return (
     <span
+      data-density={resolvedDensity}
       className={clsx(
         "inline-flex w-fit shrink-0 items-center gap-1 rounded-full font-semibold whitespace-nowrap",
-        SIZE_CLASSES[size],
+        SIZE_CLASSES[size][resolvedDensity],
         role === "solid" ? SOLID_CLASSES[status] : SOFT_CLASSES[status],
         stale && "border border-dashed border-status-stale opacity-75",
         className,

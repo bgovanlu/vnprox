@@ -56,4 +56,23 @@ describe("Badge", () => {
     expect(badge.className).toContain("border-status-stale");
     expect(badge.className).not.toContain("bg-status-stale");
   });
+
+  it("defaults to comfortable density, byte-for-byte the pre-T-4207 padding", () => {
+    render(<Badge status="ok">Up</Badge>);
+    const badge = screen.getByText("Up");
+    expect(badge.className).toContain("px-2 py-0.5 text-xs");
+    expect(badge.dataset.density).toBe("comfortable");
+  });
+
+  it("compact density renders tighter padding than comfortable", () => {
+    render(
+      <Badge status="ok" density="compact">
+        Up
+      </Badge>,
+    );
+    const badge = screen.getByText("Up");
+    expect(badge.dataset.density).toBe("compact");
+    expect(badge.className).toContain("px-1.5 py-0 text-[11px]");
+    expect(badge.className).not.toContain("px-2 py-0.5");
+  });
 });

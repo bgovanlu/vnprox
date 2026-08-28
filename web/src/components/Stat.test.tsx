@@ -26,4 +26,19 @@ describe("Stat", () => {
     render(<Stat value="87%" label="Utilization" />);
     expect(screen.getByText("87%")).toBeInTheDocument();
   });
+
+  it("defaults to comfortable density, byte-for-byte the pre-T-4207 gaps", () => {
+    const { container } = render(<Stat value={1} label="x" />);
+    const root = container.querySelector("[data-density]");
+    expect(root?.getAttribute("data-density")).toBe("comfortable");
+    expect(root?.className).toContain("gap-2");
+  });
+
+  it("compact density renders tighter gaps than comfortable", () => {
+    const { container } = render(<Stat value={1} label="x" density="compact" />);
+    const root = container.querySelector("[data-density]");
+    expect(root?.getAttribute("data-density")).toBe("compact");
+    expect(root?.className).toContain("gap-1.5");
+    expect(root?.className).not.toContain("gap-2");
+  });
 });

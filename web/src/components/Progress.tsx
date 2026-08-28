@@ -15,6 +15,7 @@
 //     status scale itself).
 import clsx from "clsx";
 import type { StatusTone } from "./statusTone";
+import { useDensity, type Density } from "./density";
 
 export type ProgressTone = "accent" | StatusTone;
 
@@ -45,6 +46,11 @@ export interface ProgressProps {
   size?: "sm" | "md";
   /** Accessible label for the bar as a whole (`aria-label`). */
   label?: string;
+  /** T-4207: joins the density.ts seam (T-905). Nested per `size` (like
+   * Button.tsx's `sizeClasses`) rather than layered, since `h-*` is a
+   * same-specificity utility fight otherwise. Comfortable is byte-for-byte
+   * this component's original `TRACK_HEIGHT`/gap, so the prop is additive. */
+  density?: Density;
   className?: string;
 }
 
@@ -64,19 +70,30 @@ export interface SegmentedProgressProps extends ProgressProps {
   showValueText?: undefined;
 }
 
-const TRACK_HEIGHT: Record<"sm" | "md", string> = { sm: "h-1.5", md: "h-2" };
+// Comfortable is byte-for-byte the pre-T-4207 `TRACK_HEIGHT`. Compact
+// steps each size down half a Tailwind spacing unit, the same "one notch
+// tighter" shape as Badge/SegmentedControl's compact steps.
+const TRACK_HEIGHT: Record<"sm" | "md", Record<Density, string>> = {
+  sm: { comfortable: "h-1.5", compact: "h-1" },
+  md: { comfortable: "h-2", compact: "h-1.5" },
+};
+const GAP: Record<Density, string> = { comfortable: "gap-2", compact: "gap-1" };
 
 /** A linear progress/utilization bar. Two modes, picked by which of
  * `value`/`segments` is passed: a single filled value (a percentage,
  * `role="progressbar"`), or several caller-coloured segments side by side
  * summing to a whole (a breakdown — free/used/reserved, and similar). */
 export function Progress(props: SingleProgressProps | SegmentedProgressProps) {
-  const { size = "sm", label, className } = props;
-  const track = clsx("w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700", TRACK_HEIGHT[size]);
+  const { size = "sm", label, density, className } = props;
+  const resolvedDensity = useDensity(density);
+  const track = clsx(
+    "w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700",
+    TRACK_HEIGHT[size][resolvedDensity],
+  );
 
   if (props.segments) {
     return (
-      <div className={clsx("flex items-center gap-2", className)}>
+      <div data-density={resolvedDensity} className={clsx("flex items-center", GAP[resolvedDensity], className)}>
         <div className={clsx(track, "flex")} role={label ? "img" : undefined} aria-label={label}>
           {props.segments.map((seg, i) => (
             // A fixed-count, order-stable list of caller-supplied segments.
@@ -94,7 +111,7 @@ export function Progress(props: SingleProgressProps | SegmentedProgressProps) {
 
   const pct = Math.min(100, Math.max(0, props.value));
   return (
-    <div className={clsx("flex items-center gap-2", className)}>
+    <div data-density={resolvedDensity} className={clsx("flex items-center", GAP[resolvedDensity], className)}>
       <div
         className={track}
         role="progressbar"

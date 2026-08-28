@@ -13,6 +13,7 @@
 import type { ReactNode } from "react";
 import clsx from "clsx";
 import type { StatusTone } from "./statusTone";
+import { useDensity, type Density } from "./density";
 
 const DOT_CLASSES: Record<StatusTone, string> = {
   ok: "bg-status-ok",
@@ -35,6 +36,14 @@ export interface StatProps {
   label?: ReactNode;
   status?: StatusTone;
   size?: "sm" | "md";
+  /** T-4207: joins the density.ts seam (T-905). `size` already owns the
+   * value's text size (`VALUE_SIZE`), so density stays out of that fight
+   * and instead tightens the gaps between dot/value/label/description —
+   * the KeyValue precedent, which varies `gap-y` under density rather than
+   * text size for the same reason (its own `size` prop already owns that).
+   * Comfortable is byte-for-byte this component's original hardcoded gaps,
+   * so the prop is additive. */
+  density?: Density;
   className?: string;
 }
 
@@ -43,13 +52,17 @@ const VALUE_SIZE: Record<"sm" | "md", string> = {
   md: "text-2xl",
 };
 
+const OUTER_GAP: Record<Density, string> = { comfortable: "gap-2", compact: "gap-1.5" };
+const INNER_GAP: Record<Density, string> = { comfortable: "gap-0.5", compact: "gap-0" };
+
 /** A prominent number with an optional status dot and caption(s) —
  * PluginTile's `Value`/`Detail` shape, generalized. */
-export function Stat({ value, description, label, status, size = "md", className }: StatProps) {
+export function Stat({ value, description, label, status, size = "md", density, className }: StatProps) {
+  const resolvedDensity = useDensity(density);
   return (
-    <div className={clsx("flex items-start gap-2", className)}>
+    <div data-density={resolvedDensity} className={clsx("flex items-start", OUTER_GAP[resolvedDensity], className)}>
       {status ? <span aria-hidden className={clsx("mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full", DOT_CLASSES[status])} /> : null}
-      <div className="flex flex-col gap-0.5">
+      <div className={clsx("flex flex-col", INNER_GAP[resolvedDensity])}>
         {label ? <p className="text-xs font-medium text-slate-600 dark:text-slate-400">{label}</p> : null}
         <p className={clsx("font-semibold tabular-nums text-slate-800 dark:text-slate-100", VALUE_SIZE[size])}>{value}</p>
         {description ? <p className="text-xs text-slate-600 dark:text-slate-400">{description}</p> : null}

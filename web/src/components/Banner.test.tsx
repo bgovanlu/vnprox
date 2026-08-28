@@ -69,4 +69,23 @@ describe("Banner", () => {
     render(<Banner tone="ok">applied</Banner>);
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
+
+  it("defaults to comfortable density, byte-for-byte the pre-T-4207 padding/gap/text size", () => {
+    render(<Banner tone="ok">applied</Banner>);
+    const banner = screen.getByRole("status");
+    expect(banner.dataset.density).toBe("comfortable");
+    expect(banner.className).toContain("gap-2 px-3 py-2 text-sm");
+  });
+
+  it("compact density renders tighter padding/gap and smaller text than comfortable", () => {
+    render(
+      <Banner tone="ok" density="compact">
+        applied
+      </Banner>,
+    );
+    const banner = screen.getByRole("status");
+    expect(banner.dataset.density).toBe("compact");
+    expect(banner.className).toContain("gap-1.5 px-2 py-1.5 text-xs");
+    expect(banner.className).not.toContain("px-3 py-2");
+  });
 });
