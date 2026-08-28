@@ -11,7 +11,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "../components/Toast";
-import type { GuestRulesetResponse, RulesetListResponse } from "../api/types";
+import type { GuestRulesetResponse, RulesetListResponse, RulesetView } from "../api/types";
 import { FirewallPage } from "./FirewallPage";
 
 const guestRulesetsResponse: RulesetListResponse = {
@@ -40,8 +40,15 @@ const guestDetail: GuestRulesetResponse = {
   },
 };
 
+const clusterRuleset: RulesetView = {
+  ref: "fw-ruleset:cluster:cluster",
+  scope: "cluster",
+  enabled: true,
+  rules: [{ pos: 0, enabled: true, direction: "in", action: "ACCEPT", proto: "tcp", dport: "22", comment: "ssh" }],
+};
+
 vi.mock("../api/firewall", () => ({
-  fetchClusterRuleset: vi.fn(() => Promise.reject(new Error("not used in this test"))),
+  fetchClusterRuleset: vi.fn(() => Promise.resolve(clusterRuleset)),
   fetchNodeRuleset: vi.fn(() => Promise.reject(new Error("not used in this test"))),
   fetchNodeRulesets: vi.fn(() => Promise.resolve({ items: [] })),
   fetchGuestRuleset: vi.fn((ref: string) => (ref === "guest:pve1:102" ? Promise.resolve(guestDetail) : Promise.reject(new Error("unexpected ref")))),
@@ -115,5 +122,30 @@ describe("FirewallPage deep link graceful degrade (T-2002 AC1)", () => {
   it("shows a message when the linked guest itself no longer exists", async () => {
     renderAt("/firewall?scope=guest&ref=guest%3Apve1%3A999&pos=0&origin=guest");
     await screen.findByText("Linked guest not found");
+  });
+});
+
+// T-3904's cross-link: the Datacenter/Nodes tabs' rule editor offers a
+// "View compiled chain" link per row into the compiled-ruleset inspector,
+// and the inspector's own reverse link (compiledLink.ts's
+// ruleEditorDeepLinkPath) uses the same bare scope/pos contract this page
+// must read for cluster/node scope (distinct from the guest-scope
+// origin/group contract parseFirewallDeepLink already covers above).
+describe("FirewallPage <-> compiled-ruleset cross-link (T-3904)", () => {
+  it("offers a 'View compiled chain' link on a cluster-scope rule, pointing at the compiled inspector", async () => {
+    renderAt("/firewall");
+    await screen.findByText("ssh");
+    const link = screen.getByRole("link", { name: "View compiled chain" });
+    expect(link).toHaveAttribute("href", expect.stringContaining("/firewall/compiled"));
+    expect(link).toHaveAttribute("href", expect.stringContaining("scope=cluster"));
+    expect(link).toHaveAttribute("href", expect.stringContaining("pos=0"));
+  });
+
+  it("highlights the named cluster-scope rule when linked from the compiled inspector", async () => {
+    renderAt("/firewall?scope=cluster&pos=0");
+    expect(screen.getByRole("tab", { name: "Datacenter" })).toHaveAttribute("aria-selected", "true");
+    await screen.findByText("ssh");
+    const focusedRows = document.querySelectorAll('[data-focused="true"]');
+    expect(focusedRows.length).toBeGreaterThan(0);
   });
 });

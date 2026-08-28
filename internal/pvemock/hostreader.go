@@ -93,6 +93,12 @@ type HostReader interface {
 	// JSON shape — the same "fixture data rendered through the real
 	// parser" precedent FRRBGPSummary/marshalBGPSummary set.
 	MDB(ctx context.Context, node string) ([]byte, error)
+
+	// NftRuleset returns node's fixture-declared compiled nftables
+	// ruleset (T-3904), verbatim — see NodeSpec.NftRuleset's doc comment
+	// for why this is a raw declared-text field rather than a synthesized
+	// one.
+	NftRuleset(ctx context.Context, node string) ([]byte, error)
 }
 
 // ContainerInteriorRaw is one lxc guest's raw host-side network-namespace
@@ -461,6 +467,35 @@ func (h *FixtureHostReader) MDB(_ context.Context, node string) ([]byte, error) 
 		}
 	}
 	return marshalMDB(bridges)
+}
+
+// emptyNftRuleset is the metainfo-only document a real `nft -j list
+// ruleset` produces on a node with no tables at all — the observed, real
+// shape of a disabled-firewall node (evidence file §2, sha256/date
+// pinned in planning/reports/evidence/
+// pve-9.2.4-nftables-firewall-engine-2026-08-28.txt). Used verbatim as
+// FixtureHostReader.NftRuleset's default so a fixture that declares no
+// `nft_ruleset:` block reads exactly like the real empty case, not an
+// empty byte slice a parser would have to special-case separately.
+const emptyNftRuleset = `{"nftables": [{"metainfo": {"version": "1.1.3", "release_name": "fixture", "json_schema_version": 1}}]}`
+
+// NftRuleset implements HostReader (T-3904): node's fixture-declared raw
+// compiled nftables ruleset, verbatim (see NodeSpec.NftRuleset's doc
+// comment for why this is a direct pass-through rather than a synthesized
+// render like marshalMDB/marshalBGPSummary above). A node with none
+// declared reads exactly like a real disabled-firewall node
+// (emptyNftRuleset), not an error.
+func (h *FixtureHostReader) NftRuleset(_ context.Context, node string) ([]byte, error) {
+	ns, ok := h.state.node(node)
+	if !ok {
+		return nil, fmt.Errorf("pvemock: host reader: %w: node %q", ErrNotFound, node)
+	}
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	if ns.nftRuleset == "" {
+		return []byte(emptyNftRuleset), nil
+	}
+	return []byte(ns.nftRuleset), nil
 }
 
 // watchedServiceNames is host.WatchedServices, duplicated here (as a plain

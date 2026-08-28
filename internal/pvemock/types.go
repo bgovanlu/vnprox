@@ -158,6 +158,23 @@ type NodeSpec struct {
 	// string (the default) models a node with no DHCP-managed SDN zone at
 	// all — a clean "no leases" result, not an error.
 	DHCPLeases string `yaml:"dhcp_leases,omitempty"`
+	// NftRuleset is this node's fixture-declared raw compiled nftables
+	// ruleset (T-3904, the compiled-ruleset inspector) — a YAML block
+	// scalar in `nft -j list ruleset`'s own JSON text, rendered verbatim
+	// by FixtureHostReader.NftRuleset (the same raw-pass-through
+	// convention DHCPLeases above uses, not a synthesized-from-other-
+	// fixture-fields render like marshalMDB/marshalBGPSummary): unlike
+	// MDB/FRR, no populated real nftables ruleset was ever observed on a
+	// live PVE host to derive a synthesis algorithm from (see
+	// planning/reports/evidence/
+	// pve-9.2.4-nftables-firewall-engine-2026-08-28.txt's "what was not
+	// observed" section) — a fixture wanting non-empty compiled output
+	// declares the exact JSON text directly, built from that evidence
+	// file's confirmed table/chain vocabulary. Empty string (the default)
+	// renders as the same metainfo-only, no-tables document a real
+	// disabled-firewall node produces (evidence file §2) — a clean "no
+	// compiled ruleset" result, not an error.
+	NftRuleset string `yaml:"nft_ruleset,omitempty"`
 	// Neighbors is this node's fixture-declared ARP/IPv6-neighbor table
 	// (T-805, docs/features/ipam.md §1's ARP/neighbor enrichment source)
 	// for this node's FixtureHostReader.Neighbors. Declared as already

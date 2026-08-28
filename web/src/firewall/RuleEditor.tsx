@@ -15,6 +15,7 @@
 // parsing (web/src/firewall/focusRule.ts).
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
+import { Link } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { useToast } from "../components/Toast";
@@ -24,6 +25,7 @@ import { useDrawerActions } from "../changesets/useDrawerActions";
 import type { FirewallObjectsResponse, RuleView } from "../api/types";
 import { scrollIntoViewIfSupported } from "../lib/scrollIntoView";
 import { validateRuleBuilder, type RuleBuilderFormValues } from "./builderValidation";
+import { compiledChainDeepLinkPath, type CompiledLinkScope } from "./compiledLink";
 import { computeReorderMove } from "./dragReorder";
 import { macroExpansionLabel, ruleMatchLabel } from "./format";
 import { useFirewallEffectsQuery } from "./queries";
@@ -161,9 +163,20 @@ export interface RuleEditorProps {
   target?: string;
   objects?: FirewallObjectsResponse;
   focusPos?: number;
+  /** T-3904 cross-link: when set, every row gets a "View compiled chain"
+   * link into the compiled-ruleset inspector for this rule's position.
+   * Deliberately offered only for "cluster"/"node" scope — see
+   * compiledLink.ts's doc comment on why guest/vnet scope has no
+   * attribution to link to today. Omit entirely to render no link
+   * (guest/vnet panels, and read-only rows with no target). */
+  compiledLinkScope?: CompiledLinkScope;
+  /** Which node's compiled ruleset the link should target — required for
+   * compiledLinkScope="node", ignored for "cluster" (see
+   * compiledChainDeepLinkPath's doc comment). */
+  compiledLinkNode?: string;
 }
 
-export function RuleEditor({ rules, target, objects, focusPos }: RuleEditorProps) {
+export function RuleEditor({ rules, target, objects, focusPos, compiledLinkScope, compiledLinkNode }: RuleEditorProps) {
   const { addOps, replaceOps } = useDrawerActions();
   const { toast } = useToast();
   const [dragIndex, setDragIndex] = useState<number | undefined>(undefined);
@@ -234,6 +247,7 @@ export function RuleEditor({ rules, target, objects, focusPos }: RuleEditorProps
             <TableHead>Action</TableHead>
             <TableHead>Match</TableHead>
             <TableHead>Comment</TableHead>
+            {compiledLinkScope && <TableHead>Compiled</TableHead>}
             {target && <TableHead />}
           </TableRow>
         </TableHeader>
@@ -280,6 +294,16 @@ export function RuleEditor({ rules, target, objects, focusPos }: RuleEditorProps
                 </div>
               </TableCell>
               <TableCell>{r.comment ?? "—"}</TableCell>
+              {compiledLinkScope && (
+                <TableCell>
+                  <Link
+                    to={compiledChainDeepLinkPath(compiledLinkScope, r.pos, compiledLinkNode)}
+                    className="text-xs text-accent-700 hover:underline dark:text-accent-400"
+                  >
+                    View compiled chain
+                  </Link>
+                </TableCell>
+              )}
               {target && (
                 <TableCell>
                   <button

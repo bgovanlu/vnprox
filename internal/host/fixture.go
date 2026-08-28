@@ -66,6 +66,9 @@ type pvemockReader interface {
 	// MDB returns node's fixture-declared bridge MDB state, rendered as
 	// `bridge -d -j mdb show`'s own JSON shape (T-3902).
 	MDB(ctx context.Context, node string) ([]byte, error)
+	// NftRuleset returns node's fixture-declared compiled nftables
+	// ruleset, rendered as `nft -j list ruleset`'s own JSON shape (T-3904).
+	NftRuleset(ctx context.Context, node string) ([]byte, error)
 }
 
 // FixtureReader adapts a *pvemock.FixtureHostReader (T-004's YAML
@@ -265,6 +268,18 @@ func (f *FixtureReader) IPv6RA(ctx context.Context, node string) ([]IPv6RAObserv
 // same JSON shape ParseMDB parses from a real `bridge -d -j mdb show`.
 func (f *FixtureReader) MDB(ctx context.Context, node string) ([]byte, error) {
 	b, err := f.r.MDB(ctx, node)
+	if err != nil {
+		return nil, wrapFixtureErr(err)
+	}
+	return b, nil
+}
+
+// NftRuleset implements Reader by delegating directly (T-3904): node's
+// fixture-declared compiled nftables ruleset, already rendered by pvemock
+// into the same JSON shape ParseNftRuleset parses from a real
+// `nft -j list ruleset`.
+func (f *FixtureReader) NftRuleset(ctx context.Context, node string) ([]byte, error) {
+	b, err := f.r.NftRuleset(ctx, node)
 	if err != nil {
 		return nil, wrapFixtureErr(err)
 	}

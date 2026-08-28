@@ -56,7 +56,11 @@ const TABS: { scope: Scope; label: string }[] = [
   { scope: "objects", label: "Objects" },
 ];
 
-function ClusterPanel() {
+interface ClusterPanelProps {
+  focusPos?: number;
+}
+
+function ClusterPanel({ focusPos }: ClusterPanelProps) {
   const { data, isLoading, error } = useClusterRulesetQuery();
   const { data: objects } = useFirewallObjectsQuery();
   if (isLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading datacenter firewall…</p>;
@@ -67,7 +71,7 @@ function ClusterPanel() {
     <div className="flex flex-col gap-3">
       <ScopeToggle scope="cluster" target={data.ref} enabled={data.enabled} />
       <FirewallBanners banners={data.banners} />
-      <RuleEditor rules={data.rules} target={data.ref} objects={objects} />
+      <RuleEditor rules={data.rules} target={data.ref} objects={objects} focusPos={focusPos} compiledLinkScope="cluster" />
     </div>
   );
 }
@@ -75,9 +79,10 @@ function ClusterPanel() {
 interface NodePanelProps {
   selected: string | undefined;
   onSelect: (node: string) => void;
+  focusPos?: number;
 }
 
-function NodePanel({ selected, onSelect }: NodePanelProps) {
+function NodePanel({ selected, onSelect, focusPos }: NodePanelProps) {
   const { data: list, isLoading: listLoading } = useNodeRulesetsQuery();
   const { data: objects } = useFirewallObjectsQuery();
   const nodes = useMemo(() => (list?.items ?? []).map((r) => r.node).filter((n): n is string => n !== undefined), [list]);
@@ -113,7 +118,14 @@ function NodePanel({ selected, onSelect }: NodePanelProps) {
         <>
           <ScopeToggle scope="node" target={ruleset.ref} enabled={ruleset.enabled} node={selected} />
           <FirewallBanners banners={ruleset.banners} />
-          <RuleEditor rules={ruleset.rules} target={ruleset.ref} objects={objects} />
+          <RuleEditor
+            rules={ruleset.rules}
+            target={ruleset.ref}
+            objects={objects}
+            focusPos={focusPos}
+            compiledLinkScope="node"
+            compiledLinkNode={selected}
+          />
         </>
       )}
     </div>
@@ -324,8 +336,26 @@ export function FirewallPage() {
   // this page manages scope/selection as local state, matching T-501's
   // original design note in web/src/fwlog/deeplink.ts).
   const deepLink = useMemo(() => parseFirewallDeepLink(searchParams), []); // eslint-disable-line react-hooks/exhaustive-deps
-  const [scope, setScope] = useState<Scope>(deepLink.scope === "guest" ? "guest" : "cluster");
-  const [selectedNode, setSelectedNode] = useState<string | undefined>(undefined);
+  // T-3904: the compiled-ruleset inspector's reverse cross-link — a
+  // cluster/node-scope rule position with no `origin`/`group` (those only
+  // mean something for the guest-scope resolved-view contract
+  // parseFirewallDeepLink otherwise handles) — read directly here rather
+  // than through that function, since "scope=cluster|node + bare pos" is
+  // its own, simpler contract (see compiledLink.ts's doc comment).
+  const rawScope = searchParams.get("scope");
+  const rawPos = searchParams.get("pos");
+  const compiledFocusPos = useMemo(() => {
+    if ((rawScope !== "cluster" && rawScope !== "node") || rawPos === null) return undefined;
+    const n = Number(rawPos);
+    return Number.isInteger(n) ? n : undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read once, like deepLink above
+  }, []);
+  const [scope, setScope] = useState<Scope>(
+    deepLink.scope === "guest" ? "guest" : rawScope === "node" ? "node" : "cluster",
+  );
+  const [selectedNode, setSelectedNode] = useState<string | undefined>(
+    rawScope === "node" ? (searchParams.get("node") ?? undefined) : undefined,
+  );
   const [selectedGuestRef, setSelectedGuestRef] = useState<string | undefined>(
     deepLink.scope === "guest" ? deepLink.ref : undefined,
   );
@@ -379,10 +409,10 @@ export function FirewallPage() {
       />
 
       <TabsContent value="cluster">
-        <ClusterPanel />
+        <ClusterPanel focusPos={scope === "cluster" ? compiledFocusPos : undefined} />
       </TabsContent>
       <TabsContent value="node">
-        <NodePanel selected={selectedNode} onSelect={setSelectedNode} />
+        <NodePanel selected={selectedNode} onSelect={setSelectedNode} focusPos={scope === "node" ? compiledFocusPos : undefined} />
       </TabsContent>
       <TabsContent value="guest">
         <GuestPanel selected={selectedGuestRef} onSelect={setSelectedGuestRef} focusRule={deepLink.focusRule} />

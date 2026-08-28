@@ -175,6 +175,22 @@ type Reader interface {
 	// FRRBGPSummary/FRREVPNVNI. See IPv6RAObservation's doc comment for the
 	// DHCPv6-server-presence field's documented inference limitation.
 	IPv6RA(ctx context.Context, node string) ([]IPv6RAObservation, error)
+
+	// NftRuleset returns node's raw `nft -j list ruleset` output (T-3904's
+	// compiled-ruleset inspector). Read-only, like every other method on
+	// this interface: there is no corresponding write path anywhere in
+	// this package, and docs/features.md's permanent boundary ("vnprox
+	// never installs its own nftables ruleset") means none should ever be
+	// added. An empty result (no PVE-authored tables at all — the parsed
+	// document is nil/{tables:[]}) is not itself an error condition: it is
+	// the real, observed shape of a node whose firewall is disabled, or
+	// whose pve-firewall is compiling the legacy iptables engine rather
+	// than the nftables tech-preview (see
+	// planning/reports/evidence/pve-9.2.4-nftables-firewall-engine-2026-08-28.txt
+	// — this is genuinely ambiguous from this read alone, and callers must
+	// say so rather than guess which). Use ParseNftRuleset to obtain a
+	// structured view.
+	NftRuleset(ctx context.Context, node string) ([]byte, error)
 }
 
 // ContainerInteriorRaw is one lxc guest's raw host-side

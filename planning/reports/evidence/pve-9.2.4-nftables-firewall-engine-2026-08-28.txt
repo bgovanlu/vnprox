@@ -1,0 +1,434 @@
+T-3904 (compiled-ruleset inspector) — evidence transcript
+Captured: 2026-08-28, read-only, against pvecube (192.168.1.9), PVE 9.2.4.
+Operator: root@pvecube via SSH. Every command below is a read-only query
+(nft list/list tables, iptables-save, systemctl status, journalctl, pvesh
+get, dpkg/strings/sha256sum on already-installed files) — nothing was
+started, stopped, enabled, or mutated. No `nft add/delete/flush`,
+`iptables -A/-D`, or `pve-firewall start/stop/restart` was ever run.
+
+============================================================================
+LOAD-BEARING FINDING (answer the card's own question first):
+============================================================================
+
+PVE 9.2.4 ships TWO firewall compile engines side by side, both installed
+and both running as systemd services on pvecube right now:
+
+  - pve-firewall (Perl, package pve-firewall 6.0.4) — the legacy engine,
+    compiles the ruleset to **iptables** (iptables-restore, PVEFW-* chains,
+    Firewall.pm's compile_iptables_filter).
+  - proxmox-firewall (Rust, package proxmox-firewall 1.2.3, binary
+    /usr/libexec/proxmox/proxmox-firewall, its own proxmox-firewall.service
+    + proxmox-firewall.timer) — the new engine, compiles the ruleset to
+    **nftables** (table `inet proxmox-firewall`, table `bridge
+    proxmox-firewall-guests` — table/chain names below are read straight
+    out of the installed binary, not guessed).
+
+Which engine actually runs is a **per-host boolean option** (`nftables`,
+default `false`, described by PVE itself as "tech preview" —
+`/usr/share/perl5/PVE/Firewall.pm` line ~1448) set in `host.fw`'s
+`[OPTIONS]` block. `PVE::Firewall::is_enabled_and_not_nftables()` decides,
+on every compile pass, which of the two actually writes rules — and drops
+a flag file (`/run/proxmox-nftables-firewall-force-disable`) that tells
+`proxmox-firewall` (the Rust daemon) to stand down whenever the legacy
+path is the one in force. On pvecube, this flag file currently EXISTS
+(see §3 below): the legacy iptables engine is what would install rules if
+the firewall were turned on, not nftables — **the opposite of this card's
+starting assumption**. Concretely: the option's own compiled-in default
+is `nftables: false`, pvecube's `host.fw`/`cluster.fw` do not override it,
+so **iptables is the currently-effective engine, not nftables**, even
+though proxmox-firewall's nftables path is fully installed, enabled at the
+systemd level, and clearly the direction PVE is investing in (see the
+changelog activity in §5 — five point releases between Aug 2025 and May
+2026).
+
+Both engines currently produce **zero compiled rules** on pvecube, for a
+reason that has nothing to do with which engine is selected: the
+datacenter firewall itself is administratively disabled
+(`cluster.fw`: `enable: 0`) — see §2. So the compiled ruleset this card's
+inspector will read is legitimately empty on pvecube today, and this
+transcript cannot show a live example of a populated table (see the
+"What was NOT observed" section for exactly what that means for the
+built inspector).
+
+============================================================================
+§1. Is nftables or iptables in use — `pve-firewall status`, packages,
+    binaries
+============================================================================
+
+$ pve-firewall status
+data did not match any variant of untagged enum IpamJsonData at line 1 column 94
+Status: disabled/running
+
+(The IpamJsonData line is stderr noise from an unrelated broken SDN IPAM
+plugin config on this specific dev host — see §6. It appears on every
+`pvesh`/`pve-firewall` invocation below; it is not part of this card's
+subject matter and is left in the transcript verbatim rather than
+elided, exactly as captured.)
+
+$ systemctl status pve-firewall --no-pager -l
+● pve-firewall.service - Proxmox VE firewall
+     Loaded: loaded (/usr/lib/systemd/system/pve-firewall.service; enabled; preset: enabled)
+     Active: active (running) since Mon 2026-04-13 15:39:36 EDT; 4 months 14 days ago
+   Main PID: 1218 (pve-firewall)
+...
+Apr 13 15:39:36 pvecube pve-firewall[1202]: data did not match any variant of untagged enum IpamJsonData at line 1 column 94
+Apr 13 15:39:36 pvecube pve-firewall[1218]: starting server
+
+$ which nft iptables iptables-save
+/usr/sbin/nft
+/usr/sbin/iptables
+/usr/sbin/iptables-save
+
+$ nft --version
+nftables v1.1.3 (Commodore Bullmoose #4)
+
+$ iptables --version
+iptables v1.8.11 (legacy)
+
+$ dpkg -l | grep -i -E "pve-firewall|proxmox-firewall|libpve-network"
+ii  libpve-network-api-perl   1.6.6   all  API endpoints for Proxmox VE's SDN stack
+ii  libpve-network-perl       1.6.6   all  Proxmox VE's SDN (Software Defined Network) stack
+ii  proxmox-firewall          1.2.3   amd64  Proxmox's nftables-based firewall written in rust
+ii  pve-firewall              6.0.4   amd64  Proxmox VE Firewall
+
+$ systemctl list-units --all --no-pager | grep -i -E "firewall|nft"
+  proxmox-firewall.service     loaded active running  Proxmox nftables firewall
+  pve-firewall-commit.service  loaded active exited   Commit Proxmox VE Firewall changes
+  pve-firewall.service         loaded active running  Proxmox VE firewall
+  pvefw-logger.service         loaded active running  Proxmox VE firewall logger
+
+$ systemctl status proxmox-firewall --no-pager -l
+● proxmox-firewall.service - Proxmox nftables firewall
+     Loaded: loaded (enabled; preset: enabled)
+     Active: active (running) since Mon 2026-04-13 15:39:35 EDT; 4 months 14 days ago
+   Main PID: 1190 (proxmox-firewal)
+     CGroup: /system.slice/proxmox-firewall.service
+             └─1190 /usr/libexec/proxmox/proxmox-firewall start
+Apr 13 15:39:35 pvecube systemd[1]: Started proxmox-firewall.service - Proxmox nftables firewall.
+Apr 13 15:39:35 pvecube proxmox-firewall[1190]: error updating firewall rules: data did not match any variant of untagged enum IpamJsonData at line 1 column 94
+
+$ pveversion -v | grep -i -E "firewall|pve-manager|proxmox-ve "
+pve-manager: 9.2.4 (running version: 9.2.4/5e5ae681198514d4)
+proxmox-firewall: 1.2.3
+pve-firewall: 6.0.4
+
+Conclusion: BOTH a Perl/iptables engine (pve-firewall) and a Rust/nftables
+engine (proxmox-firewall) are installed and running as independent
+systemd units on the same host. Neither package name alone answers "which
+one actually writes rules" — that is a config-driven choice (§3).
+
+============================================================================
+§2. Is the firewall actually enabled — the reason both rulesets are empty
+============================================================================
+
+$ nft -j list ruleset | wc -c
+119
+$ nft -j list ruleset
+(prints only the metainfo object — no tables)
+$ nft -j list tables
+{"nftables": [{"metainfo": {"version": "1.1.3", "release_name": "Commodore Bullmoose #4", "json_schema_version": 1}}]}
+$ nft list ruleset
+(empty output)
+
+$ iptables-save | head -80
+# Generated by iptables-save v1.8.11
+*raw
+:PREROUTING ACCEPT [...]
+:OUTPUT ACCEPT [...]
+COMMIT
+*filter
+:INPUT ACCEPT [...]
+:FORWARD ACCEPT [...]
+:OUTPUT ACCEPT [...]
+COMMIT
+(no PVEFW-* chains — filter table carries only the three default policy
+chains, no user chains at all)
+
+$ ip6tables-save | head -40
+(same shape, no PVEFW-* chains)
+
+$ cat /etc/pve/firewall/cluster.fw
+[OPTIONS]
+
+enable: 0
+
+$ cat /etc/pve/nodes/pvecube/host.fw
+[OPTIONS]
+
+enable: 0
+
+$ pvesh get /cluster/firewall/options --output-format json
+{"digest":"2c1759ebec624b1e511ba7f635915ab2df354cba","enable":0}
+
+Conclusion: the datacenter firewall is administratively OFF
+(`cluster.fw enable: 0`). Neither engine's compile pass writes any rule
+while disabled — PVE::Firewall::update() calls remove_pvefw_chains() and
+returns early in exactly this state (Firewall.pm, see §4). This is why
+`nft -j list ruleset` and `iptables-save` both come back empty: it is the
+correct, expected output for "firewall disabled," not a read failure or a
+sign that the wrong engine was queried.
+
+============================================================================
+§3. Which engine WOULD run if the firewall were turned on — read from
+    source, not toggled (toggling the live firewall on pvecube is exactly
+    the kind of mutating pvesh/config write this task's rules forbid)
+============================================================================
+
+$ dpkg -L pve-firewall | grep perl5
+/usr/share/perl5/PVE/Firewall.pm
+/usr/share/perl5/PVE/FirewallSimulator.pm
+/usr/share/perl5/PVE/Firewall/Helpers.pm
+/usr/share/perl5/PVE/API2/Firewall/*.pm
+
+$ sed -n '1440,1454p' /usr/share/perl5/PVE/Firewall.pm
+    nftables => {
+        description => "Enable nftables based firewall (tech preview)",
+        type => 'boolean',
+        default => 0,
+        optional => 1,
+    },
+
+$ sed -n '5270,5335p' /usr/share/perl5/PVE/Firewall.pm
+my sub get_nftables_option {
+    my ($cluster_conf, $host_conf) = @_;
+    if (!-x "/usr/libexec/proxmox/proxmox-firewall") { return 0; }
+    ...
+    return $host_conf->{options}->{nftables};
+}
+my $FORCE_NFT_DISABLE_FLAG_FILE = $PVE::Firewall::Helpers::FORCE_NFT_DISABLE_FLAG_FILE;
+my sub update_force_nftables_disable_flag {
+    my ($cluster_firewall_enabled, $is_nftables) = @_;
+    if (!($cluster_firewall_enabled && $is_nftables)) {
+        # drop the flag file -> tell proxmox-firewall to stand down
+        if (!-e $FORCE_NFT_DISABLE_FLAG_FILE) { open(...) or warn(...); }
+    } else {
+        unlink($FORCE_NFT_DISABLE_FLAG_FILE) or $!{ENOENT} or warn(...);
+    }
+}
+my sub is_enabled_and_not_nftables {
+    my ($cluster_conf, $host_conf) = @_;
+    my $is_nftables = get_nftables_option($cluster_conf, $host_conf);
+    update_force_nftables_disable_flag($cluster_conf->{options}->{enable}, $is_nftables);
+    return $cluster_conf->{options}->{enable} && !$is_nftables;
+}
+sub update {
+    my $code = sub {
+        ...
+        if (!is_enabled_and_not_nftables($cluster_conf, $hostfw_conf)) {
+            PVE::Firewall::remove_pvefw_chains();
+            return;
+        }
+        my ($ruleset, ...) = compile($cluster_conf, $hostfw_conf);   # -> iptables
+
+$ grep -n "FORCE_NFT_DISABLE_FLAG_FILE\|sub is_nftables" /usr/share/perl5/PVE/Firewall/Helpers.pm
+our $FORCE_NFT_DISABLE_FLAG_FILE = "/run/proxmox-nftables-firewall-force-disable";
+sub is_nftables {
+    return !-e $FORCE_NFT_DISABLE_FLAG_FILE;
+}
+
+$ ls -la /run/proxmox-nftables-firewall-force-disable
+-rw-r--r-- 1 root root 0 Apr 13 15:39 /run/proxmox-nftables-firewall-force-disable
+(EXISTS -> proxmox-firewall is currently force-disabled; if the
+datacenter firewall were turned on right now, with no other config
+change, the legacy Perl engine would compile iptables rules, not
+nftables — because `nftables:` is unset in both cluster.fw and host.fw,
+and that option's own compiled-in default is `0`/false.)
+
+Conclusion: nftables is opt-in per host (`nftables: 1` under host.fw's
+`[OPTIONS]`), defaults OFF, and is explicitly labeled "tech preview" by
+PVE's own schema description. On a default PVE 9.2.4 install — pvecube
+included — turning the firewall on compiles to **iptables**, not
+nftables. The Rust nftables engine only takes over once an operator (or
+their config management) sets `nftables: 1` on that specific node.
+
+============================================================================
+§4. proxmox-firewall's real table/chain vocabulary — read from the
+    installed binary (strings), not from documentation or invented
+============================================================================
+
+$ sha256sum /usr/libexec/proxmox/proxmox-firewall
+607ecfa5d5e058dcded17791ffd8baec171df272f1ae7e7f0e5ef94ca35f3ce5
+
+$ strings /usr/libexec/proxmox/proxmox-firewall | grep -E "^(add|flush) chain|^add table"
+add table inet proxmox-firewall
+add table bridge proxmox-firewall-guests
+
+add chain inet proxmox-firewall input {type filter hook input priority filter; policy drop;}
+add chain inet proxmox-firewall output {type filter hook output priority filter; policy accept;}
+add chain inet proxmox-firewall forward {type filter hook forward priority filter; policy accept;}
+add chain inet proxmox-firewall host-bridge-input {type filter hook input priority filter - 1; policy accept;}
+add chain inet proxmox-firewall host-bridge-output {type filter hook output priority filter + 1; policy accept;}
+add chain inet proxmox-firewall accept-management
+add chain inet proxmox-firewall allow-icmp
+add chain inet proxmox-firewall allow-ndp-in
+add chain inet proxmox-firewall allow-ndp-out
+add chain inet proxmox-firewall before-bridge
+add chain inet proxmox-firewall block-invalid-tcp
+add chain inet proxmox-firewall block-ndp-in
+add chain inet proxmox-firewall block-ndp-out
+add chain inet proxmox-firewall block-smurfs
+add chain inet proxmox-firewall block-synflood
+add chain inet proxmox-firewall default-in
+add chain inet proxmox-firewall default-out
+add chain inet proxmox-firewall do-reject
+add chain inet proxmox-firewall log-drop-invalid-tcp
+add chain inet proxmox-firewall log-drop-smurfs
+
+add chain bridge proxmox-firewall-guests forward {type filter hook forward priority 0; policy accept;}
+add chain bridge proxmox-firewall-guests vm-in {type filter hook postrouting priority 0; policy accept;}
+add chain bridge proxmox-firewall-guests vm-out {type filter hook prerouting priority 0; policy accept;}
+add chain bridge proxmox-firewall-guests pre-vm-in
+add chain bridge proxmox-firewall-guests pre-vm-out
+add chain bridge proxmox-firewall-guests before-bridge
+add chain bridge proxmox-firewall-guests allow-dhcp-in
+add chain bridge proxmox-firewall-guests allow-dhcp-out
+add chain bridge proxmox-firewall-guests block-dhcp-in
+add chain bridge proxmox-firewall-guests block-dhcp-out
+add chain bridge proxmox-firewall-guests allow-icmp
+add chain bridge proxmox-firewall-guests allow-ndp-in
+add chain bridge proxmox-firewall-guests allow-ndp-out
+add chain bridge proxmox-firewall-guests allow-ra-out
+add chain bridge proxmox-firewall-guests block-ndp-in
+add chain bridge proxmox-firewall-guests block-ndp-out
+add chain bridge proxmox-firewall-guests block-ra-out
+add chain bridge proxmox-firewall-guests do-reject
+
+$ strings /usr/libexec/proxmox/proxmox-firewall | grep -oE "chain (cluster-forward|host-forward|host-in|host-out) \{\}"
+chain cluster-forward {}
+chain host-forward {}
+chain host-in {}
+chain host-out {}
+(these read as internal scope-name constants inside the Rust source's own
+config model — "cluster"/"host" — separate from the literal nft chain
+names above; not independently confirmed against a populated ruleset,
+see "what was not observed" below)
+
+$ strings /usr/libexec/proxmox/proxmox-firewall | grep -iE "guest-|vmid|/etc/pve"
+loading vmlist
+loading host config       /etc/pve/local/host.fw
+loading cluster config    /etc/pve/firewall/cluster.fw
+loading IPAM config       /etc/pve/priv/ipam.db
+loading SDN running-config /etc/pve/sdn/.running-config
+loading SDN config        /etc/pve/sdn/firewall
+guest-
+guest-ipam-
+guest-bridge-group-
+not a valid vmid: <...>
+Creating IPSet for guest without vmid parameter!
+can only create ipfilter for guests
+
+(dynamically-named object prefixes — sets/verdict-maps, most likely, not
+confirmed to be *chain* names — embed "guest-"/vmid; the base per-guest
+traffic chains found above are the small fixed set — vm-in/vm-out/
+pre-vm-in/pre-vm-out — shared across all guests via interface/set
+matching inside those chains, not one chain per guest. This is the
+concrete reason internal/host/nftables.go's parser does NOT claim to
+recover "which guest" from a chain name alone.)
+
+$ strings /usr/libexec/proxmox/proxmox-firewall | grep -oE "[a-z_]*comment[a-z_]*" | head -5
+commentElementconfigvalConcatSet...   (confirms nftables JSON's standard
+per-object "comment" field is present in the binary's type vocabulary —
+this is nftables' own generic JSON schema field, not evidence of PVE
+attaching original-rule identifiers to it; no populated rule was
+observed to confirm what, if anything, actually goes in it)
+
+Conclusion: table/chain names above are ground truth (read directly from
+the shipped binary's embedded nft command strings, sha256 pinned above),
+not invented and not copied from docs. They are the basis for
+internal/host/nftables.go's "PVE built-in chain" recognition list and for
+internal/pvemock's hand-authored nftables fixture (both cite this file).
+What is NOT ground truth, and is called out as such in code comments: the
+exact expression/statement shape of an individual *rule* inside these
+chains (proto/address/port match syntax, verdict placement, whether/how
+a rule is tagged back to its originating vnprox/pve-firewall rule ID) —
+no populated ruleset was ever observed to confirm this, see below.
+
+============================================================================
+§5. Direction of travel — proxmox-firewall's own changelog
+============================================================================
+
+$ zcat /usr/share/doc/proxmox-firewall/changelog.gz | head -60
+proxmox-firewall (1.2.3) trixie; urgency=medium
+  * fix #6399: update to proxmox-ve-config 0.10 to ensure firewall rules
+    whose comment contains a hash sign no longer abort rule parsing...
+  * skip a single firewall rule that fails to generate, logging a warning,
+    instead of aborting the whole ruleset update...
+ -- Proxmox Support Team  Wed, 20 May 2026
+
+proxmox-firewall (1.2.2) trixie; urgency=medium
+  * fix regression in IP-set lookup for auto-generated IPAM IP-sets.
+ -- Proxmox Support Team  Tue, 21 Apr 2026
+
+proxmox-firewall (1.2.1) trixie; urgency=medium
+  * fix generating rules with both ICMP type and ICMP code set.
+  * map the iptables icmp(v6)-types to the nftables icmp(v6)-types
+ -- Proxmox Support Team  Mon, 17 Nov 2025
+
+proxmox-firewall (1.2.0) trixie; urgency=medium
+  * fix #6831: move conntrack statement to forward chain...
+  * vnet firewall: create chains in host table only if host-level
+    firewall is enabled.
+  * ip filter: restrict containers to use their specific IP...
+  * fix #6336: fix IP filter matching logic...
+  * fix #6107: add support for legacy ipset and alias names...
+  * merge management ipset with local_network...
+ -- Proxmox Support Team  Sat, 04 Oct 2025
+
+proxmox-firewall (1.1.2) trixie; urgency=medium
+  * update to proxmox-network-api interface parser
+ -- Proxmox Support Team  Thu, 14 Aug 2025
+
+Conclusion: five point releases in nine months (Aug 2025 - May 2026),
+still labeled "tech preview," bug-for-bug feature parity work against the
+legacy iptables engine actively ongoing as of the most recent release
+(May 2026). Confirms this is the direction PVE is investing in, but also
+confirms it is not yet the default and still actively changing shape —
+relevant to how conservatively internal/host/nftables.go's parser should
+treat any single field it cannot confirm from a live ruleset.
+
+============================================================================
+§6. Aside: the "IpamJsonData" stderr noise seen in §1/§2
+============================================================================
+
+Every `pvesh`/`pve-firewall` command above prints:
+  data did not match any variant of untagged enum IpamJsonData at line 1 column 94
+This is proxmox-firewall/pve-firewall failing to parse this dev host's
+own `/etc/pve/priv/ipam.db` (or equivalent auto-generated IPAM JSON) — an
+unrelated, pre-existing SDN IPAM data issue on pvecube, not caused by
+this investigation and not itself part of what T-3904 inspects. Flagged
+here only because it appears verbatim in the transcript above and a
+future reader should not mistake it for evidence about the nftables
+question.
+
+============================================================================
+What was NOT observed (explicit, per CLAUDE.md's "say so, don't guess")
+============================================================================
+
+- No populated `nft -j list ruleset` output — the datacenter firewall was
+  disabled for the entire capture window, and turning it on to observe
+  compiled rules is exactly the live-config mutation this task's rules
+  forbid. internal/host/nftables.go's parser is therefore validated
+  against (a) the real empty-ruleset shape captured in §2, and (b) a
+  hand-authored fixture built strictly from the table/chain vocabulary
+  confirmed in §4 — never against a real populated document. This is
+  called out in that file's own doc comment, not hidden.
+- No confirmation of individual-rule expression shape (how a saddr/dport/
+  action pentuple actually renders in JSON `expr`), nor of whether/how a
+  compiled rule is tagged (via `comment` or otherwise) back to the
+  specific pve-firewall/vnprox rule that produced it. This is the direct
+  reason the compiled-ruleset inspector's rule-to-vnprox-rule attribution
+  is implemented as an explicitly-labeled best-effort match (cluster/node
+  scope only, against internal/fw's resolved ruleset) rather than a
+  claimed exact mapping, and why guest/vnet-scope compiled entries
+  (table `bridge proxmox-firewall-guests`) are labeled "not determinable"
+  rather than guessed at — see internal/api/nftables.go's doc comment.
+- No confirmation of the legacy iptables engine's exact PVEFW-* chain/
+  rule text when populated (iptables-save was captured empty for the same
+  reason). Out of scope for this card regardless — the card asks
+  specifically for the nftables reader — but material to the finding
+  above: on pvecube today, iptables is the engine that would actually
+  populate if the firewall were turned on, so this inspector reading only
+  nftables output will show an honest "no nftables ruleset here" empty
+  state rather than the (nonexistent, in nftables terms) compiled rules a
+  reader might expect if the firewall were enabled in its current,
+  un-opted-in configuration.

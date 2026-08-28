@@ -19,6 +19,7 @@ type nodeState struct {
 	frr            *FRRSpec
 	corosync       *CorosyncSpec
 	dhcpLeases     string
+	nftRuleset     string
 	neighbors      []NeighborSpec
 	conntrack      []ConntrackEntrySpec
 	ipv6RA         []IPv6RASpec
@@ -198,6 +199,7 @@ func NewState(f *Fixture) *State {
 			frr:        ns.FRR,
 			corosync:   ns.Corosync,
 			dhcpLeases: ns.DHCPLeases,
+			nftRuleset: ns.NftRuleset,
 			neighbors:  append([]NeighborSpec(nil), ns.Neighbors...),
 			conntrack:  append([]ConntrackEntrySpec(nil), ns.Conntrack...),
 			ipv6RA:     append([]IPv6RASpec(nil), ns.IPv6RA...),

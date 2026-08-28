@@ -124,6 +124,10 @@ type Real struct {
 	// RDisc6TimeoutMs bounds each per-interface rdisc6 solicit-and-wait
 	// call; defaults to RDisc6DefaultTimeoutMs. Overridable for tests.
 	RDisc6TimeoutMs int
+	// NftRulesetCommand is the argv used to fetch the compiled nftables
+	// ruleset as JSON; defaults to `nft -j list ruleset` (T-3904's
+	// compiled-ruleset inspector). Overridable for tests.
+	NftRulesetCommand []string
 }
 
 // NewReal constructs a Real reader with the standard Debian/Proxmox paths
@@ -152,6 +156,7 @@ func NewReal() *Real {
 		RouteRulesV6Command: []string{"ip", "-j", "-6", "rule", "show"},
 		FRRRIBV4Command:     []string{"vtysh", "-c", "show ip route json"},
 		FRRRIBV6Command:     []string{"vtysh", "-c", "show ipv6 route json"},
+		NftRulesetCommand:   []string{"nft", "-j", "list", "ruleset"},
 	}
 }
 
@@ -363,6 +368,36 @@ func (r *Real) MDB(ctx context.Context, _ string) ([]byte, error) {
 		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
 			return nil, fmt.Errorf("host: %w: %v", ErrMDBUnavailable, err)
 		}
+		return nil, fmt.Errorf("host: running %v: %w", argv, err)
+	}
+	return out, nil
+}
+
+// NftRuleset implements Reader (T-3904) by shelling out to nftables' own
+// `nft -j list ruleset`. Like MDB/FRR/corosync, there is no netlink/procfs
+// shortcut for a compiled nftables ruleset — nft's own JSON output mode is
+// the tolerant, versioned wire format this package's parser (nftables.go)
+// is built against. Unlike ErrMDBUnavailable/ErrFRRUnavailable, a missing
+// `nft` binary is treated as an ordinary error rather than a documented
+// graceful-degradation sentinel: nftables ships as part of PVE 9.2.4's
+// base install (planning/reports/evidence/
+// pve-9.2.4-nftables-firewall-engine-2026-08-28.txt §1 confirms
+// /usr/sbin/nft present), so its absence would be an anomaly worth
+// surfacing as a real failure, not an expected/common state — the
+// documented, expected degraded case for this method is instead an empty
+// *result* (no PVE-authored tables), which that same evidence file shows
+// is ambiguous between "firewall disabled" and "this node compiles the
+// legacy iptables engine instead" — a distinction this method cannot make
+// on its own and callers must not guess at (see Reader.NftRuleset's doc
+// comment).
+func (r *Real) NftRuleset(ctx context.Context, _ string) ([]byte, error) {
+	argv := r.NftRulesetCommand
+	if len(argv) == 0 {
+		argv = []string{"nft", "-j", "list", "ruleset"}
+	}
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // fixed, config-supplied argv, not user input
+	out, err := cmd.Output()
+	if err != nil {
 		return nil, fmt.Errorf("host: running %v: %w", argv, err)
 	}
 	return out, nil

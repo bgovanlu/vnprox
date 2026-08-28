@@ -111,3 +111,7 @@ func (r *Real) IPv6RA(_ context.Context, _ string) ([]IPv6RAObservation, error) 
 func (r *Real) MDB(_ context.Context, _ string) ([]byte, error) {
 	return nil, fmt.Errorf("host: MDB: %w", ErrUnsupportedPlatform)
 }
+
+func (r *Real) NftRuleset(_ context.Context, _ string) ([]byte, error) {
+	return nil, fmt.Errorf("host: NftRuleset: %w", ErrUnsupportedPlatform)
+}
