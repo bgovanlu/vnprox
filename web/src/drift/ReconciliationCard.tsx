@@ -48,7 +48,7 @@ function PresenceChip({ position, present }: { position: SpecPosition; present: 
       className={
         present
           ? "rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-800 dark:border-slate-600 dark:text-slate-100"
-          : "rounded border border-dashed border-slate-400 px-2 py-0.5 text-xs text-slate-500 dark:border-slate-600 dark:text-slate-400"
+          : "rounded border border-dashed border-outline px-2 py-0.5 text-xs text-fg-subtle"
       }
     >
       {POSITION_LABEL[position]}: {presenceLabel(position, present)}

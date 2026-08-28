@@ -269,6 +269,57 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
     }
   }
 
+  // T-4216: the topology map, which the route table above does NOT capture.
+  //
+  // `src/topology/store.ts` defaults `viewMode` to "switch", and the loop
+  // above navigates without clicking anything, so `topology-*.png` is the
+  // switch faceplate. The graph canvas — the flagship visual, and the whole
+  // subject of Phase 43 — had no baseline at all: T-4301 re-pointed every
+  // colour that canvas draws with, and this suite could not have noticed.
+  //
+  // The view is selected with the product's own share-link deeplink
+  // (`svView=graph`, src/topology/savedViews.ts) rather than by clicking the
+  // Switch/Graph control. A click would make the capture depend on a control
+  // label, so renaming a button would silently stop capturing the map — the
+  // same class of silent-skip this card was opened for. `svLayers` is
+  // mandatory: decodeViewFromSearch returns undefined without it and the
+  // deeplink is ignored wholesale, which would leave this test quietly
+  // screenshotting the switch view a second time.
+  const GRAPH_DEEPLINK = "/topology?svLayers=phys,l2,sdn,guest&svView=graph&svZoom=1&svX=0&svY=0";
+
+  for (const mode of MODES) {
+    test(`visual: /topology graph view (${mode.name})`, async ({ page }, testInfo) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await forceTheme(page, mode.theme);
+      if (mode.demo) {
+        await forceDemoAccent(page);
+      }
+      await blockLiveUpdates(page);
+      await suppressOnboardingWalkthrough(page);
+
+      await page.goto(GRAPH_DEEPLINK);
+      await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
+      // Assert the deeplink actually took, rather than trusting it: a
+      // silently-ignored parameter is indistinguishable from a working one in
+      // a screenshot nobody has looked at yet, which is how the map came to
+      // be missing from this suite in the first place.
+      await expect(page.getByRole("radio", { name: "Graph" })).toBeChecked();
+      await waitForSteadyState(page);
+      await page.evaluate(() => document.fonts.ready);
+
+      const updating = testInfo.config.updateSnapshots !== "none";
+      const snapshotName = `topology-graph-${mode.name}.png`;
+      if (!updating && !existsSync(testInfo.snapshotPath(snapshotName))) {
+        test.skip(
+          true,
+          `No baseline snapshot for the topology graph view (${mode.name}) yet. Generate baselines first: ` +
+            "npx playwright test --config=playwright.visual.config.ts --update-snapshots",
+        );
+      }
+      await expect(page).toHaveScreenshot(snapshotName, { fullPage: true });
+    });
+  }
+
   // /login is intentionally outside routedPagePaths() (see routeInventory.ts)
   // since it is the one route every other test's shared storage state
   // never actually visits — pre-auth chrome with its own layout, captured

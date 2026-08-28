@@ -118,7 +118,7 @@ export function LayerToggleBar({
               "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
               active
                 ? "bg-accent-600 text-white"
-                : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+                : "text-fg-subtle hover:bg-slate-100 dark:hover:bg-slate-800",
             )}
           >
             <kbd className="rounded border border-current/30 px-1 text-[10px] opacity-70">{LAYER_KEYS[layer]}</kbd>
@@ -135,7 +135,7 @@ export function LayerToggleBar({
             "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
             flowsLayerActive
               ? "bg-cyan-600 text-white"
-              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+              : "text-fg-subtle hover:bg-slate-100 dark:hover:bg-slate-800",
           )}
         >
           Flows
@@ -150,7 +150,7 @@ export function LayerToggleBar({
             "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
             latencyLayerActive
               ? "bg-fuchsia-600 text-white"
-              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+              : "text-fg-subtle hover:bg-slate-100 dark:hover:bg-slate-800",
           )}
         >
           Latency
@@ -165,7 +165,7 @@ export function LayerToggleBar({
             "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
             mtuLayerActive
               ? "bg-teal-600 text-white"
-              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+              : "text-fg-subtle hover:bg-slate-100 dark:hover:bg-slate-800",
           )}
         >
           MTU
@@ -186,7 +186,7 @@ export function LayerToggleBar({
               // signal azure is what made one active toggle in this bar
               // paint a different colour from the other.
               ? "bg-accent-600 text-white"
-              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+              : "text-fg-subtle hover:bg-slate-100 dark:hover:bg-slate-800",
           )}
         >
           WireGuard
@@ -201,7 +201,7 @@ export function LayerToggleBar({
             "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
             cephLayerActive
               ? "bg-orange-600 text-white"
-              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+              : "text-fg-subtle hover:bg-slate-100 dark:hover:bg-slate-800",
           )}
         >
           Ceph
@@ -216,7 +216,7 @@ export function LayerToggleBar({
             "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
             k8sLayerActive
               ? "bg-emerald-600 text-white"
-              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+              : "text-fg-subtle hover:bg-slate-100 dark:hover:bg-slate-800",
           )}
         >
           Kubernetes
@@ -231,7 +231,7 @@ export function LayerToggleBar({
             "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
             recencyLayerActive
               ? "bg-amber-600 text-white"
-              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+              : "text-fg-subtle hover:bg-slate-100 dark:hover:bg-slate-800",
           )}
         >
           Recency
@@ -246,7 +246,7 @@ export function LayerToggleBar({
             "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
             replayLayerActive
               ? "bg-lime-600 text-white"
-              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+              : "text-fg-subtle hover:bg-slate-100 dark:hover:bg-slate-800",
           )}
         >
           Replay

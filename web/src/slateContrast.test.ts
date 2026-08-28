@@ -77,6 +77,8 @@ const OFF_LADDER: Record<string, string> = {
     "IncidentsPage: bg-slate-900 in both themes",
   "rounded-sm border border-slate-600 px-1 text-[9px] uppercase leading-tight tracking-wider text-slate-300":
     "SwitchFaceplate name plate (T-3503): bg-slate-800 in both themes",
+  "border-slate-700 bg-slate-900 text-slate-100 dark:border-slate-600 dark:bg-slate-800":
+    "Tooltip: bg-slate-900/800 in both themes — a tooltip is a dark chip by design",
 
   // 2. Always-COLOURED surface — the case the old file-keyed list had no
   //    name for. A status or accent fill is the same in both themes, so the
@@ -86,7 +88,14 @@ const OFF_LADDER: Record<string, string> = {
   "absolute max-w-[200px] rounded border border-amber-400 bg-amber-50 p-1 text-[10px] text-slate-800 shadow-sm dark:border-amber-500 dark:bg-amber-950 dark:text-amber-100":
     "AnnotationLayer: amber fill in both themes, and its dark partner is amber-100, not a slate step",
 
-  // 3. Not text. `stroke="currentColor"` on a chart grid takes its colour
+  // 3. Disabled controls. WCAG 1.4.3 exempts them explicitly, and dimming is
+  //    how a control says it is unavailable — meeting the text floor here
+  //    would remove the affordance.
+  "pointer-events-none inline-flex h-8 items-center rounded-md bg-slate-200/50 px-2.5 text-sm text-slate-400 dark:bg-slate-800/50":
+    "CaptureDialog: disabled control",
+  "text-slate-400 dark:text-slate-500": "TokensSection: disabled control",
+
+  // 4. Not text. `stroke="currentColor"` on a chart grid takes its colour
   //    from a text-* class, but a gridline is a decorative graphic: AA does
   //    not apply, and a grid that met 4.5:1 would overpower its own chart.
   //    slate-200/slate-700 is the correct faint pairing, not an inverted one
@@ -107,12 +116,33 @@ function tsxFilesUnder(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** Every `className="..."` literal in a source file. Template literals and
- * `clsx()` calls are not matched: this guard deliberately covers the plain,
- * overwhelmingly common form rather than trying to be a CSS-aware parser
- * and being wrong in ways nobody can predict. */
-function classNameLiterals(source: string): string[] {
-  return [...source.matchAll(/className="([^"]*)"/g)].map((m) => m[1] ?? "");
+/** Every string literal in a source file that names a slate text step.
+ *
+ * T-4215 scanned only `className="..."` literals, on the stated grounds that
+ * this was "the plain, overwhelmingly common form". It is common; it is not
+ * overwhelming. Measured when the visual gate finally ran and I opened
+ * `ViewModeToggle.tsx` for an unrelated reason: **28 sub-AA slate steps across
+ * 14 files sit outside that form**, in `clsx()` arguments and template
+ * literals, where the old scan could not see them. `LayerToggleBar.tsx` alone
+ * had nine.
+ *
+ * So the filter is now the CONTENT of the literal rather than the syntax
+ * around it: any double-quoted string that mentions a slate text step is a
+ * candidate class list, wherever it appears. That admits the occasional
+ * non-className string — a test fixture, a doc comment quoted in code — and
+ * OFF_LADDER absorbs those by exact text, which is the same escape hatch the
+ * genuinely-off-ladder call sites use.
+ *
+ * Template literals with `${}` interpolation are still not parsed. That is a
+ * real remaining limit, stated here rather than left to be rediscovered: a
+ * class list assembled from fragments cannot be checked by reading source. */
+function classListLiterals(source: string): string[] {
+  const out: string[] = [];
+  for (const m of source.matchAll(/"([^"\n]*)"/g)) {
+    const literal = m[1] ?? "";
+    if (/(^|\s)(dark:)?text-slate-\d{2,3}(\s|$)/.test(literal)) out.push(literal);
+  }
+  return out;
 }
 
 /** Tailwind's slate scale, and the surface ladder read out of index.css, so
@@ -192,7 +222,7 @@ function findOffences(): Offence[] {
   const found: Offence[] = [];
   for (const file of tsxFilesUnder(SRC)) {
     const rel = relative(SRC, file);
-    for (const classes of classNameLiterals(readFileSync(file, "utf8"))) {
+    for (const classes of classListLiterals(readFileSync(file, "utf8"))) {
       if (classes in OFF_LADDER) continue;
       if (hasUnpairedSlate(classes)) found.push({ file: rel, classes });
     }

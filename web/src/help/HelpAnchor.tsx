@@ -34,7 +34,7 @@ export function HelpAnchor({ topic, className }: HelpAnchorProps) {
       title={label}
       className={clsx(
         "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[0.7rem] font-semibold leading-none",
-        "border-slate-300 text-slate-500 hover:border-slate-400 hover:text-slate-900",
+        "border-border-strong text-fg-subtle hover:border-outline hover:text-fg",
         "dark:border-slate-600 dark:text-slate-400 dark:hover:border-slate-400 dark:hover:text-slate-100",
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
         className,

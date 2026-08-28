@@ -15,11 +15,21 @@ import type { PortBodyKind } from "./portMedia";
 // Per-status stroke/fill for the jack itself. A down port is drawn in the
 // same red family its LED uses, but the shape carries the signal too (see
 // StatusLed's glyphs) so nothing here is colour-only.
+//
+// T-4216: these were raw red/amber/slate pairs. The `unknown` jack in
+// particular measured 2.37:1 in light mode and 2.98 in dark — below even the
+// 3:1 that WCAG 1.4.11 asks of a graphic, which is the floor that applies
+// here since a drawn jack is not text. It was invisible to
+// slateContrast.test.ts twice over: the strings live in a lookup table
+// rather than a `className="..."` literal, AND the guard measures the 4.5
+// text floor, so a graphic failing at 2.37 would have been reported for the
+// wrong reason even once seen. The status tokens clear both floors and say
+// what the colour means at the same time.
 const BODY_CLASS: Record<EntityStatus, string> = {
   ok: "text-fg-subtle",
-  down: "text-red-500 dark:text-red-400",
-  degraded: "text-amber-600 dark:text-amber-400",
-  unknown: "text-slate-400 dark:text-slate-500",
+  down: "text-status-critical",
+  degraded: "text-status-degraded",
+  unknown: "text-status-unknown",
 };
 
 /**

@@ -39,7 +39,7 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
               active
                 ? // T-905 (axe): accent-700 not -600 — white-on-accent-600 is 3.76:1, below AA.
                   "bg-accent-700 text-white"
-                : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+                : "text-fg-subtle hover:bg-slate-100 dark:hover:bg-slate-800",
             )}
           >
             {label}

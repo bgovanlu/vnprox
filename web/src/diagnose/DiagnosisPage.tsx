@@ -50,13 +50,18 @@ const STATUS_LABEL: Record<DiagnoseStepStatus, string> = {
 };
 
 function statusColor(status: DiagnoseStepStatus): string {
+  // T-4216: was emerald/red pairs plus a bare `text-slate-400` for the
+  // default. The bare step measured 2.37:1 in light mode — this is a
+  // diagnostic step's own status, not decoration — and the guard could not
+  // see any of it because these strings are returned from a function rather
+  // than written into a `className="..."` literal.
   switch (status) {
     case "ran":
-      return "text-emerald-600 dark:text-emerald-400";
+      return "text-status-ok";
     case "error":
-      return "text-red-600 dark:text-red-400";
+      return "text-status-critical";
     default:
-      return "text-slate-400";
+      return "text-fg-subtle";
   }
 }
 
@@ -98,7 +103,7 @@ function StepRow({ step }: { step: DiagnoseStep }) {
           <span className="text-xs text-fg-subtle">{STATUS_LABEL[step.status]}</span>
         </span>
         {hasDetail && (
-          <span className="text-xs text-slate-600 dark:text-slate-400">{expanded ? "Hide detail" : "Show detail"}</span>
+          <span className="text-xs text-fg-muted">{expanded ? "Hide detail" : "Show detail"}</span>
         )}
       </button>
       <p className="px-3 pb-2 text-sm text-slate-600 dark:text-slate-300">{step.summary}</p>

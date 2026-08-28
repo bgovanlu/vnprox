@@ -76,7 +76,7 @@ function mgmtNodeOf(changeset: Changeset): string {
 }
 
 const tabTriggerClass =
-  "rounded-t px-3 py-1.5 text-xs font-medium text-slate-500 data-[state=active]:border-b-2 data-[state=active]:border-accent-600 data-[state=active]:text-accent-700 dark:text-slate-400 dark:data-[state=active]:text-accent-400";
+  "rounded-t px-3 py-1.5 text-xs font-medium text-fg-subtle data-[state=active]:border-b-2 data-[state=active]:border-accent-600 data-[state=active]:text-accent-700 dark:data-[state=active]:text-accent-400";
 
 const DEFAULT_CONFIRM_TIMEOUT_SEC = 120;
 

@@ -51,7 +51,14 @@ export function ClusterCapsule({ summary, onDrill, interconnect }: ClusterCapsul
         "flex w-56 flex-col gap-2 rounded-lg border p-4 text-left transition hover:border-accent-500 focus:border-accent-500 focus:outline-none",
         reachable
           ? "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
-          : "border-slate-200 bg-slate-100 text-slate-400 opacity-70 dark:border-slate-800 dark:bg-slate-950",
+          : // T-4216: was `text-slate-400`, which measured 2.37:1 in light mode
+            // and, multiplied by this branch's own opacity-70, left the
+            // UNREACHABLE cluster as the least readable thing on the page —
+            // exactly inverted from what an operator needs to notice. The
+            // dimming is kept (it is the affordance that says "not
+            // reachable") but the text now sits on a role token that clears
+            // AA before that multiplier is applied.
+            "border-border bg-surface-sunken text-fg-subtle opacity-70 dark:bg-slate-950",
       )}
     >
       <div className="flex items-center justify-between gap-2">

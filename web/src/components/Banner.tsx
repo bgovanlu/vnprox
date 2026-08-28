@@ -88,11 +88,11 @@ export function Banner({ tone, children, title, badge, actions, role, onDismiss,
         <span
           className={clsx(
             "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold tracking-wide uppercase",
-            tone === "ok" && "bg-status-ok-solid text-white dark:text-slate-900",
-            tone === "degraded" && "bg-status-degraded-solid text-white dark:text-slate-900",
-            tone === "critical" && "bg-status-critical-solid text-white dark:text-slate-900",
-            tone === "info" && "bg-status-info-solid text-white dark:text-slate-900",
-            tone === "unknown" && "bg-status-unknown-solid text-white dark:text-slate-900",
+            tone === "ok" && "bg-status-ok-solid text-status-on-solid",
+            tone === "degraded" && "bg-status-degraded-solid text-status-on-solid",
+            tone === "critical" && "bg-status-critical-solid text-status-on-solid",
+            tone === "info" && "bg-status-info-solid text-status-on-solid",
+            tone === "unknown" && "bg-status-unknown-solid text-status-on-solid",
           )}
         >
           {badge}
