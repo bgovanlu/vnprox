@@ -499,6 +499,13 @@ transport ([D4](adr/0004-change-engine-is-the-sole-mutation-path.md) holds for p
 checked against `internal/auth`'s existing vocabulary — the SDK adds no new privilege.
 Out-of-process plugins (`internal/plugin/procshim`) run as supervised subprocesses with
 no DB/file access, speaking a length-delimited JSON wire protocol over stdio.
+
+**Reader-facing walkthrough.** `docs/plugin-development.md` (T-3811) is the "how to write a
+plugin" doc: one page per extension point with the interface copied verbatim from source, a
+minimal working example, `vnproxctl plugin scaffold`, and an honest security-boundary account. It
+links to `internal/plugin/doc.go` as source of truth rather than restating it, so it cannot drift
+from the frozen v1 interfaces this section enumerates.
+
 ## 12. HA topology (active/standby)
 
 T-1704 adds an **optional** active/standby daemon pair so vnproxd itself is not the single

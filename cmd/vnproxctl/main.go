@@ -91,6 +91,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runGitSync(args[1:], stdout, stderr)
 	case "hub":
 		return runHub(args[1:], stdout, stderr)
+	case "plugin":
+		return runPlugin(args[1:], stdout, stderr)
 	case "apply":
 		return runApply(args[1:], stdout, stderr)
 	default:
@@ -175,6 +177,12 @@ HTTP-backed commands (T-1105) — require the daemon up and --token/VNPROX_TOKEN
                                        revoke | verify | keygen. Local file work only — the
                                        registry is static hosting, not a service. Run
                                        "vnproxctl hub" for the subcommand reference.
+
+  vnproxctl plugin scaffold <name>     Stamp out a complete, minimal, compiling
+                                       findingProducer plugin (examples/plugin-template/) into
+                                       a new directory renamed to <name>. Local file work only.
+                                       Run "vnproxctl plugin --help" for flags and the
+                                       in-process-vs-out-of-process note.
 
   vnproxctl --version                  Print the vnproxctl version
   vnproxctl certs                      Cluster TLS certificate inventory and problems
