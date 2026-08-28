@@ -7,7 +7,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { AlertDeliveriesListResponse, AlertRule, AlertRulesListResponse, MeResponse } from "../api/types";
+import type {
+  AlertDeliveriesListResponse,
+  AlertRule,
+  AlertRulesListResponse,
+  FindingSource,
+  MeResponse,
+} from "../api/types";
 import { ToastProvider } from "../components/Toast";
 import { AlertRules } from "./AlertRules";
 
@@ -215,31 +221,43 @@ describe("AlertRules delivery log", () => {
 // 17 real sources. Mirrors the fix's own doc comment (AlertRules.tsx's
 // `SOURCE_LABELS`) — every source needs a checkbox with a real label, and
 // picking one of the previously-missing sources must reach the request.
+// Own independent `Record<FindingSource, string>` — not imported from
+// AlertRules.tsx, which doesn't export its `SOURCE_LABELS` — so this list
+// itself fails to *compile* if `FindingSource` (../api/types.ts) ever grows
+// a value with no entry here, mirroring FindingsStreamPanel.test.tsx's own
+// EXPECTED_SOURCE_LABELS and its doc comment on why: a hardcoded array of
+// label strings only re-asserts whatever the component happens to contain
+// today, and would keep passing after both this test and the component
+// silently missed the same new source. Object-literal excess/missing-
+// property checking against `Record<FindingSource, string>` is what turns
+// this into a real regression test rather than a snapshot of one.
+const EXPECTED_SOURCE_LABELS: Record<FindingSource, string> = {
+  drift: "Drift",
+  lldp: "LLDP",
+  ipam: "IPAM",
+  health: "Health",
+  probe: "Verify live",
+  wireguard: "WireGuard",
+  wan: "WAN",
+  flow: "Flow",
+  k8s: "Kubernetes",
+  rogue: "Rogue",
+  capacity: "Capacity",
+  baseline: "Baseline",
+  federation: "Federation",
+  peer: "Peer",
+  store: "Store",
+  cert: "Certificates",
+  gitsync: "Git sync",
+};
+
 describe("AlertRules source filter (debt sweep item 9 follow-up)", () => {
   it("offers a labeled checkbox for every finding source, not just the original 5", async () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(screen.getByRole("button", { name: "New rule" }));
 
-    for (const label of [
-      "Drift",
-      "LLDP",
-      "IPAM",
-      "Health",
-      "Verify live",
-      "WireGuard",
-      "WAN",
-      "Flow",
-      "Kubernetes",
-      "Rogue",
-      "Capacity",
-      "Baseline",
-      "Federation",
-      "Peer",
-      "Store",
-      "Certificates",
-      "Git sync",
-    ]) {
+    for (const label of Object.values(EXPECTED_SOURCE_LABELS)) {
       expect(screen.getByRole("checkbox", { name: label })).toBeInTheDocument();
     }
   });

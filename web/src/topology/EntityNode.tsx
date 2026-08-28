@@ -16,6 +16,9 @@ import {
   findingChipText,
   findingDetailText,
   hasOpenFinding,
+  isMgmtBadge,
+  MGMT_BADGE_CLASS,
+  MGMT_BADGE_LABEL,
   parseFindingBadge,
   shouldPulse,
 } from "./findingBadges";
@@ -148,28 +151,12 @@ const VERIFY_OUTCOME_LABEL: Record<VerifyOutcome, string> = {
   error: "could not be attempted",
 };
 
-// T-702: distinct treatment for the management-path badge vocabulary
-// (docs/features/topology.md §3) — "mgmt"/"corosync" mark the carrier
-// itself, "mgmt-path" marks every physical entity behind it. Amber (not the
-// plain grey every other badge renders as) so a glance at the map answers
-// "which interface carries this node's management/corosync traffic, and
-// what's physically behind it" without opening the inspector.
-const MGMT_BADGE_LABEL: Record<string, string> = {
-  mgmt: "management IP",
-  corosync: "corosync link",
-  "mgmt-path": "on the management path",
-};
-
-function isMgmtBadge(badge: string): boolean {
-  return badge in MGMT_BADGE_LABEL;
-}
-
 // T-1505: the shaping-active badge (docs/api.md's GET /topology badge
 // vocabulary — reuses T-901's plain badges[] convention, additive to
 // whatever mgmt/drift badges are already present) gets its own distinct
 // (blue) treatment, the same "a glance at the map answers the question"
-// rationale MGMT_BADGE_LABEL's amber treatment above documents — here,
-// "which bridge is currently rate-limited."
+// rationale MGMT_BADGE_LABEL's amber treatment (findingBadges.ts) documents
+// — here, "which bridge is currently rate-limited."
 const QOS_SHAPED_BADGE = "qos-shaped";
 const QOS_SHAPED_LABEL = "carries an applied QoS shape";
 
@@ -366,7 +353,7 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
                 className={clsx(
                   "rounded px-1 py-0.5 text-[10px]",
                   isMgmtBadge(b)
-                    ? "bg-amber-200 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+                    ? MGMT_BADGE_CLASS
                     : isQosShapedBadge(b)
                       ? "bg-blue-200 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200"
                       // dark:text-slate-200, not -300. At 10px these badges need

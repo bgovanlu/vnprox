@@ -151,6 +151,55 @@ export function findingBadgeClass(severity: Severity): string {
   }
 }
 
+// T-702: distinct treatment for the management-path badge vocabulary
+// (docs/features/topology.md §3) — "mgmt"/"corosync" mark the carrier
+// itself, "mgmt-path" marks every physical entity behind it. Amber (not the
+// plain grey every other badge renders as) so a glance at the map answers
+// "which interface carries this node's management/corosync traffic, and
+// what's physically behind it" without opening the inspector.
+//
+// T-3406-followup-02: this table, `isMgmtBadge`, and the amber class string
+// below used to be written out independently in SwitchFaceplate.tsx (three
+// places) and EntityNode.tsx (one place) — literal copies of what was, at
+// the time, also findingBadgeClass's own `"warning"` case. The August 2026
+// opacity fix (bddc74eb) touched every copy but one, and the one it missed
+// (findingBadges.ts's own canonical `findingBadgeClass`) was the one an
+// axe re-run could still see, because the fix swept `*.tsx` and this was
+// the `.ts` original. `findingBadgeClass`'s "warning" case has since been
+// given one extra step of contrast (`text-amber-900`/`dark:text-amber-100`)
+// that this mgmt/corosync/mgmt-path vocabulary never needed — the two have
+// genuinely diverged, so this stays its own constant rather than reusing
+// `findingBadgeClass("warning")`, but it is now written exactly once.
+export const MGMT_BADGE_LABEL: Record<string, string> = {
+  mgmt: "management IP",
+  corosync: "corosync link",
+  "mgmt-path": "on the management path",
+};
+
+export function isMgmtBadge(badge: string): boolean {
+  return badge in MGMT_BADGE_LABEL;
+}
+
+/** The opaque amber pair every mgmt/corosync/mgmt-path badge renders —
+ * 5.70:1 in light mode, well clear of AA (see the opacity-fix note above
+ * for why it must stay opaque rather than `/70`). Exported as a bare
+ * constant (not only via `mgmtBadgeClass`) because some call sites
+ * (SwitchFaceplate.tsx's NicPort mgmt-path chip) always render this exact
+ * badge and have no "else" branch to switch on. */
+export const MGMT_BADGE_CLASS = "bg-amber-200 text-amber-800 dark:bg-amber-900 dark:text-amber-200";
+
+/** Chip colour classes for one wire-vocabulary badge token that is neither a
+ * `"finding:"` token nor rendered by a more specific chip of its own: amber
+ * for the mgmt/corosync/mgmt-path trio, plain slate otherwise. Used where a
+ * badge is rendered generically (SwitchFaceplate.tsx's chassis header) —
+ * call sites that already know they are in the mgmt branch can use
+ * `MGMT_BADGE_CLASS` directly instead. */
+export function mgmtBadgeClass(badge: string): string {
+  return isMgmtBadge(badge)
+    ? MGMT_BADGE_CLASS
+    : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300";
+}
+
 /** The chip's visible text: glyph + source name (e.g. "▲ health",
  * "■ drift") — the source word is what tells the operator *which* checker
  * flagged this, replacing the single word "drift" every source used to
