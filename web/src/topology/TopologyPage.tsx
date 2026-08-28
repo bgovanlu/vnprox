@@ -67,6 +67,7 @@ import { useLiveMetrics, utilizationMap } from "./metricsQueries";
 import { decodeViewFromSearch, type SavedViewState } from "./savedViews";
 import { SavedViewsMenu } from "./SavedViewsMenu";
 import { SpotlightSearch } from "./SpotlightSearch";
+import { NoticeStack } from "./NoticeStack";
 import { StalenessBanner } from "./StalenessBanner";
 import { UnrefFindingsBanner } from "./UnrefFindingsBanner";
 import { summarizeStaleness } from "./staleness";
@@ -1217,30 +1218,73 @@ function TopologyPageContent() {
         </div>
       )}
 
-      <div className="print:hidden flex flex-col gap-2">
-        <StalenessBanner
-          staleness={topology?.staleness}
-          retry={{
-            canRetry: canInstallLldp,
-            pending: refreshing,
-            result: refreshResult,
-            rateLimited: refreshRateLimited,
-            onRetry: () => {
-              void handleRefreshCollectors();
-            },
-          }}
-        />
-        {/* T-3501 AC5: rendered once here, identically regardless of which
-            view (Switch/Graph) is active below — the two views can never
-            disagree about a ref-less finding's presentation because there
-            is only one place it renders. */}
-        <UnrefFindingsBanner
-          findings={topology?.unrefFindings}
-          remediationCtx={remediationCtx}
-          pendingId={serviceStartPendingId}
-          results={serviceStartErrors}
-        />
-      </div>
+      {/* T-4304: these were three separately-placed banners stacked down the
+          page — 39% of a 1400x900 viewport against the map's 26%. They are
+          now one row that expands, and the LLDP notice has moved up here from
+          further down the page to join them rather than being a fourth
+          stacking point. Each `active` predicate is the same condition the
+          banner itself checks before returning null; NoticeStack's own doc
+          comment explains why it has to be lifted rather than inferred.
+
+          T-3501 AC5 still holds: the untied-findings banner is rendered once,
+          here, identically regardless of which view is active below, so the
+          two views can never disagree about a ref-less finding. */}
+      <NoticeStack
+        label="Topology notices"
+        notices={[
+          {
+            id: "staleness",
+            active: staleSummary.stale,
+            tone: "degraded",
+            label: "Last-known data",
+            body: (
+              <StalenessBanner
+                staleness={topology?.staleness}
+                retry={{
+                  canRetry: canInstallLldp,
+                  pending: refreshing,
+                  result: refreshResult,
+                  rateLimited: refreshRateLimited,
+                  onRetry: () => {
+                    void handleRefreshCollectors();
+                  },
+                }}
+              />
+            ),
+          },
+          {
+            id: "unref-findings",
+            active: (topology?.unrefFindings?.length ?? 0) > 0,
+            tone: "critical",
+            label: `${String(topology?.unrefFindings?.length ?? 0)} off-map findings`,
+            body: (
+              <UnrefFindingsBanner
+                findings={topology?.unrefFindings}
+                remediationCtx={remediationCtx}
+                pendingId={serviceStartPendingId}
+                results={serviceStartErrors}
+              />
+            ),
+          },
+          {
+            id: "lldp",
+            active: noLldpData,
+            tone: "info",
+            label: "No LLDP data",
+            body: (
+              <LldpSetupBanner
+                show={noLldpData}
+                canInstall={canInstallLldp}
+                pending={lldpInstall.isPending}
+                results={lldpInstallResults}
+                onInstall={() => {
+                  void handleInstallLldp();
+                }}
+              />
+            ),
+          },
+        ]}
+      />
 
       {/* T-2704: the diff overlay's own status line. The map must SAY what
           the rings mean, and it must say so even when every difference is
@@ -1393,15 +1437,7 @@ function TopologyPageContent() {
         </div>
       )}
 
-      <LldpSetupBanner
-        show={noLldpData}
-        canInstall={canInstallLldp}
-        pending={lldpInstall.isPending}
-        results={lldpInstallResults}
-        onInstall={() => {
-          void handleInstallLldp();
-        }}
-      />
+
 
       {overCap && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200 print:hidden">

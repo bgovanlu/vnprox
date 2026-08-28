@@ -1,7 +1,7 @@
 # T-4304 — The map gets a quarter of the screen, and the error text gets more
 
 **Phase:** 43 (Canvas rendering)
-**Status:** open
+**Status:** deliverables 1, 2 and 4 done; 3 (raw error strings) open
 **Found by:** the first visual-gate capture of the graph view against a current build (T-4216)
 
 ## What the screenshot shows
@@ -62,6 +62,30 @@ rather than the graph view (part 2), and when that was fixed it captured a three
 no picture taken of it. That is the finding behind the finding: **this is what a gate that has
 never produced an artifact costs**, and it is worth remembering the next time one is written and
 declared done.
+
+## Result
+
+`NoticeStack` collapses two or more notices into one row. Re-measured off a fresh capture at the
+same 1400x900:
+
+| | before | after |
+|---|---|---|
+| notices | 347px / 39% | **35px / 4%** |
+| the map | 235px / 26% | **570px / 63%** |
+
+The visible canvas now shows two nodes with their detail chips, the edge between them, the zoom
+controls and the minimap, rather than one node clipped by the fold.
+
+The rule the component encodes is *one notice renders as itself; two or more collapse*. A lone
+banner is not a stack, and putting the ordinary single-notice page behind a disclosure to fix the
+crowded one would be a bad trade. The collapsed row still names every condition as a badge — it
+hides detail, never existence — and takes its own tone from the most severe notice present, so it
+cannot make a critical condition look routine.
+
+Deliverable 4's gate is in `visual.spec.ts`: it reads the canvas's rendered bounding box and
+fails below 50% of viewport height. Measured from the box rather than from CSS on purpose — what
+pushed the map down was three siblings above it, none of which appears anywhere in the canvas's
+own styles.
 
 ## Deliverables
 

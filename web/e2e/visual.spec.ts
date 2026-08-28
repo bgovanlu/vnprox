@@ -307,6 +307,24 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
       await waitForSteadyState(page);
       await page.evaluate(() => document.fonts.ready);
 
+      // T-4304's gate. Measured off the capture that opened that card, the
+      // canvas got 235px of a 900px viewport — 26% — while three stacked
+      // notice banners took 39%. A visual networking tool whose visual is
+      // the smallest region on its own page.
+      //
+      // This asserts the share from the RENDERED box rather than from CSS,
+      // because the thing that pushed the map down was three siblings above
+      // it, none of which appears anywhere in the canvas's own styles. A
+      // number, so it cannot regress back into an opinion.
+      const canvasBox = await page.getByTestId("topology-canvas-v2").boundingBox();
+      const viewport = page.viewportSize();
+      expect(canvasBox, "topology canvas must be laid out").not.toBeNull();
+      expect(viewport, "visual suite runs at a fixed viewport").not.toBeNull();
+      if (canvasBox !== null && viewport !== null) {
+        const share = canvasBox.height / viewport.height;
+        expect(share, `canvas is ${String(Math.round(share * 100))}% of the viewport`).toBeGreaterThan(0.5);
+      }
+
       const updating = testInfo.config.updateSnapshots !== "none";
       const snapshotName = `topology-graph-${mode.name}.png`;
       if (!updating && !existsSync(testInfo.snapshotPath(snapshotName))) {
