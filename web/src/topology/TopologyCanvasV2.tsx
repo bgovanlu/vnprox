@@ -43,10 +43,11 @@ import { buildA11yProxies } from "./a11yBridge";
 import { TopologyA11yLayer } from "./TopologyA11yLayer";
 import { AnnotationLayer, type AnnotationAnchor } from "./AnnotationLayer";
 import type { Annotation, MapRegion } from "../api/types";
-import { drawScene, drawFlowOverlay, drawLatencyOverlay, drawMTUOverlay, drawDiffOverlay, drawRecencyOverlay, pulseAlphaForPhase, type FlowOverlayEdge, type SceneTheme } from "./canvasDraw";
+import { drawScene, drawFlowOverlay, drawLatencyOverlay, drawMTUOverlay, drawDiffOverlay, drawRecencyOverlay, drawBlastRadiusOverlay, pulseAlphaForPhase, type FlowOverlayEdge, type SceneTheme } from "./canvasDraw";
 import type { LatencyOverlayEdge } from "./latencyMode";
 import type { DiffMark } from "./diffOverlay";
 import type { RecencyMark } from "./recencyOverlay";
+import type { BlastRadiusFocus } from "./blastRadiusFocus";
 import type { MTUOverlayBadge } from "./mtuOverlay";
 import { applyLod, parseLodId, zoomBandFor } from "./lod";
 import { Minimap } from "./Minimap";
@@ -131,6 +132,17 @@ export interface TopologyCanvasV2Props {
    * entity's last recorded change. undefined/empty (the default) draws
    * nothing extra, so every pre-T-3908 call site is unaffected. */
   recencyMarks?: readonly RecencyMark[];
+  /** T-3912 blast-radius lens (topology/blastRadiusFocus.ts) — drawn last of
+   * all: a translucent scrim over every node/edge NOT in the focused
+   * subgraph, plus a bottom-right role-glyph badge and an accent-colored
+   * path stroke over everything that IS (a different corner from the diff
+   * ring's and the recency badge's own marks, so all three can be active
+   * without colliding — see drawBlastRadiusOverlay's doc comment).
+   * `undefined`, or a focus whose `focusNodeIds` is empty (an inactive/
+   * degraded request — blastRadiusFocus.ts's `active: false`), draws
+   * nothing extra, so every pre-T-3912 call site is unaffected and a stale
+   * focus request never blanks the map. */
+  blastRadiusFocus?: BlastRadiusFocus;
   /** Fires when a Flows-layer overlay edge is clicked — takes priority
    * over the plain-pane click (onPaneClick) when both could apply, so a
    * click that lands on a flow edge always opens its drill-down rather
@@ -217,6 +229,7 @@ export function TopologyCanvasV2({
   mtuBadges,
   diffMarks,
   recencyMarks,
+  blastRadiusFocus,
   onFlowEdgeClick,
   regions,
   notes,
@@ -292,6 +305,22 @@ export function TopologyCanvasV2({
   );
 
   const proxies = useMemo(() => buildA11yProxies(lodElements.nodes), [lodElements.nodes]);
+
+  // T-3912: while a blast-radius lens is active, roving keyboard focus
+  // (Tab/arrow-key navigation, TopologyA11yLayer) stays WITHIN the focused
+  // subgraph — this task's card's "keep keyboard navigation working within
+  // the focused set". A filter over `proxies`, not a change to
+  // a11yBridge.ts's rovingOrder/nextRovingId themselves (which stay generic
+  // over whatever proxy array they're given). Falls back to the full
+  // `proxies` list if the filter would leave nothing focusable at all (a
+  // defensive floor — a request whose refs are all off-map is already
+  // `active: false` upstream and produces an empty `focusNodeIds`, but this
+  // never leaves a keyboard user with zero reachable entities regardless).
+  const a11yProxies = useMemo(() => {
+    if (!blastRadiusFocus || blastRadiusFocus.focusNodeIds.size === 0) return proxies;
+    const focused = proxies.filter((p) => blastRadiusFocus.focusNodeIds.has(p.id));
+    return focused.length > 0 ? focused : proxies;
+  }, [proxies, blastRadiusFocus]);
 
   // T-2806: where each annotated entity currently sits, in graph space, so
   // the annotation overlay can pin a note marker to it. Derived from the
@@ -411,6 +440,7 @@ export function TopologyCanvasV2({
   const hasMTUBadges = (mtuBadges?.length ?? 0) > 0;
   const hasDiffMarks = (diffMarks?.length ?? 0) > 0;
   const hasRecencyMarks = (recencyMarks?.length ?? 0) > 0;
+  const hasBlastRadiusFocus = (blastRadiusFocus?.focusNodeIds.size ?? 0) > 0;
   const [flowDashOffset, setFlowDashOffset] = useState(0);
   useEffect(() => {
     if (reducedMotion || !hasFlowEdges) {
@@ -527,6 +557,27 @@ export function TopologyCanvasV2({
         dragTopLeft,
       });
     }
+
+    // T-3912: the blast-radius lens, drawn absolutely last — it scrims
+    // everything not in the focused subgraph, which must happen after every
+    // other overlay's own marks have already painted (a scrimmed node still
+    // shows a MUTED diff ring/recency badge underneath, never a fully
+    // stripped one) and its own bottom-right badge/path-stroke need to sit
+    // on top of everything else too.
+    if (hasBlastRadiusFocus && blastRadiusFocus) {
+      drawBlastRadiusOverlay(ctx, {
+        nodes: lodElements.nodes,
+        edges: lodElements.edges,
+        focusNodeIds: blastRadiusFocus.focusNodeIds,
+        focusEdgeIds: blastRadiusFocus.focusEdgeIds,
+        roles: blastRadiusFocus.roles,
+        viewport,
+        view: size,
+        theme: themeColors(effectiveTheme),
+        nodeSize: DEFAULT_NODE_SIZE,
+        dragTopLeft,
+      });
+    }
   }, [
     lodElements.nodes,
     lodElements.edges,
@@ -549,6 +600,8 @@ export function TopologyCanvasV2({
     diffMarks,
     hasRecencyMarks,
     recencyMarks,
+    hasBlastRadiusFocus,
+    blastRadiusFocus,
   ]);
 
   // --- Pointer helpers -----------------------------------------------------
@@ -766,7 +819,7 @@ export function TopologyCanvasV2({
       <canvas ref={canvasRef} className="block h-full w-full" style={{ width: "100%", height: "100%" }} />
       <AnnotationLayer regions={regions ?? EMPTY_REGIONS} notes={notes ?? EMPTY_NOTES} anchors={annotationAnchors} viewport={viewport} />
       <TopologyA11yLayer
-        proxies={proxies}
+        proxies={a11yProxies}
         viewport={viewport}
         activeId={rovingId}
         onActiveChange={setRovingId}

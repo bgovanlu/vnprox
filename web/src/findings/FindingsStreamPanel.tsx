@@ -28,6 +28,8 @@ import type { FindingSource, Severity } from "../api/types";
 import { HelpAnchor } from "../help/HelpAnchor";
 import { useNarrowViewport } from "../lib/useNarrowViewport";
 import { useMgmtWizardStore } from "../mgmt/mgmtWizardStore";
+import { blastRadiusRequestFromFindingRefs } from "../topology/blastRadiusFocus";
+import { useTopologyStore } from "../topology/store";
 import { remediationAction, type RemediationContext } from "./remediation";
 import { AckDialog } from "./AckDialog";
 import { FindingsList } from "./FindingsList";
@@ -90,6 +92,7 @@ export function FindingsStreamPanel() {
   const unackMutation = useUnackFindingMutation();
   const navigate = useNavigate();
   const openMgmtWizard = useMgmtWizardStore((s) => s.open);
+  const setBlastRadiusRequest = useTopologyStore((s) => s.setBlastRadiusRequest);
   const setActiveId = useChangesetDrawerStore((s) => s.setActiveId);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -204,6 +207,15 @@ export function FindingsStreamPanel() {
    * navigating into a half-rendered page, it explains why instead. */
   function handleNarrowAction(): void {
     toast({ title: "Desktop only", description: "Open vnprox on a desktop or a wider window to use this action." });
+  }
+
+  /** T-3912: collapses the topology map to this finding's named entities
+   * (plus the map path connecting them) — the same "Show blast radius"
+   * navigation every other map-bound action here takes, so it is gated the
+   * same way at narrow width. */
+  function handleShowBlastRadius(refs: string[], label: string): void {
+    setBlastRadiusRequest(blastRadiusRequestFromFindingRefs(refs, label));
+    void navigate("/topology");
   }
 
   if (isLoading) {
@@ -348,6 +360,9 @@ export function FindingsStreamPanel() {
         onFix={(id) => {
           void handleFix(id);
         }}
+        onShowBlastRadius={
+          narrow ? () => { handleNarrowAction(); } : (refs, label) => { handleShowBlastRadius(refs, label); }
+        }
         onAck={narrow ? undefined : (id) => {
           const f = all.find((x) => x.id === id);
           if (f) setAckTarget({ id, detail: f.detail });

@@ -153,6 +153,12 @@ export interface TopologyNode {
    * view's faceplate uses this to pick a port body (RJ45 for copper, SFP
    * cage for fibre/DA) independently of whether a speed is known. */
   mediaPort?: string;
+  /** T-3907, physnic nodes only: the negotiated duplex mode ("full" |
+   * "half"), read off the same ethtool call as `speedMbps`/`mediaPort`.
+   * Absent, independently of those two, when the driver didn't answer that
+   * sub-read — never guessed. The cabling plan view is the first consumer;
+   * see docs/api.md's "GET /topology physical-port fields". */
+  duplex?: string;
   /** Present only on synthetic "guest-group"/"phys-group" pill nodes. */
   collapsedCount?: number;
   /** Present only on synthetic "phys-group:<node>" per-node physical-layer

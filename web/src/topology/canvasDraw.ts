@@ -20,6 +20,7 @@ import type { EntityNodeData } from "./EntityNode";
 import type { Size, Viewport } from "./canvasScene";
 import { DEFAULT_NODE_SIZE, graphToScreen } from "./canvasScene";
 import type { LatencyOverlayEdge } from "./latencyMode";
+import type { BlastRadiusRole } from "./blastRadiusFocus";
 import { diffMarkColor, diffMarkGlyph, type DiffMark } from "./diffOverlay";
 import { findingChipText, hasOpenFinding, parseFindingBadge, shouldPulse } from "./findingBadges";
 import { formatMTUBadgeLabel, type MTUOverlayBadge } from "./mtuOverlay";
@@ -778,6 +779,132 @@ export function drawRecencyOverlay(ctx: CanvasRenderingContext2D, params: DrawRe
     const glyphWidth = ctx.measureText(glyph).width;
     ctx.fillText(glyph, x - 2 - glyphWidth / 2, y + h + 3);
     ctx.restore();
+  }
+  ctx.restore();
+}
+
+// --- T-3912: the blast-radius focus lens ------------------------------------
+// Unlike the marks-only overlays above (diff's ring, recency's badge), this
+// pass also SUBTRACTS prominence from everything outside the focused
+// subgraph — the literal "dim/hide everything else" the card asks for. It
+// is still an additive pass, drawn on top of drawScene's already-painted
+// pixels rather than reaching into drawScene's own dimmed/highlighted alpha
+// (which stays reserved for the VLAN filter/hover chain) — so this composes
+// with every overlay above it without a special case anywhere else in this
+// file, the same reasoning drawRecencyOverlay's own doc comment gives for
+// staying a separate pass.
+//
+// NON-COLLIDING VISUAL CHANNEL (per this task's card). drawDiffOverlay rings
+// the top-right corner; drawRecencyOverlay badges the bottom-left corner.
+// This overlay's own per-entity mark sits at the BOTTOM-RIGHT corner — a
+// small role glyph (T/!/* : target / affected / path-hop) — so a node can
+// carry a diff ring, a recency badge, AND a blast-radius badge at once
+// without any of the three drawing over another. The scrim (translucent
+// theme-background fill over every non-focused node, theme-background
+// restroke over every non-focused edge) and the solid accent-colored
+// path-edge stroke are the parts nothing else in this file does at all.
+const BLAST_RADIUS_COLOR = "#c026d3"; // fuchsia-600 — distinct from every STATUS_STROKE/SIM_STROKE/KIND_ACCENT/FLOW_EDGE_COLOR/diff/recency color already in use
+const BLAST_RADIUS_SCRIM_ALPHA = 0.72;
+const BLAST_RADIUS_ROLE_GLYPH: Record<BlastRadiusRole, string> = {
+  target: "X",
+  affected: "!",
+  path: "*",
+};
+
+export interface DrawBlastRadiusOverlayParams {
+  nodes: FlowNode<EntityNodeData, "entity">[];
+  edges: FlowEdge<EntityEdgeData, "entity">[];
+  /** blastRadiusFocus.ts's `BlastRadiusFocus.focusNodeIds`/`focusEdgeIds`/
+   * `roles` — resolved against the CURRENTLY rendered `nodes`/`edges`
+   * already, so this function does no further presence-checking of its
+   * own. Nothing is drawn (not even a scrim) when `focusNodeIds` is empty —
+   * an inactive/degraded focus (blastRadiusFocus.ts's `active: false`) must
+   * leave the map exactly as unfocused as it would be with no request at
+   * all, never blanked. */
+  focusNodeIds: ReadonlySet<string>;
+  focusEdgeIds: ReadonlySet<string>;
+  roles: ReadonlyMap<string, BlastRadiusRole>;
+  viewport: Viewport;
+  view: Size;
+  theme: SceneTheme;
+  nodeSize: Size;
+  dragTopLeft?: DrawSceneParams["dragTopLeft"];
+}
+
+export function drawBlastRadiusOverlay(ctx: CanvasRenderingContext2D, params: DrawBlastRadiusOverlayParams): void {
+  const { nodes, edges, focusNodeIds, focusEdgeIds, roles, viewport: vp, view, theme, nodeSize, dragTopLeft } = params;
+  if (focusNodeIds.size === 0) return;
+  const size = nodeSize.width > 0 ? nodeSize : DEFAULT_NODE_SIZE;
+  const byId = new Map<string, FlowNode<EntityNodeData, "entity">>();
+  for (const n of nodes) byId.set(n.id, n);
+
+  // --- Edges: scrim everything off the path, restroke everything on it -----
+  ctx.save();
+  ctx.lineCap = "round";
+  for (const e of edges) {
+    const from = byId.get(e.source);
+    const to = byId.get(e.target);
+    if (!from || !to) continue;
+    const a = nodeCenterScreen(from, vp, size, dragTopLeft);
+    const b = nodeCenterScreen(to, vp, size, dragTopLeft);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    if (focusEdgeIds.has(e.id)) {
+      ctx.strokeStyle = BLAST_RADIUS_COLOR;
+      ctx.lineWidth = 3;
+    } else {
+      ctx.strokeStyle = theme.background;
+      ctx.globalAlpha = BLAST_RADIUS_SCRIM_ALPHA;
+      ctx.lineWidth = 4;
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+
+  // --- Nodes: scrim everything outside the focus set, badge everything in it
+  const w = size.width * vp.zoom;
+  const h = size.height * vp.zoom;
+  ctx.save();
+  ctx.font = "700 11px ui-sans-serif, system-ui, sans-serif";
+  ctx.textBaseline = "middle";
+  for (const n of nodes) {
+    const tl = dragTopLeft?.id === n.id ? { x: dragTopLeft.x, y: dragTopLeft.y } : graphToScreen(n.position, vp);
+    if (tl.x + w < 0 || tl.y + h < 0 || tl.x > view.width || tl.y > view.height) continue; // cheap cull, mirrors drawScene
+    if (!focusNodeIds.has(n.id)) {
+      roundRectPath(ctx, tl.x, tl.y, w, h, 6);
+      ctx.fillStyle = theme.background;
+      ctx.globalAlpha = BLAST_RADIUS_SCRIM_ALPHA;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      continue;
+    }
+    const role = roles.get(n.id);
+    if (!role) continue;
+
+    // Focus ring, inset from diff's own -4/-4 offset (drawDiffOverlay above)
+    // so both rings can be active on the same node without sitting exactly
+    // on top of one another.
+    roundRectPath(ctx, tl.x - 2, tl.y - 2, w + 4, h + 4, 7);
+    ctx.strokeStyle = BLAST_RADIUS_COLOR;
+    ctx.lineWidth = role === "path" ? 1.5 : 2.5;
+    ctx.setLineDash(role === "path" ? [3, 2] : []);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Bottom-right corner glyph badge — the non-color channel (this task's
+    // WCAG requirement): X for the failed/targeted entity, ! for a
+    // named-affected one, * for a hop the path walk passed through that
+    // neither source named directly.
+    const glyph = BLAST_RADIUS_ROLE_GLYPH[role];
+    ctx.fillStyle = BLAST_RADIUS_COLOR;
+    ctx.beginPath();
+    ctx.arc(tl.x + w + 2, tl.y + h + 2, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    const glyphWidth = ctx.measureText(glyph).width;
+    ctx.fillText(glyph, tl.x + w + 2 - glyphWidth / 2, tl.y + h + 3);
   }
   ctx.restore();
 }

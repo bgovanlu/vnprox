@@ -189,6 +189,7 @@ const AUTHENTICATED_ROUTES = [
   // demo-amber accent variant).
   "/analysis",
   "/ports",
+  "/cabling",
   "/blueprints",
   "/hub",
   "/config-as-code",

@@ -44,6 +44,7 @@ import { useTopologyDiffQuery } from "./topologyDiffQuery";
 import { computeRecencyOverlay, summarizeRecencyOverlay } from "./recencyOverlay";
 import { useRecencyOverlayQuery } from "./recencyQuery";
 import { RecencyLegend } from "./RecencyLegend";
+import { computeBlastRadiusFocus, resolveNodeAnchorsInRequest, summarizeBlastRadiusFocus } from "./blastRadiusFocus";
 import { HelpAnchor } from "../help/HelpAnchor";
 import { buildPreviewScene, summarizePreviewScene, summarizeUnprojectable } from "./previewOverlay";
 import { useChangesetPreviewQuery } from "./previewQuery";
@@ -57,6 +58,7 @@ import { useK8sClustersQuery, useK8sOverlaysQuery } from "./layers/k8sQueries";
 import { computeK8sOverlay, isK8sSyntheticId, parseK8sSyntheticId, type K8sSelection } from "./layers/k8sOverlay";
 import { PodDrilldown } from "./layers/PodDrilldown";
 import { HistoryTimeline, type HistoryPlaybackState } from "./history/HistoryTimeline";
+import { FlowReplayPanel, type ReplayFrameState } from "./replay/FlowReplayPanel";
 import { InspectorStack } from "./InspectorStack";
 import { NewEntityMenu } from "./NewEntityMenu";
 import { LayerToggleBar } from "./LayerToggleBar";
@@ -228,6 +230,10 @@ function TopologyPageContent() {
   const toggleK8sLayer = useTopologyStore((s) => s.toggleK8sLayer);
   const recencyLayerActive = useTopologyStore((s) => s.recencyLayerActive);
   const toggleRecencyLayer = useTopologyStore((s) => s.toggleRecencyLayer);
+  const blastRadiusRequest = useTopologyStore((s) => s.blastRadiusRequest);
+  const setBlastRadiusRequest = useTopologyStore((s) => s.setBlastRadiusRequest);
+  const replayLayerActive = useTopologyStore((s) => s.replayLayerActive);
+  const toggleReplayLayer = useTopologyStore((s) => s.toggleReplayLayer);
   const toggleLayer = useTopologyStore((s) => s.toggleLayer);
   const setActiveLayers = useTopologyStore((s) => s.setActiveLayers);
   const setVlanFilter = useTopologyStore((s) => s.setVlanFilter);
@@ -554,7 +560,31 @@ function TopologyPageContent() {
   // computeFlowEdges are the exact same calls as before this task, just fed
   // a different data source and (for flows) an explicit `now`.
   const [playback, setPlayback] = useState<HistoryPlaybackState | undefined>(undefined);
-  const effectiveUtilizationByRef = playback?.scrubbing ? playback.utilizationByRef : utilizationByRef;
+  // T-3910: FlowReplayPanel's own scrub/animate frame — a second, distinct
+  // source of the exact same HistoryPlaybackState shape. Replay takes
+  // priority over History's own scrub when both, implausibly, are active
+  // at once (an operator dragging one control almost certainly means to
+  // look at that one) — see activeScrub's doc comment below for why the
+  // two never need to blend.
+  const [replayPlayback, setReplayPlayback] = useState<ReplayFrameState | undefined>(undefined);
+  /** Whichever of History's scrub or Replay's animate is actually
+   * overriding "now" right now. Both HistoryTimeline and FlowReplayPanel
+   * independently pass through `{scrubbing:false, ...live values}` when
+   * they aren't active, so there is never a case where both are
+   * `scrubbing: true` with genuinely different data an operator would need
+   * merged — only one scrubber's input can be non-live at a time in
+   * practice, since dragging one doesn't move the other's slider. */
+  const activeScrub = replayPlayback?.scrubbing ? replayPlayback : playback?.scrubbing ? playback : undefined;
+  const effectiveUtilizationByRef = activeScrub ? activeScrub.utilizationByRef : utilizationByRef;
+  // Toggling Replay off unmounts FlowReplayPanel (it stops calling
+  // onReplayChange), which would otherwise leave a stale, still-scrubbing
+  // frame frozen in `replayPlayback` forever — the map would keep painting
+  // a past instant's data with no visible control left to explain why.
+  // Clearing it here on toggle-off is the same "layer off means its state
+  // is gone, not just hidden" convention every other v2 overlay follows.
+  useEffect(() => {
+    if (!replayLayerActive) setReplayPlayback(undefined);
+  }, [replayLayerActive]);
 
   const elements = useMemo(
     () =>
@@ -600,19 +630,20 @@ function TopologyPageContent() {
   const flowsPaintable = flowsLayerActive && viewMode === "graph" && rendererVersion === "v2";
   const { records: liveFlowRecords, isLoading: flowsLoading } = useLiveFlowRecords(flowsPaintable);
   const canvasNodeIds = useMemo(() => new Set(elements.nodes.map((n) => n.id)), [elements.nodes]);
-  // T-1007: while scrubbed, paint from the historical record page/instant
-  // HistoryTimeline fetched instead of the live WS-fed buffer — same
+  // T-1007/T-3910: while scrubbed (via either History or Replay — see
+  // activeScrub above), paint from the historical record page/instant that
+  // control fetched instead of the live WS-fed buffer — same
   // computeFlowEdges call as always, just a different `records` source and
   // an explicit `now` anchored at the scrubbed instant (computeFlowEdges
   // defaults `now` to the real wall clock, which would be wrong for a
   // historical window).
-  const effectiveFlowRecords = playback?.scrubbing ? playback.flowRecords : liveFlowRecords;
+  const effectiveFlowRecords = activeScrub ? activeScrub.flowRecords : liveFlowRecords;
   const flowConversationEdges = useMemo<FlowEdge[]>(
     () =>
       flowsPaintable
-        ? computeFlowEdges({ records: effectiveFlowRecords, nodeIds: canvasNodeIds, now: playback?.scrubbing ? playback.at : undefined })
+        ? computeFlowEdges({ records: effectiveFlowRecords, nodeIds: canvasNodeIds, now: activeScrub?.at })
         : [],
-    [flowsPaintable, effectiveFlowRecords, canvasNodeIds, playback],
+    [flowsPaintable, effectiveFlowRecords, canvasNodeIds, activeScrub],
   );
   const flowOverlayEdges = useMemo(
     () => flowConversationEdges.map((e) => ({ id: e.id, from: e.from, to: e.to, strokeWidth: flowEdgeStrokeWidth(e.bytesPerSec) })),
@@ -668,6 +699,30 @@ function TopologyPageContent() {
     return computeRecencyOverlay(recencyDiffResult?.diff, (ref) => onMap.has(ref));
   }, [recencyDiffResult, elements.nodes]);
 
+  // T-3912 "Blast-radius lens": resolves a pending focus request (set by an
+  // entry point elsewhere in the app — SpofPanel.tsx, FindingsList.tsx,
+  // ImpactPanel.tsx — via useTopologyStore's blastRadiusRequest) against the
+  // CURRENTLY rendered `elements`, per blastRadiusFocus.ts's own doc
+  // comment: nothing is re-derived from failsim/change, only resolved and
+  // path-connected against what the map is showing right now. v2-canvas-
+  // only, same scope note as every other client-only overlay above
+  // (blastRadiusPaintable) — Switch view and the v1 renderer show the
+  // banner/summary (real DOM, so it's never hidden) but not the map paint.
+  const blastRadiusPaintable = viewMode === "graph" && rendererVersion === "v2";
+  const blastRadiusFocus = useMemo(() => {
+    if (!blastRadiusRequest) return undefined;
+    // A failsim `target` naming a whole node, or a `mgmtPathLoss`/changeset-
+    // `nodes` entry, arrives as `node:<name>:<name>` — an id that never
+    // appears in a real GET /topology response (nodeAnchor.ts's doc
+    // comment; the same defect T-1402 fixed for Latency/MTU/WireGuard).
+    // Resolved through the shared `nodeIdForName` anchor before this ever
+    // reaches computeBlastRadiusFocus, so a node-loss ref focuses on the
+    // node's actual rendered entity rather than permanently reporting
+    // off-map.
+    const resolved = resolveNodeAnchorsInRequest(blastRadiusRequest, nodeIdForName);
+    return computeBlastRadiusFocus(canvasNodeIds, elements.edges, resolved);
+  }, [blastRadiusRequest, nodeIdForName, canvasNodeIds, elements.edges]);
+
   // AC4: the empty-state hint is purely data-driven (zero records
   // cluster-wide, once the initial fetch has actually completed — never
   // flashed during the brief initial loading window) and disappears the
@@ -680,13 +735,13 @@ function TopologyPageContent() {
   useEffect(() => {
     if (flowsLayerActive) setFlowsHintDismissed(false);
   }, [flowsLayerActive]);
-  // T-1007: while scrubbed, HistoryTimeline's own "flow history available
-  // for the last N minutes only" disclosure is the relevant empty-state
-  // message (a scrub can legitimately land on a quiet instant even with a
-  // flow source fully configured) — this hint is specifically about "no
-  // flow source configured at all", so it's suppressed while scrubbing to
-  // avoid showing both at once.
-  const flowsEmptyState = flowsPaintable && !playback?.scrubbing && !flowsLoading && liveFlowRecords.length === 0 && !flowsHintDismissed;
+  // T-1007/T-3910: while scrubbed (History OR Replay), each control's own
+  // flow-availability disclosure is the relevant empty-state message (a
+  // scrub can legitimately land on a quiet instant even with a flow source
+  // fully configured) — this hint is specifically about "no flow source
+  // configured at all", so it's suppressed while either is scrubbing to
+  // avoid showing more than one empty-state message at once.
+  const flowsEmptyState = flowsPaintable && !activeScrub && !flowsLoading && liveFlowRecords.length === 0 && !flowsHintDismissed;
   const [selectedFlowEdgeId, setSelectedFlowEdgeId] = useState<string | undefined>(undefined);
   const selectedFlowEdge = flowConversationEdges.find((e) => e.id === selectedFlowEdgeId);
   useEffect(() => {
@@ -1066,6 +1121,11 @@ function TopologyPageContent() {
             // (recencyPaintable).
             recencyLayerActive={recencyLayerActive}
             onToggleRecency={toggleRecencyLayer}
+            // T-3910: same v2-canvas-only scope note as Recency above —
+            // FlowReplayPanel (below the toolbar) only mounts while this
+            // is on.
+            replayLayerActive={replayLayerActive}
+            onToggleReplay={toggleReplayLayer}
           />
           {viewMode === "graph" && (
             <>
@@ -1132,6 +1192,21 @@ function TopologyPageContent() {
             liveUtilizationByRef={utilizationByRef}
             liveFlowRecords={liveFlowRecords}
             onPlaybackChange={setPlayback}
+          />
+        </div>
+      )}
+
+      {/* T-3910: Traffic replay — a second, distinct scrub/animate control,
+       * opt-in via its own Replay toggle above (off by default), separate
+       * from History's always-visible scrubber immediately above. Same
+       * Graph-view-only, print-hidden scope; read-only, same as History. */}
+      {viewMode === "graph" && replayLayerActive && (
+        <div className="print:hidden">
+          <FlowReplayPanel
+            metricsRefs={metricsCandidateRefs}
+            liveUtilizationByRef={utilizationByRef}
+            liveFlowRecords={liveFlowRecords}
+            onReplayChange={setReplayPlayback}
           />
         </div>
       )}
@@ -1207,6 +1282,60 @@ function TopologyPageContent() {
                 : "No snapshot history yet — enable scheduled snapshots or take a manual one to populate this layer."}
           </div>
           {!recencyLoading && recencyDiffResult && <RecencyLegend />}
+        </div>
+      )}
+
+      {/* T-3912: the blast-radius lens's own status line — real DOM, shown
+       * regardless of view/renderer (WCAG: the "showing N of M" count and
+       * the way out must never depend on which view happens to be mounted),
+       * with an explicit "Clear focus" button so a lens the operator
+       * triggered from a finding or a failsim result is never a trap. The
+       * map paint itself (drawBlastRadiusOverlay's scrim/badges) is
+       * v2-canvas-only, matching every other client-only overlay above; a
+       * prompt below offers to switch rather than silently doing nothing. */}
+      {blastRadiusRequest && blastRadiusFocus && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-fuchsia-300 bg-fuchsia-50 px-3 py-2 text-xs text-fuchsia-900 dark:border-fuchsia-700 dark:bg-fuchsia-950 dark:text-fuchsia-100 print:hidden"
+          role="status"
+        >
+          <span>
+            <span className="inline-flex items-center gap-1.5 font-medium">
+              {blastRadiusRequest.label}
+              <HelpAnchor topic="topology-blast-radius-lens" />
+            </span>{" "}
+            — {summarizeBlastRadiusFocus(blastRadiusFocus)}
+            {blastRadiusRequest.caveats.length > 0 && (
+              <span className="ml-1">Also: {blastRadiusRequest.caveats.join("; ")}.</span>
+            )}
+            {!blastRadiusPaintable && (
+              <span className="ml-1">
+                Switch to Graph view with the v2 canvas renderer to see it highlighted on the map.
+              </span>
+            )}
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            {!blastRadiusPaintable && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setViewMode("graph");
+                  setRendererVersion("v2");
+                }}
+              >
+                Switch view
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setBlastRadiusRequest(undefined);
+              }}
+            >
+              Clear focus
+            </Button>
+          </span>
         </div>
       )}
 
@@ -1391,6 +1520,7 @@ function TopologyPageContent() {
             mtuBadges={mtuOverlayBadges}
             diffMarks={previewActive ? previewScene.marks : diffOverlay.marks}
             recencyMarks={recencyOverlay.marks}
+            blastRadiusFocus={blastRadiusPaintable ? blastRadiusFocus : undefined}
             onFlowEdgeClick={(id) => {
               setSelectedFlowEdgeId(id);
             }}

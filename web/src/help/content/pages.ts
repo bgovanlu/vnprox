@@ -417,7 +417,31 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
         body: "A VLAN trunked on the node but not on the switch port, a node expecting a neighbour that's gone, two nodes' uplinks landing on the same switch when you thought they were redundant — these surface as findings rather than requiring you to read two inventories side by side.",
       },
     ],
-    seeAlso: ["findings-stream", "topology-page", "switch-push"],
+    seeAlso: ["findings-stream", "topology-page", "switch-push", "cabling-plan-page"],
+  },
+  {
+    id: "cabling-plan-page",
+    title: "Cabling plan",
+    surface: "page",
+    summary:
+      "Every physical NIC in the cluster, grouped by node, with the switch/port LLDP reports for it — printable, and explicit about which links LLDP hasn't discovered rather than leaving them blank.",
+    docRef: "docs/features/lldp-discovery.md",
+    keywords: ["cabling", "cable", "rack", "patch panel", "lldp", "print", "wiring", "physical"],
+    sections: [
+      {
+        heading: "What this adds over Ports",
+        body: "The Ports page (GET /ports) lists a row only for a NIC LLDP has actually discovered a neighbour for. This view lists every physical NIC whether or not one was found, so a NIC with no neighbour reads as an explicit 'Not discovered' rather than silently missing from the table — the difference matters because no-neighbour is common and not itself a fault (an unmanaged switch, a directly-attached host, and LLDP disabled on the far end all look identical from here).",
+      },
+      {
+        heading: "No rack elevation, on purpose",
+        body: "LLDP tells you a far end's identity and port — never a U-position, a cable length, or a colour. This view doesn't invent a rack diagram pretending to know what it can't; if you want rack placement recorded, use a map annotation instead of expecting it to be inferred.",
+      },
+      {
+        heading: "Printing it",
+        body: "The page prints as shown — use the Print button, or your browser's own print command. The on-screen table is what prints; the small patch-panel diagram beneath it is a visual extra, not a second source of the same facts.",
+      },
+    ],
+    seeAlso: ["ports-page", "topology-page", "map-annotations"],
   },
   {
     id: "blueprints-page",

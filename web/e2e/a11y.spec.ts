@@ -398,6 +398,7 @@ const SWEEP_ROUTES: SweepRoute[] = [
   { path: "/diagnose", heading: /^No target selected$/, level: 2 },
   { path: "/analysis", heading: /^Analysis/ },
   { path: "/ports", heading: /^Ports$/ },
+  { path: "/cabling", heading: /^Cabling plan$/ },
   { path: "/blueprints", heading: /^Blueprints$/ },
   { path: "/hub", heading: /^Hub$/ },
   { path: "/config-as-code", heading: /^Config as code/ },

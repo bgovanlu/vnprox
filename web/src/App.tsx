@@ -22,6 +22,7 @@ import { AnalysisPage } from "./pages/AnalysisPage";
 import { IpamPage } from "./pages/IpamPage";
 import { ManagementPage } from "./pages/ManagementPage";
 import { PortsPage } from "./pages/PortsPage";
+import { CablingPlanPage } from "./pages/CablingPlanPage";
 import { BlueprintsPage } from "./pages/BlueprintsPage";
 import { HubPage } from "./hub/HubPage";
 import { ConfigAsCodePage } from "./drift/ConfigAsCodePage";
@@ -238,6 +239,15 @@ export function App() {
               element={
                 <DesktopOnlyRoute pageLabel="Ports">
                   <PortsPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            {/* T-3907: the physical cabling plan — printable, LLDP-derived. */}
+            <Route
+              path="/cabling"
+              element={
+                <DesktopOnlyRoute pageLabel="Cabling plan">
+                  <CablingPlanPage />
                 </DesktopOnlyRoute>
               }
             />

@@ -493,7 +493,7 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
         body: "Playback covers the retained window, not all history. vnprox keeps short-horizon operational data deliberately — it's a network tool that shows you recent state, not a time-series warehouse.",
       },
     ],
-    seeAlso: ["history-page", "snapshots-time-machine", "flows-page"],
+    seeAlso: ["history-page", "snapshots-time-machine", "flows-page", "flow-replay"],
   },
   {
     id: "scheduled-apply",
@@ -726,6 +726,66 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
       },
     ],
     seeAlso: ["topology-page", "topology-point-in-time-diff", "topology-paint-modes", "history-page"],
+  },
+  {
+    id: "flow-replay",
+    title: "Traffic replay",
+    surface: "panel",
+    summary:
+      "Play or scrub the map's traffic heat and flow paths back through the bounded flow/metric rings vnprox already keeps — a different question from History playback: what traffic did, not what configuration changed.",
+    docRef: "docs/features/monitoring.md",
+    keywords: ["replay", "traffic", "flows", "scrub", "playback", "animate", "heat", "retention"],
+    sections: [
+      {
+        heading: "Not History playback",
+        body: "History (the always-visible scrubber) replays configuration changes — changeset and finding markers you drag through and click into. Traffic replay is a separate, opt-in layer with its own toggle: it repaints the map's existing traffic-heat and flow-path colouring at a chosen past instant, with Play/Pause and Step controls History has none of. The two never share a control, so dragging one never silently moves the other.",
+      },
+      {
+        heading: "Two rings, two bounds",
+        body: "Traffic heat (utilization, from interface counters) is retained 24 hours. Flow paths (from opt-in sFlow/NetFlow/IPFIX/conntrack ingestion) are retained a much shorter, configurable `[flows] retention_minutes` — 60 minutes by default. Both figures are shown in the panel's own header before you ever touch the scrubber, not discovered by dragging into an empty stretch.",
+      },
+      {
+        heading: "Off because it was never on, not because traffic was quiet",
+        body: "Flow ingestion is opt-in and off by default. A cluster with it off and a cluster with it on but genuinely idle both return zero flow records — this panel tells them apart explicitly ('flow ingestion is not enabled' vs. 'no flow paths recorded at this instant') rather than showing one blank map for both. Traffic heat keeps replaying regardless, since it comes from a different, always-on ring.",
+      },
+      {
+        heading: "Play is not the only way to read it",
+        body: "Step (Prev/Next) and the scrubber itself reach every frame without animation, and the current instant and flow-path count are always shown as text. Play is disabled outright when the browser prefers reduced motion — Step and the scrubber still work.",
+      },
+    ],
+    seeAlso: ["history-playback", "topology-recency-overlay", "flows-page", "topology-paint-modes"],
+  },
+  {
+    id: "topology-blast-radius-lens",
+    title: "Blast-radius lens",
+    surface: "panel",
+    summary:
+      "Collapse the map to just the entities a failure-impact simulation, a changeset's impact preview, or a finding names as affected — plus the path connecting them — so a wide, busy cluster reads as one focused subgraph.",
+    docRef: "docs/features/topology.md",
+    keywords: ["blast radius", "focus", "failsim", "spof", "impact", "finding", "subgraph", "dim"],
+    sections: [
+      {
+        heading: "A view, not a new analysis",
+        body: "This lens computes nothing on its own — it resolves the refs a failure simulation (Failure simulation panel), a changeset's own Blast radius tab, or a finding's affected-entity list already named, against whatever the map is currently showing, and walks the shortest connecting path through the rendered topology. Severity, quorum risk, and every other verdict still come from the source that computed them.",
+      },
+      {
+        heading: "The path is the point",
+        body: "Blast radius means reachability, not a bag of endpoints: every hop the hunt for a connecting path passes through — a bond, a bridge — is focused too, marked with a distinct glyph from the target/affected entities themselves, so the map shows how the failure reaches each one, not just that it does.",
+      },
+      {
+        heading: "A stale result never blanks the map",
+        body: "A failsim or finding result can be a moment old by the time you look at the map — an entity it names may since have changed or been removed. Every named entity is resolved independently: one that is not currently on the map is reported (never silently dropped, never faked into place), and if NONE of them resolve, the lens simply stays off — showing the full, unfocused map — rather than leaving an empty canvas with no explanation.",
+      },
+      {
+        heading: "Always an obvious way out",
+        body: "The status line above the map states \"showing N of M entities\" in real text (never conveyed by dimming alone) and carries its own Clear focus button. Dimmed and focused entities are also distinguished by a corner glyph, not colour alone, on the map itself.",
+      },
+      {
+        heading: "Graph view (v2 canvas) only",
+        body: "Like every other client-only map layer, the lens paints on the Graph view's v2 canvas renderer. From Switch view, or the v1 Graph renderer, the status line and Clear button still work — the banner offers a one-click Switch view button — but the map paint itself needs v2 canvas.",
+      },
+    ],
+    seeAlso: ["spof-score", "changeset-impact", "findings-stream", "topology-page", "post-apply-preview"],
   },
   {
     id: "post-apply-preview",

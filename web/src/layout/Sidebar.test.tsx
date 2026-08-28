@@ -30,7 +30,17 @@ vi.mock("../api/findings", () => ({
  * file checks the rendered sidebar against, independent of Sidebar.tsx's
  * own internal shape. */
 const FLAT_LABELS = ["Home", "Topology", "Guests", "Guest view", "Management"];
-const NETWORK_LABELS = ["SDN", "Firewall", "IPAM", "Ports", "Edge", "Route explorer", "Flows", "Conntrack"];
+const NETWORK_LABELS = [
+  "SDN",
+  "Firewall",
+  "IPAM",
+  "Ports",
+  "Cabling plan",
+  "Edge",
+  "Route explorer",
+  "Flows",
+  "Conntrack",
+];
 const OPERATE_LABELS = ["History", "Incidents", "Audit", "Analysis", "Tools"];
 const AUTOMATE_LABELS = ["Config as code", "Governance", "Blueprints", "Hub"];
 const ALL_LABELS = [...FLAT_LABELS, ...NETWORK_LABELS, ...OPERATE_LABELS, ...AUTOMATE_LABELS, "Settings"];

@@ -13,9 +13,13 @@
 // not decide renders as **Indeterminate**, never as "no impact" — see that
 // module's doc comment for the mapping and phase-30's invariant for why.
 import clsx from "clsx";
+import { useNavigate } from "react-router-dom";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { HelpAnchor } from "../help/HelpAnchor";
 import type { FailsimImpact, SpofEntry } from "../api/types";
+import { blastRadiusRequestFromFailsimImpact } from "../topology/blastRadiusFocus";
+import { useTopologyStore } from "../topology/store";
 import { MapLink } from "./MapLink";
 import { useSpofScoreQuery } from "./analysisQueries";
 import {
@@ -128,6 +132,8 @@ function ResilienceScore({
 function SpofEntryCard({ entry }: { entry: SpofEntry }) {
   const verdict = spofVerdict(entry.impact);
   const affected = spofAffectedRefs(entry.impact);
+  const navigate = useNavigate();
+  const setBlastRadiusRequest = useTopologyStore((s) => s.setBlastRadiusRequest);
   return (
     <li className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
       <div className="flex flex-wrap items-center gap-2">
@@ -143,6 +149,20 @@ function SpofEntryCard({ entry }: { entry: SpofEntry }) {
             Partly unevaluated
           </span>
         )}
+        {/* T-3912: collapses the topology map to this simulated removal's
+         * blast radius — the target plus every disconnected guest/stranded
+         * VLAN/lost management path, and the map path connecting them. */}
+        <Button
+          size="sm"
+          variant="secondary"
+          className="ml-auto"
+          onClick={() => {
+            setBlastRadiusRequest(blastRadiusRequestFromFailsimImpact(entry.impact));
+            void navigate("/topology");
+          }}
+        >
+          Show blast radius
+        </Button>
       </div>
       <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{spofVerdictExplanation(entry.impact)}</p>
 

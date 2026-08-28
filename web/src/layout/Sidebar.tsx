@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Binary,
   Boxes,
+  Cable,
   ChartLine,
   ChevronDown,
   ChevronRight,
@@ -82,6 +83,8 @@ const NAV_GROUPS: NavGroup[] = [
       { path: "/firewall", label: "Firewall", icon: ShieldCheck },
       { path: "/ipam", label: "IPAM", icon: Binary },
       { path: "/ports", label: "Ports", icon: EthernetPort },
+      // T-3907: the printable physical cabling plan derived from LLDP.
+      { path: "/cabling", label: "Cabling plan", icon: Cable },
       { path: "/edge", label: "Edge", icon: Router },
       { path: "/route-explorer", label: "Route explorer", icon: Signpost },
       { path: "/flows", label: "Flows", icon: Route },

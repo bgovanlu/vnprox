@@ -11,6 +11,7 @@
 // queries.ts for the load/save round trip.
 import { create } from "zustand";
 import { ALL_LAYERS, type Layer, type TopologyLayoutPayload } from "../api/types";
+import type { BlastRadiusRequest } from "./blastRadiusFocus";
 
 /** Which rendering of the same GET /topology data is shown: the switch
  * faceplate view (the default — docs/features/topology.md §2's virtual-
@@ -111,6 +112,25 @@ export interface TopologyUIState {
    * latencyLayerActive. Same per-session (not persisted-layout) lifetime
    * and v2-renderer-only scope as those four. */
   recencyLayerActive: boolean;
+  /** T-3912 "Blast-radius lens": the pending focus request from a failsim
+   * result, a changeset-impact preview, or a finding's `refs`
+   * (topology/blastRadiusFocus.ts) — set by an entry point elsewhere in the
+   * app (SpofPanel.tsx, FindingsList.tsx, ImpactPanel.tsx) and consumed by
+   * TopologyPage, which resolves it against the currently rendered map.
+   * Unlike the layer toggles above this is not a persistent paint mode a
+   * user flips on to browse — it is a one-shot, contextual "show me this"
+   * request, so there is no `blastRadiusLayerActive` toggle in
+   * LayerToggleBar; `undefined` means no lens is pending, and clearing it
+   * (the map's own "Clear focus" button) is the operator's way out. */
+  blastRadiusRequest: BlastRadiusRequest | undefined;
+  /** T-3910 "Traffic replay": gates the FlowReplayPanel (topology/replay/
+   * FlowReplayPanel.tsx), an animate/scrub control over the map's existing
+   * traffic-heat/flow-path paint at a chosen past instant — deliberately a
+   * separate toggle from History's own always-visible scrubber, so the two
+   * read as distinct tools rather than one control wearing two skins. Same
+   * per-session (not persisted-layout) lifetime and v2-renderer-only scope
+   * as recencyLayerActive/k8sLayerActive/etc. */
+  replayLayerActive: boolean;
 
   toggleLayer: (layer: Layer) => void;
   /** T-907: sets the whole active-layer set at once (as opposed to
@@ -129,6 +149,13 @@ export interface TopologyUIState {
   toggleWGLayer: () => void;
   toggleK8sLayer: () => void;
   toggleRecencyLayer: () => void;
+  /** Sets (or, passed `undefined`, clears) the pending blast-radius focus
+   * request. Setting one does not itself change viewMode/rendererVersion —
+   * the lens only paints in Graph view's v2 canvas renderer (see this
+   * field's own doc comment), so TopologyPage surfaces a prompt to switch
+   * rather than silently overriding the operator's current view. */
+  setBlastRadiusRequest: (request: BlastRadiusRequest | undefined) => void;
+  toggleReplayLayer: () => void;
   setVlanFilter: (vlan: number | undefined) => void;
   select: (id: string | undefined) => void;
   hover: (id: string | undefined) => void;
@@ -161,6 +188,8 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   wgLayerActive: false,
   k8sLayerActive: false,
   recencyLayerActive: false,
+  blastRadiusRequest: undefined,
+  replayLayerActive: false,
 
   toggleLayer: (layer) => {
     set((state) => {
@@ -198,8 +227,14 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   toggleK8sLayer: () => {
     set((state) => ({ k8sLayerActive: !state.k8sLayerActive }));
   },
+  toggleReplayLayer: () => {
+    set((state) => ({ replayLayerActive: !state.replayLayerActive }));
+  },
   toggleRecencyLayer: () => {
     set((state) => ({ recencyLayerActive: !state.recencyLayerActive }));
+  },
+  setBlastRadiusRequest: (request) => {
+    set({ blastRadiusRequest: request });
   },
   setVlanFilter: (vlan) => {
     set({ vlanFilter: vlan });

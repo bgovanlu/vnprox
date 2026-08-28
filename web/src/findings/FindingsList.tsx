@@ -57,6 +57,16 @@ export interface FindingsListProps {
    * button is clicked. Omitted entirely (no button rendered) if the caller
    * has no fix action to offer. */
   onFix?: (id: string) => void;
+  /** T-3912: when provided, a finding that names at least one `refs` entry
+   * renders a "Show blast radius" button beside its ref list, calling this
+   * with the finding's own `refs` and `detail` (as a ready-made label — the
+   * one piece of finding-specific context this generic component already
+   * carries). The caller (blastRadiusFocus.ts's
+   * `blastRadiusRequestFromFindingRefs`) turns that into a topology-page
+   * focus request — this component itself stays source-agnostic and owns
+   * no navigation, matching every other action slot here. Omitted = no
+   * such button, so a caller with nothing to show a map for is unaffected. */
+  onShowBlastRadius?: (refs: string[], label: string) => void;
   /** The id currently being fixed (disables its button, shows a pending
    * label) — callers own their own mutation's pending state. */
   fixingId?: string;
@@ -91,6 +101,7 @@ export function FindingsList({
   onFix,
   onAck,
   onUnack,
+  onShowBlastRadius,
   selectedIds,
   onToggleSelected,
   fixingId,
@@ -164,6 +175,17 @@ export function FindingsList({
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {onShowBlastRadius && f.refs && f.refs.length > 0 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    onShowBlastRadius(f.refs ?? [], f.detail);
+                  }}
+                >
+                  Show blast radius
+                </Button>
+              )}
               {f.action && (
                 <Button variant="secondary" size="sm" onClick={f.action.onClick}>
                   {f.action.label}
