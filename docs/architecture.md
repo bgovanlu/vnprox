@@ -236,7 +236,7 @@ visitor-scratch API (§9b), and the assistant panel runs the **same** MCP read t
 ordinary `/api/v1` routes with the caller's own session cookie — no new route, no new backend
 capability. See §13.1 and `docs/security.md`'s "In-app assistant" entry.
 
-**`internal/presence` and D4 (T-2805).** Decision D4 — "all mutations via the change engine with
+**`internal/presence` and D4 (T-2805).** Decision [D4](adr/0004-change-engine-is-the-sole-mutation-path.md) — "all mutations via the change engine with
 commit-confirm" — is the invariant an entity-lock feature is most able to break, so the boundary
 is stated here rather than only in the package. A lock is **advisory**: it warns a second operator
 staging against an entity someone else already has a draft open on, names the holder, and lets
@@ -261,7 +261,7 @@ cluster-aware", and closing it needs a peer-API fan-out (`GET /api/peer/locks`) 
 not spec. It fails in the safe direction — a missed warning, never a missed apply — because the
 mechanism is advisory in the first place.
 
-**`internal/gitsync` and D5 (T-2701).** Decision D5 — "Proxmox configs remain source of
+**`internal/gitsync` and D5 (T-2701).** Decision [D5](adr/0005-proxmox-is-source-of-truth-sqlite-is-app-owned-only.md) — "Proxmox configs remain source of
 truth" — is the invariant this package is most able to break, so the boundary is worth
 stating here rather than only in the package. A git repository becomes the source of
 *intent*; it never becomes authoritative over live config. On each poll the service
@@ -443,19 +443,27 @@ see docs/features/demo-mode.md's gap list.
 
 ## 10. Key decisions (locked)
 
-| # | Decision | Rationale |
-|---|---|---|
-| D1 | Go single binary, on-node deployment | No runtime deps on PVE hosts; direct host access needed for LLDP/ifreload/rollback; appliance-grade ops |
-| D2 | React + TS + React Flow frontend, embedded | Modern interactive canvas is the core product surface |
-| D3 | PVE API with user's ticket for writes | PVE ACLs enforced by PVE; no privilege escalation through vnprox |
-| D4 | All mutations via change engine with commit-confirm | The core safety differentiator; non-negotiable |
-| D5 | Proxmox configs remain source of truth; SQLite for app data only | vnprox must never fight pvecfg/pmxcfs; uninstalling vnprox leaves a working cluster |
-| D6 | Peerless symmetric cluster design (no leader) | Simplicity; PVE already provides cluster membership and pmxcfs |
-| D7 | Port 8007 default with PBS conflict detection | Product requirement; PBS coexistence handled at install |
-| D8 | Support Linux bridges + OVS + full SDN stack | "All networking in Proxmox," not a subset |
-| D9 | Target PVE 8.2+ and 9.x (10.x/11.x forward target for the v3.0 arc) | ifupdown2 default, SDN GA, DHCP/IPAM present; each PVE major gets a validation pass within one phase of its release |
-| D10 | **Platform API freeze at v3.0** — the MCP tool surface (T-1701), the plugin SDK interfaces (T-1702), and the WebSocket `"events"` stream schema (T-1104) become stable, documented compatibility contracts | v3.0 is the platform release (`docs/roadmap-universal.md`, Compatibility & versioning). Same deprecation policy the changeset API adopted at v1.7: additive-only within a version; a breaking change mints a new version and keeps the old accepted for ≥1 minor release. The frozen surfaces are enumerated in §13 |
-| D11 | **Peer wire protocol stays at version 2 across v3.0** — T-1704's `POST /api/peer/ha/replicate` is additive at protocol 2, not a bump | An HA pair runs the same build; the route is 503-nil-safe on any peer that does not serve it, so it follows the same additive-route precedent as every observability peer route (only routes the cross-node write/coordination path depends on force a bump — §5, `docs/api.md` Peer API). See §13 |
+Published as numbered ADRs with full context and consequences in [`docs/adr/`](adr/README.md) —
+that directory's `README.md` also documents a naming collision worth knowing before citing a bare
+"D-number" anywhere in this project: `docs/roadmap-proven.md` has its own, unrelated D1–D7
+registry that reuses these same labels for different decisions.
+
+| # | Decision | Rationale | ADR |
+|---|---|---|---|
+| D1 | Go single binary, on-node deployment | No runtime deps on PVE hosts; direct host access needed for LLDP/ifreload/rollback; appliance-grade ops | [ADR-0001](adr/0001-go-single-binary-on-node-deployment.md) |
+| D2 | React + TS + React Flow frontend, embedded | Modern interactive canvas is the core product surface | [ADR-0002](adr/0002-react-typescript-react-flow-frontend.md) |
+| D3 | PVE API with user's ticket for writes | PVE ACLs enforced by PVE; no privilege escalation through vnprox | [ADR-0003](adr/0003-pve-api-writes-use-the-users-ticket.md) |
+| D4 | All mutations via change engine with commit-confirm | The core safety differentiator; non-negotiable | [ADR-0004](adr/0004-change-engine-is-the-sole-mutation-path.md) |
+| D5 | Proxmox configs remain source of truth; SQLite for app data only | vnprox must never fight pvecfg/pmxcfs; uninstalling vnprox leaves a working cluster | [ADR-0005](adr/0005-proxmox-is-source-of-truth-sqlite-is-app-owned-only.md) |
+| D6 | Peerless symmetric cluster design (no leader) | Simplicity; PVE already provides cluster membership and pmxcfs | [ADR-0006](adr/0006-peerless-symmetric-cluster-no-elected-leader.md) |
+| D7 | Port 8007 default with PBS conflict detection | Product requirement; PBS coexistence handled at install | [ADR-0007](adr/0007-port-8007-default-with-pbs-conflict-detection.md) |
+| D8 | Support Linux bridges + OVS + full SDN stack | "All networking in Proxmox," not a subset | [ADR-0008](adr/0008-support-bridges-ovs-and-the-full-sdn-stack.md) |
+| D9 | Target PVE 8.2+ and 9.x (10.x/11.x forward target for the v3.0 arc) | ifupdown2 default, SDN GA, DHCP/IPAM present; each PVE major gets a validation pass within one phase of its release | [ADR-0009](adr/0009-target-pve-8-2-plus-and-9-x.md) |
+| D10 | **Platform API freeze at v3.0** — the MCP tool surface (T-1701), the plugin SDK interfaces (T-1702), and the WebSocket `"events"` stream schema (T-1104) become stable, documented compatibility contracts | v3.0 is the platform release (`docs/roadmap-universal.md`, Compatibility & versioning). Same deprecation policy the changeset API adopted at v1.7: additive-only within a version; a breaking change mints a new version and keeps the old accepted for ≥1 minor release. The frozen surfaces are enumerated in §13 | [ADR-0010](adr/0010-platform-api-freeze-at-v3-0.md) |
+| D11 | **Peer wire protocol stays at version 2 across v3.0** — T-1704's `POST /api/peer/ha/replicate` is additive at protocol 2, not a bump | An HA pair runs the same build; the route is 503-nil-safe on any peer that does not serve it, so it follows the same additive-route precedent as every observability peer route (only routes the cross-node write/coordination path depends on force a bump — §5, `docs/api.md` Peer API). See §13 | [ADR-0011](adr/0011-peer-wire-protocol-not-frozen-stays-at-version-2.md) |
+
+Maintainer model, release cadence, and the supported-versions/LTS statement are in
+[`docs/adr/governance.md`](adr/governance.md).
 
 ## 11. Plugin SDK extension points (T-1702)
 
@@ -480,14 +488,14 @@ verbatim (switchdrv, ingress) rather than forking it.
 a method signature is a breaking change that mints a new `APIVersion` ("v2"), with v1
 kept accepted for at least one minor release before removal, and the deprecation noted
 here and in `docs/api.md`. Adding a new *extension point* (a new `ExtensionPoint`
-constant + interface) is additive and does not bump the api version. This mirrors D3/D4:
+constant + interface) is additive and does not bump the api version. This mirrors [D3](adr/0003-pve-api-writes-use-the-users-ticket.md)/[D4](adr/0004-change-engine-is-the-sole-mutation-path.md):
 the plugin surface is a compatibility contract, designed conservatively — easier to
 widen later than to narrow.
 
 **The one boundary.** Plugins never gain an apply path. The only change-engine surface
 handed to plugin code is `plugin.Stager` (Create/Validate — stage-only); no
 Apply/Confirm/Rollback method is reachable, in-process or over the out-of-process
-transport (D4 holds for plugins too). A plugin's declared capabilities are a *ceiling*
+transport ([D4](adr/0004-change-engine-is-the-sole-mutation-path.md) holds for plugins too). A plugin's declared capabilities are a *ceiling*
 checked against `internal/auth`'s existing vocabulary — the SDK adds no new privilege.
 Out-of-process plugins (`internal/plugin/procshim`) run as supervised subprocesses with
 no DB/file access, speaking a length-delimited JSON wire protocol over stdio.
@@ -525,7 +533,7 @@ service record. vnprox neither ships nor manages the VIP/ARP/DNS mechanism itsel
 daemon dependency. `GET /ha/status` reports role/term/lease-expiry/replication-lag, and a
 standby lagging past a configured threshold raises the `ha_replication_degraded` finding.
 
-**Relationship to D6.** This does not reintroduce a cluster leader: D6's peerless symmetric
+**Relationship to [D6](adr/0006-peerless-symmetric-cluster-no-elected-leader.md).** This does not reintroduce a cluster leader: D6's peerless symmetric
 model still governs cluster-wide read/write coordination. The HA lease governs only *daemon*
 failover within an optional active/standby pair.
 
@@ -542,7 +550,7 @@ Go code that cannot be materialized from a downloaded manifest).
 
 v3.0 is the platform release. Three programmable surfaces that opened during Phases 11–17 —
 the **MCP tool surface**, the **plugin SDK interfaces**, and the **WebSocket `"events"` stream
-schema** — become stable, documented compatibility contracts (decision D10). This section is the
+schema** — become stable, documented compatibility contracts (decision [D10](adr/0010-platform-api-freeze-at-v3-0.md)). This section is the
 authoritative enumeration of exactly what is frozen; a reviewer can check it against the code and
 against `docs/api.md`. Nothing outside this list is a frozen contract.
 
@@ -612,7 +620,7 @@ test enforce the other two.
 The internal peer protocol (`internal/peer`, `docs/api.md` "Peer API") is **not** part of the public
 platform freeze — it is an internal-only, same-build-to-same-build contract (`GET /api/peer/version`
 gates cross-node coordination on an exact `ProtocolVersion` match). For v3.0 it stays at
-**version 2** (decision D11): T-1704's `POST /api/peer/ha/replicate` is additive at protocol 2, not a
+**version 2** (decision [D11](adr/0011-peer-wire-protocol-not-frozen-stays-at-version-2.md)): T-1704's `POST /api/peer/ha/replicate` is additive at protocol 2, not a
 bump, because an HA active/standby pair always runs the same build and the route is 503-nil-safe on
 any peer that does not serve it — the same additive-route precedent every observability peer route
 follows (only routes the cross-node write/coordination path depends on force a bump). Non-HA

@@ -15,7 +15,8 @@ Two distinct things get called this, and only one exists:
    (`pve-enterprise`, `pve-no-subscription`, `pve-test`) are all first-party mirrors of Proxmox's
    own packages; there is no Debian-backports-style "extra" or "community" component a third
    party can publish into, and no indication one is planned. There is therefore no repository of
-   this kind to seek inclusion in — the decision this repository already made (D6, this project's
+   this kind to seek inclusion in — the decision this repository already made (`docs/roadmap-proven.md` decision D6 — not
+   `docs/architecture.md`'s D6; the two documents each number their decisions from D1, this project's
    own signed apt repository, `packaging/apt-repo.md`) is not a fallback from this option; it is
    the only option in this category.
 2. **[Proxmox VE Helper-Scripts](https://community-scripts.org/) (GitHub `community-scripts/ProxmoxVE`,
@@ -64,7 +65,8 @@ asked for it to be checked, not skipped as obviously fine.
 Even setting the architecture mismatch aside: inclusion in a third-party script index is a
 standing commitment to keep that script in sync with vnprox's own install path forever, reviewed
 by maintainers who don't hold vnprox's release keys and don't share its release cadence — a
-second packaging surface on top of the one this phase already commits to (D6's signed apt repo).
+second packaging surface on top of the one this phase already commits to
+(`docs/roadmap-proven.md` D6's signed apt repo).
 Given the apt repo doesn't exist yet either (`packaging/apt-repo.md`'s own Status section), taking
 on a second, harder-to-fit distribution surface before the first one is live is the wrong order of
 operations regardless of the architecture question.
@@ -72,7 +74,7 @@ operations regardless of the architecture question.
 ## What to do instead
 
 The distribution channel that actually fits vnprox's architecture is the one already decided:
-vnprox's own signed apt repository (D6, `packaging/apt-repo.md`) plus visibility through the
+vnprox's own signed apt repository (`docs/roadmap-proven.md` D6, `packaging/apt-repo.md`) plus visibility through the
 Proxmox forum (`forum-announcement.md`) and this docs site. Neither requires reshaping vnprox to
 fit someone else's isolation model.
 

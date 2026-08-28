@@ -26,9 +26,12 @@
   - [API](api.md)
   - [Security](security.md)
   - [Security verification](security-verification.md)
+  - [Telemetry transparency](telemetry.md)
   - [PVE compatibility](compatibility.md)
   - [Performance](performance.md)
   - [Development](development.md)
+  - [Architecture decision records](adr/README.md)
+  - [Governance](adr/governance.md)
 
 - **Community**
   - [Support](support.md)
