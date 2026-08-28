@@ -838,6 +838,40 @@ the report itself is JSON on stdout.
   abort on failure — aborting after the package and cluster rollout have run would leave a
   half-configured cluster. Making it a hard gate is `T-1904-followup-01`.
 
+## `vnproxctl upgrade-check` — PVE upgrade advisor (T-4004)
+
+`doctor` asks "is this install healthy right now?" `upgrade-check` asks a forward-looking question:
+"if I upgrade this node to PVE `<version>`, which of vnprox's known gotchas will I hit?"
+
+It runs a small, **sourced** catalog (`internal/upgradeadvisor`) of network-affecting changes real
+PVE releases have made — the kind of thing that used to be tribal memory ("oh, X breaks after you
+upgrade, someone hit that last year"). Each entry names a real task card or evidence transcript it
+was written from; a guessed entry is worse than no entry, so this catalog stays small on purpose.
+
+```
+vnproxctl upgrade-check 9.2            # human-readable, worst first
+vnproxctl upgrade-check -o json 9.2    # schema-stable
+vnproxctl upgrade-check --pmxcfs /path 9.2   # point at a pmxcfs mount other than /etc/pve
+```
+
+| Entry | What it catches |
+|---|---|
+| `upgrade_conntrack_procfs_removed` | PVE 9 kernels ship `CONFIG_NF_CONNTRACK_PROCFS=n` — `/proc/net/nf_conntrack` is gone even though the netlink conntrack interface still works. vnprox itself already reads via netlink by default (T-3711); this fires only if this host has an explicit procfs-path override, or if the live netlink capability probe itself fails (commonly a missing `CAP_NET_ADMIN`) |
+| `upgrade_nftables_iptables_engine_split` | PVE 9 ships a second, nftables-based firewall engine (`proxmox-firewall`) alongside the legacy iptables one (`pve-firewall`), opt-in via `host.fw`'s `nftables` option and off by default. vnprox's compiled-ruleset inspector (`GET /firewall/compiled`) only ever reads nftables output, so on a default PVE 9+ install with the firewall on, it reports an empty ruleset even though iptables is actively enforcing rules |
+
+**Detection prefers a live capability probe over a version-string guess wherever one exists** — the
+conntrack entry attempts a real netlink dump rather than inferring from the PVE version; the
+nftables entry stats the same runtime flag file (`/run/proxmox-nftables-firewall-force-disable`)
+PVE's own firewall compiler maintains, rather than assuming the engine from config alone.
+
+It is **read-only**: every signal it gathers is a local file read or a discarded live probe — no
+`internal/change` op and no `pvesh` write verb anywhere on this path. An entry whose break version
+is beyond the requested target is omitted from the report entirely, not shown as a no-op skip.
+
+**Exit code:** non-zero only if a check **fails** (an explicit, already-broken-today misconfiguration
+— e.g. a procfs-path override). The common case is a **warn** ("this will bite you after upgrading,
+here's what to do"), which does not gate — safe to run unattended in a pre-upgrade script.
+
 ## `vnproxctl verify` — hardware validation, executed (T-2501)
 
 `doctor` asks whether this daemon is healthy. `verify` asks a different question: **does this
@@ -1019,6 +1053,7 @@ vnproxctl remote topology|findings|drift|audit
 vnproxctl remote changesets list|get|diff|create|validate|apply|confirm|rollback|discard
 vnproxctl apply <spec.yaml> --plan     # POST /spec/import, print diff, exit 3 if changes pending
 vnproxctl apply <spec.yaml> --apply    # ...then apply + poll to committed + auto-confirm
+vnproxctl spec export|import|pin|unpin # the config-as-code CLI, T-4005 — docs/api.md's Spec sections
 ```
 
 Every command in the binary (including the pre-existing three) supports
@@ -1032,6 +1067,12 @@ from `planning/tasks/phase-11.md`'s Phase 11 intro: a PR to a spec repo →
 `vnproxctl apply spec.yaml --plan` in CI → merge schedules/applies during a
 maintenance window → `vnproxctl remote changesets get`/`remote drift`
 confirms a clean result the next morning.
+
+Every `-o json` command's output has a documented, drift-checked schema in
+`docs/cli-json.md` (T-4011) — the CLI-side counterpart to this section's own
+route table. `vnproxctl completion bash|zsh` prints a shell-completion
+script for the whole subcommand tree, generated from `cmd/vnproxctl/main.go`'s
+own dispatch table rather than hand-maintained.
 
 ## High availability (active/standby, T-1704)
 
