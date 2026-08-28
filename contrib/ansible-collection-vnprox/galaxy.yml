@@ -1,0 +1,25 @@
+namespace: vnprox
+name: vnprox
+version: 0.1.0
+readme: README.md
+authors:
+  - vnprox contributors
+description: >-
+  Stage-only Ansible modules and a dynamic inventory plugin for vnprox — a visual
+  networking add-on for Proxmox VE. Modules stage a draft, validated changeset and
+  stop; applying a change is a human review action inside vnprox. See the README's
+  "The stage-only contract" section before writing a playbook against this collection.
+license:
+  - Apache-2.0
+tags:
+  - networking
+  - proxmox
+  - infrastructure
+  - inventory
+repository: https://github.com/bgovanlu/vnprox
+documentation: https://github.com/bgovanlu/vnprox/tree/main/contrib/ansible-collection-vnprox
+homepage: https://github.com/bgovanlu/vnprox
+issues: https://github.com/bgovanlu/vnprox/issues
+build_ignore:
+  - tests/__pycache__
+  - "*.pyc"
