@@ -247,6 +247,51 @@ func TestIncidentRoutes_TimelineShape(t *testing.T) {
 	}
 }
 
+// TestIncidentRoutes_PostmortemRendersFromTheSameTimeline is T-4102's HTTP
+// contract test: the route reuses IncidentService.Timeline (no new service
+// method), rejects an unknown format, and the two formats set distinct
+// content types over the same underlying data.
+func TestIncidentRoutes_PostmortemRendersFromTheSameTimeline(t *testing.T) {
+	svc := newFakeIncidentService()
+	r := incidentRouter(svc, nil, true)
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/incidents/inc-1/postmortem?format=md", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("format=md: status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/markdown") {
+		t.Errorf("format=md: Content-Type = %q", ct)
+	}
+	if !strings.Contains(rec.Body.String(), "finding x new") {
+		t.Errorf("format=md: rendered document does not carry the fake timeline's own event: %s", rec.Body.String())
+	}
+	if svc.gotID != "inc-1" {
+		t.Errorf("the route asked for incident %q", svc.gotID)
+	}
+
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/incidents/inc-1/postmortem?format=html", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("format=html: status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Errorf("format=html: Content-Type = %q", ct)
+	}
+
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/incidents/inc-1/postmortem", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("no format: status = %d, want 400", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/incidents/inc-1/postmortem?format=pdf", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("format=pdf: status = %d, want 400", rec.Code)
+	}
+}
+
 func TestIncidentRoutes_ErrorEnvelope(t *testing.T) {
 	//nolint:govet // fieldalignment: a table-driven case struct; field order documents the case.
 	cases := []struct {

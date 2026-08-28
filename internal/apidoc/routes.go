@@ -119,6 +119,7 @@ var Operations = map[string]Operation{
 	"POST /api/v1/incidents":                  {Summary: "Open an incident over a window, live or retroactive.", Tag: "incidents", Auth: AuthSession},
 	"GET /api/v1/incidents/{id}":              {Summary: "Read one incident and its annotations.", Tag: "incidents", Auth: AuthSession},
 	"GET /api/v1/incidents/{id}/timeline":     {Summary: "Assemble one incident's merged timeline.", Tag: "incidents", Auth: AuthSession},
+	"GET /api/v1/incidents/{id}/postmortem":   {Summary: "Render one incident's timeline as a filed postmortem document (format=md|html). Distinct from the support-bundle export.", Tag: "incidents", Auth: AuthSession},
 	"POST /api/v1/incidents/{id}/annotations": {Summary: "Add an operator observation to the timeline.", Tag: "incidents", Auth: AuthSession},
 	"POST /api/v1/incidents/{id}/close":       {Summary: "Close an incident, freezing its window.", Tag: "incidents", Auth: AuthSession},
 	"POST /api/v1/incidents/{id}/reopen":      {Summary: "Reopen a closed incident.", Tag: "incidents", Auth: AuthSession},

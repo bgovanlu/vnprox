@@ -33,6 +33,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bgovanlu/vnprox/internal/docexport"
 	"github.com/bgovanlu/vnprox/internal/incident"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
@@ -104,6 +105,7 @@ func mountIncidentRoutes(r chi.Router, svc IncidentService, audit incidentAudito
 		r.Get("/incidents", handleListIncidents(svc))
 		r.Get("/incidents/{id}", handleGetIncident(svc))
 		r.Get("/incidents/{id}/timeline", handleIncidentTimeline(svc))
+		r.Get("/incidents/{id}/postmortem", handleIncidentPostmortem(svc))
 	})
 
 	lookup, ok := auth.(UsernameLookup)
@@ -164,6 +166,45 @@ func handleIncidentTimeline(svc IncidentService) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, tl)
+	}
+}
+
+// handleIncidentPostmortem renders the SAME Timeline GET
+// /incidents/{id}/timeline serves, through internal/docexport's Markdown/HTML
+// machinery (T-4102) — a readable document alongside, not instead of,
+// GET /incidents/{id}/export's redacted support-bundle archive. It gathers
+// nothing new: docexport.PostmortemDataOf is a pure projection of the same
+// *incident.Timeline this route already knows how to fetch.
+func handleIncidentPostmortem(svc IncidentService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		format := r.URL.Query().Get("format")
+		if format != "md" && format != "html" {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", `format must be "md" or "html"`)
+			return
+		}
+
+		id := chi.URLParam(r, "id")
+		tl, err := svc.Timeline(r.Context(), id)
+		if err != nil {
+			writeIncidentError(w, err, "could not assemble the incident timeline")
+			return
+		}
+
+		data := docexport.PostmortemDataOf(tl, time.Now().Unix())
+		stamp := time.Unix(data.GeneratedAt, 0).UTC().Format("20060102-150405")
+
+		switch format {
+		case "md":
+			w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+			w.Header().Set("Content-Disposition", `attachment; filename="vnprox-postmortem-`+id+`-`+stamp+`.md"`)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(docexport.PostmortemMarkdown(data)))
+		case "html":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Content-Disposition", `attachment; filename="vnprox-postmortem-`+id+`-`+stamp+`.html"`)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(docexport.PostmortemHTML(data)))
+		}
 	}
 }
 
