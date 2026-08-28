@@ -193,6 +193,13 @@ func TestEveryDataEmittingCommandSupportsOJSON(t *testing.T) {
 		{"spec", "import"},
 		{"spec", "pin"},
 		{"spec", "unpin"},
+		{"wireguard", "list"},
+		{"wireguard", "show"},
+		{"wireguard", "create"},
+		{"wireguard", "update"},
+		{"wireguard", "delete"},
+		{"wireguard", "peer-add"},
+		{"wireguard", "peer-remove"},
 		// T-4010's `watch` supports -o json like every other command here,
 		// but it streams newline-delimited JSON (one object per line, no
 		// single top-level document) rather than one decodable value — see

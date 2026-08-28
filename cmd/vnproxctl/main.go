@@ -83,6 +83,7 @@ var commandTable = []commandSpec{
 	{name: "apply", run: runApply},
 	{name: "spec", subcommands: []string{"export", "import", "pin", "unpin"}, run: runSpec},
 	{name: "watch", run: runWatch},
+	{name: "wireguard", subcommands: []string{"list", "show", "create", "update", "delete", "peer-add", "peer-remove"}, run: runWireguard},
 }
 
 // run implements main's logic in a way that's testable without exec'ing a
@@ -203,6 +204,25 @@ HTTP-backed commands (T-1105) — require the daemon up and --token/VNPROX_TOKEN
                                          GitOps reconciler's declared desired state
   vnproxctl spec unpin                   DELETE /spec/pin
 
+  vnproxctl wireguard list                GET /wireguard/tunnels, with each tunnel's up|down
+                                         verdict (WgTunnelHasFreshHandshake — the one definition
+                                         findings/UI/CLI all share)
+  vnproxctl wireguard show <id>           One tunnel's full detail, filtered from the list above
+  vnproxctl wireguard create --node --id --if-name [--carrier --addresses --listen-port --mtu]
+                                         Stage a wg.tunnel.create op as a draft changeset
+  vnproxctl wireguard update <id> --node [--listen-port --mtu --carrier --addresses]
+                                         Stage a wg.tunnel.update op (only the flags you pass change)
+  vnproxctl wireguard delete <id> --node  Stage a wg.tunnel.delete op
+  vnproxctl wireguard peer-add <tunnelId> --node --public-key [--endpoint --allowed-ips
+                                         --preshared-key --keepalive-sec --cluster-id]
+                                         Stage a wg.peer.add op (re-submitting an existing
+                                         public-key edits that peer in place)
+  vnproxctl wireguard peer-remove <tunnelId> --node --public-key
+                                         Stage a wg.peer.remove op
+                                         Every wireguard write subcommand stages a draft changeset
+                                         and stops — review with remote changesets diff, apply
+                                         with remote changesets apply (never a second mutation path)
+
   vnproxctl watch                        Live view over the WS "events" topic (T-1104, frozen at
                                          D10): findings, applies and drift as they happen. Requires
                                          a token with the "automation" scope (fails fast with a
@@ -306,6 +326,14 @@ remote/apply flags (every command in this family):
 spec flags (every subcommand): --config/--url/--token/--insecure/--timeout/-o, as for the remote
 family. spec export's own: --out <path> (write the YAML there instead of stdout; ignored with
 -o json).
+
+wireguard flags: --config/--url/--token/--insecure/--timeout/-o, as for the remote family, on every
+subcommand. Write subcommands' own: --node (required — the owning PVE node), --title (changeset
+title override). create's own: --id (required), --if-name (required), --carrier, --addresses,
+--listen-port, --mtu. update's own: --listen-port, --mtu, --carrier, --addresses (at least one
+required; only flags actually passed change). peer-add's own: --public-key (required), --endpoint,
+--allowed-ips, --preshared-key, --keepalive-sec, --cluster-id. peer-remove's own: --public-key
+(required).
 
 watch flags: --config/--url/--token/--insecure/--timeout/-o, as for the remote family (--timeout
 bounds only the /auth/me preflight and each dial handshake, never the live connection itself).

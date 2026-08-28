@@ -672,6 +672,55 @@ direct pmxcfs read, works daemon-down.
 | `issues` | array | problems found (array of object: `{check, severity, detail, remediation}`), empty when clean |
 <!-- cli-json:certs:end -->
 
+## wireguard list
+
+`vnproxctl wireguard list -o json` — `GET /wireguard/tunnels`, with each
+tunnel's `state` computed locally (`internal/findings.WgTunnelHasFreshHandshake`
+— the one up/down definition this command, T-1407's federation tunnel health
+check, and the T-4015 frontend all key off). `state` is never `unknown` here:
+a tunnel in this list came from a successful read, so it is always `up` or
+`down` — `unknown` is reserved for a read that did not resolve, which this
+command would instead report as a non-zero exit and no rows.
+
+<!-- cli-json:wireguard list:begin -->
+| Field | Type | Description |
+|---|---|---|
+| `items` | array of object | `{id, node, ifName, publicKey, carrier?, state, addresses, peers, status, listenPort, mtu}` per tunnel — `state` is `up`\|`down`\|`unknown`; `peers` is `{publicKey, endpoint?, observedEndpoint?, allowedIps, keepaliveSec?, lastHandshakeUnix?, rxBytes, txBytes, external, endpointDrifted}` per element; `status` is `{interfaceUp, peerCount}`; never a private key — no field carries one |
+<!-- cli-json:wireguard list:end -->
+
+## wireguard show
+
+`vnproxctl wireguard show <id> -o json` — the same `GET /wireguard/tunnels`
+read as `list`, filtered client-side to one tunnel (there is no
+`GET /wireguard/tunnels/{id}` route). Emits the tunnel object directly, not
+wrapped in `items`.
+
+<!-- cli-json:wireguard show:begin -->
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | tunnel id |
+| `node` | string | owning PVE node |
+| `ifName` | string | on-node WireGuard interface name |
+| `publicKey` | string | the tunnel's derived public key — never the private key, which no field here carries |
+| `carrier?` | string | underlying interface the tunnel's endpoint rides on, when declared |
+| `state` | string | `up`\|`down`\|`unknown` (see `wireguard list` above) |
+| `addresses` | array of string | this tunnel's own addresses, CIDR form |
+| `peers` | array of object | `{publicKey, endpoint?, observedEndpoint?, allowedIps, keepaliveSec?, lastHandshakeUnix?, rxBytes, txBytes, external, endpointDrifted}` per peer |
+| `status` | object | `{interfaceUp, peerCount}` |
+| `listenPort` | number | UDP listen port |
+| `mtu` | number | MTU |
+<!-- cli-json:wireguard show:end -->
+
+`vnproxctl wireguard create\|update\|delete\|peer-add\|peer-remove -o json`
+each stage exactly one `wg.*` op as a draft changeset via `POST /changesets`
+and print the result — the [changeset](#changeset-shared-shape) shape above,
+same as `remote changesets create`. None of the five ever applies anything;
+see each command's own `-h` for its flags. A `peer-add`'s `--preshared-key`
+is never echoed back: `POST /changesets`' response goes through the same
+`redactOpSecrets` every changeset read does (`internal/api/changesets.go`),
+so the changeset's own `ops` field never carries a plaintext or sealed PSK
+either.
+
 ## watch
 
 `vnproxctl watch -o json` (T-4010) — a live view over the WS `"events"`
