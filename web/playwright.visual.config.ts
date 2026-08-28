@@ -109,6 +109,31 @@ export default defineConfig({
     // Fixed viewport (deliverable 3): every capture is the same size, on
     // every route, in every mode.
     viewport: { width: 1400, height: 900 },
+    // T-4210-followup: scrollbars are hidden by a BROWSER FLAG, not by
+    // injecting CSS into the page.
+    //
+    // This suite's first real run failed all 96 captures on
+    // `page.addStyleTag: Applying inline style violates the following Content
+    // Security Policy directive 'style-src 'self''`. That is the app's own
+    // CSP working correctly — vnproxd serves a strict policy and a
+    // screenshot helper is not entitled to an exemption from it. Relaxing
+    // the header for the test build would make this gate guard a page that
+    // is not the page users get, which is the one thing a visual gate must
+    // never do.
+    //
+    // --hide-scrollbars achieves the same determinism outside the page, so
+    // the document under test is byte-for-byte the production document.
+    launchOptions: { args: ["--hide-scrollbars"] },
+    // The app collapses every motion token to 0.01ms under
+    // prefers-reduced-motion (T-4206's global gate). Asking the browser to
+    // report that preference is how this suite stops animations, again
+    // without touching the page: it exercises a code path the product
+    // already ships rather than one invented for the test.
+    // Nested under contextOptions: in Playwright 1.61 `reducedMotion` is a
+    // BrowserContext option, not a top-level test option — the top-level
+    // spelling type-errors rather than silently doing nothing, which is the
+    // better of the two ways to be wrong about this.
+    contextOptions: { reducedMotion: "reduce" },
     trace: "retain-on-failure",
   },
   webServer: webServers(WHOLE_SUITE, ["visual.spec.ts"], 0),

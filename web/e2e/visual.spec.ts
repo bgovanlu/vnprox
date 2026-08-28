@@ -116,17 +116,12 @@ async function blockLiveUpdates(page: Page): Promise<void> {
   });
 }
 
-/** Custom scrollbar rendering (thumb size/position, hover state, or a
- * platform's own overlay-scrollbar animation) is exactly the kind of
- * pixel-level noise this gate should not be measuring. `scrollbar-width` and
- * the `-webkit-scrollbar` pseudo-elements cover Firefox-style and
- * WebKit/Blink-style scrollbars respectively; Chromium (this suite's only
- * browser, matching web/playwright.config.ts) honours the second. */
-async function hideScrollbars(page: Page): Promise<void> {
-  await page.addStyleTag({
-    content: "* { scrollbar-width: none !important; } *::-webkit-scrollbar { display: none !important; }",
-  });
-}
+/** Scrollbar suppression now happens at the browser, not in the page — see
+ * playwright.visual.config.ts's `--hide-scrollbars`. This helper used to
+ * inject the CSS with `page.addStyleTag`, and vnproxd's Content Security
+ * Policy (`style-src 'self'`) refused it, failing all 96 captures on this
+ * suite's first real run. Keeping a no-op wrapper would only hide where the
+ * behaviour moved to, so it is gone and its call sites are gone with it. */
 
 /** Mirrors a11y.spec.ts's own waitForLoadingPlaceholderToClear: several
  * pages' data-loading placeholders ("Loading SDN configuration…",
@@ -251,8 +246,7 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
 
         await waitForSteadyState(page);
         await page.evaluate(() => document.fonts.ready);
-        await hideScrollbars(page);
-
+      
         // Deliverable 4: this suite deliberately does not commit baseline
         // PNGs (see docs/development.md) — Phases 42-51 restyle the whole
         // product and would invalidate every one of them on the first
@@ -293,8 +287,7 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
       await page.goto("/login");
       await expect(page.getByLabel("Username")).toBeVisible();
       await page.evaluate(() => document.fonts.ready);
-      await hideScrollbars(page);
-
+    
       const updating = testInfo.config.updateSnapshots !== "none";
       const snapshotName = `login-${mode.name}.png`;
       if (!updating && !existsSync(testInfo.snapshotPath(snapshotName))) {
