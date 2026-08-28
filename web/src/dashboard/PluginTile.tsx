@@ -15,9 +15,9 @@ import type { DashboardTile as DashboardTileData } from "../api/types";
 import { DashboardTile } from "./DashboardTile";
 
 const SEVERITY_DOT: Record<NonNullable<DashboardTileData["severity"]>, string> = {
-  info: "bg-slate-400",
-  warn: "bg-amber-500",
-  critical: "bg-red-500",
+  info: "bg-status-info",
+  warn: "bg-status-degraded",
+  critical: "bg-status-critical",
 };
 
 export interface PluginTileProps {

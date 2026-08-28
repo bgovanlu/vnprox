@@ -28,22 +28,40 @@ import { jackKindForEntity, speedMarking, type PortBodyKind } from "./portMedia"
 import { recencyMarkColor, recencyMarkGlyph, type RecencyMark } from "./recencyOverlay";
 import { trafficEdgeStyle } from "./trafficMode";
 
-// T-3501: severity fill/text colours for a "finding:<source>:<severity>"
-// badge chip on the canvas — the same red/amber/slate hue steps
-// findingBadges.ts's findingBadgeClass uses in the DOM renderers
-// (red-200/red-800, amber-200/amber-800, slate-200/slate-600), as literal
-// hex since a <canvas> has no Tailwind classes to defer to (matching this
-// file's existing STATUS_STROKE/SIM_STROKE convention).
-const FINDING_SEVERITY_FILL: Record<Severity, string> = {
-  error: "#fecaca",
-  warning: "#fde68a",
-  info: "#e2e8f0",
-};
-const FINDING_SEVERITY_TEXT: Record<Severity, string> = {
-  error: "#991b1b",
-  warning: "#92400e",
-  info: "#475569",
-};
+// T-3501/T-4204: severity fill/text colours for a "finding:<source>:<severity>"
+// badge chip on the canvas — the same soft-wash/fg pairing
+// findingBadges.ts's findingBadgeClass now draws from the T-4204 semantic
+// status scale (index.css's --color-status-critical/-degraded/-info, bare
+// and `-soft`) in the DOM renderers, as literal per-theme hex here since a
+// <canvas> has no Tailwind classes (and no `dark:` variant) to defer to.
+// These live on `theme` (populated by TopologyCanvasV2.tsx's themeColors,
+// matching mgmtBadgeBg/mgmtBadgeText's existing per-theme-pair convention)
+// rather than as a flat theme-blind constant, because a flat constant is
+// exactly the bug this fixed: the v2 canvas badge used to paint the same
+// light-mode pastel fill regardless of theme, which is real v1/v2 drift on
+// this file's own "T-901 parity" requirement, not merely a missed style.
+function findingSeverityFill(theme: SceneTheme, severity: Severity): string {
+  switch (severity) {
+    case "error":
+      return theme.findingErrorFill;
+    case "warning":
+      return theme.findingWarningFill;
+    case "info":
+    default:
+      return theme.findingInfoFill;
+  }
+}
+function findingSeverityText(theme: SceneTheme, severity: Severity): string {
+  switch (severity) {
+    case "error":
+      return theme.findingErrorText;
+    case "warning":
+      return theme.findingWarningText;
+    case "info":
+    default:
+      return theme.findingInfoText;
+  }
+}
 
 export interface SceneTheme {
   background: string;
@@ -56,6 +74,15 @@ export interface SceneTheme {
   mgmtBadgeBg: string;
   mgmtBadgeText: string;
   edgeDefault: string;
+  /** T-4204: the semantic status scale's `-soft`/bare pairing for a
+   * "finding:<source>:error" badge chip, per theme — see findingSeverityFill
+   * above for why these are theme fields rather than a flat constant. */
+  findingErrorFill: string;
+  findingErrorText: string;
+  findingWarningFill: string;
+  findingWarningText: string;
+  findingInfoFill: string;
+  findingInfoText: string;
 }
 
 export interface DrawSceneParams {
@@ -453,13 +480,13 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
           const isMgmt = MGMT_BADGES.has(badge);
           roundRectPath(ctx, bx, by - 7, tw, 13, 3);
           ctx.fillStyle = parsedFinding
-            ? FINDING_SEVERITY_FILL[parsedFinding.severity]
+            ? findingSeverityFill(theme, parsedFinding.severity)
             : isMgmt
               ? theme.mgmtBadgeBg
               : theme.badgeBg;
           ctx.fill();
           ctx.fillStyle = parsedFinding
-            ? FINDING_SEVERITY_TEXT[parsedFinding.severity]
+            ? findingSeverityText(theme, parsedFinding.severity)
             : isMgmt
               ? theme.mgmtBadgeText
               : theme.badgeText;

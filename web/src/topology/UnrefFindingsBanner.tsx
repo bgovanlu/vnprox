@@ -38,9 +38,9 @@ export function UnrefFindingsBanner({ findings, remediationCtx, pendingId, resul
       role="status"
       className={`rounded-md border px-3 py-2 text-xs ${
         worst === "error"
-          ? "border-red-300 dark:border-red-700"
+          ? "border-status-critical"
           : worst === "warning"
-            ? "border-amber-300 dark:border-amber-700"
+            ? "border-status-degraded"
             : "border-slate-300 dark:border-slate-700"
       } bg-slate-50 dark:bg-slate-900`}
     >
@@ -105,7 +105,7 @@ export function UnrefFindingsBanner({ findings, remediationCtx, pendingId, resul
               />
             )}
             {result !== undefined && result !== "" && (
-              <span className="text-red-700 dark:text-red-300">— {result}</span>
+              <span className="text-status-critical">— {result}</span>
             )}
           </li>
           );

@@ -45,7 +45,7 @@ export function MgmtRedundancyTile() {
       openLabel="Open management"
     >
       <p className="text-sm text-slate-700 dark:text-slate-200">
-        <span className="font-semibold tabular-nums text-amber-700 dark:text-amber-400">
+        <span className="font-semibold tabular-nums text-status-degraded">
           {nonRedundantNodes.length}
         </span>{" "}
         of <span className="font-semibold tabular-nums">{totalNodes}</span>{" "}

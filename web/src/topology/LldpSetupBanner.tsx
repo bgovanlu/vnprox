@@ -30,7 +30,7 @@ export interface LldpSetupBannerProps {
 export function LldpSetupBanner({ show, canInstall, pending, results, onInstall }: LldpSetupBannerProps) {
   if (!show) return null;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200 print:hidden">
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-status-degraded bg-status-degraded-soft px-3 py-2 text-xs text-status-degraded print:hidden">
       <span>
         No LLDP data yet — the physical layer shows NICs only.{" "}
         <a

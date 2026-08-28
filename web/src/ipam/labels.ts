@@ -48,13 +48,19 @@ export function confidenceLabel(confidence: IpamConfidence): string {
  * `chip` styles the pill next to an address; `swatch` is the solid rail color
  * on the left of each row and the segment/legend color in the summary strip.
  */
+// T-4204: `conflict` is the one cell state that is genuinely a health
+// problem (two records claiming the same address) rather than a category
+// of address, so it alone moves onto the semantic status scale
+// (`status-critical`); free/allocated/reserved/observed/gateway stay their
+// own taxonomy colours — which KIND of cell this is, not how healthy it
+// is — same reasoning as the topology map's per-kind accents.
 export const stateChipClasses: Record<IpamCellState, string> = {
   free: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
   allocated: "bg-accent-100 text-accent-800 dark:bg-accent-950/60 dark:text-accent-200",
   reserved: "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-200",
   observed: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200",
   gateway: "bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-200",
-  conflict: "bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-200",
+  conflict: "bg-status-critical-soft text-status-critical",
 };
 
 /** Solid fill classes for the row rail swatch and the summary-strip segments,
@@ -65,5 +71,5 @@ export const stateSwatchClasses: Record<IpamCellState, string> = {
   reserved: "bg-sky-500",
   observed: "bg-amber-500",
   gateway: "bg-violet-500",
-  conflict: "bg-red-500",
+  conflict: "bg-status-critical",
 };

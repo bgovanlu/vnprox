@@ -76,16 +76,16 @@ describe("EntityNode: T-3501 finding badge (source + severity)", () => {
     expect(screen.getByText("▲ drift")).toBeInTheDocument();
   });
 
-  it("colours an error finding red and a warning finding amber — never identically", () => {
+  it("colours an error finding status-critical and a warning finding status-degraded — never identically", () => {
     renderNode(["drift", "finding:health:error"]);
-    expect(screen.getByText("■ health").className).toContain("red");
+    expect(screen.getByText("■ health").className).toContain("status-critical");
   });
 
-  it("colours a warning finding amber, distinct from an error's red", () => {
+  it("colours a warning finding status-degraded, distinct from an error's status-critical", () => {
     renderNode(["drift", "finding:drift:warning"]);
     const chip = screen.getByText("▲ drift");
-    expect(chip.className).toContain("amber");
-    expect(chip.className).not.toContain("red");
+    expect(chip.className).toContain("status-degraded");
+    expect(chip.className).not.toContain("status-critical");
   });
 
   it("surfaces the finding's own detail text as the chip's hover title", () => {

@@ -33,9 +33,9 @@ import {
 function severityClass(severity: DriftFinding["severity"]): string {
   switch (severity) {
     case "error":
-      return "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/40";
+      return "border-status-critical bg-status-critical-soft";
     case "warning":
-      return "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40";
+      return "border-status-degraded bg-status-degraded-soft";
     default:
       return "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/60";
   }

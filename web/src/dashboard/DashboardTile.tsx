@@ -56,7 +56,9 @@ export function DashboardTile({
   return (
     <section
       aria-label={title}
-      className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+      // T-4203: a card sitting on the dashboard's page background —
+      // `surface-raised`.
+      className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-surface-raised p-4 dark:border-slate-800"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -80,7 +82,7 @@ export function DashboardTile({
         {isLoading ? (
           <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
         ) : error ? (
-          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          <p className="text-sm text-status-critical">{error}</p>
         ) : empty ? (
           <div className="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 py-4 text-center dark:border-slate-700">
             <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{empty.title}</span>

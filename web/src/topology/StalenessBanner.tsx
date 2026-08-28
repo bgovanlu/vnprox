@@ -40,7 +40,7 @@ export function StalenessBanner({ staleness, retry }: StalenessBannerProps) {
   return (
     <div
       role="status"
-      className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+      className="rounded-md border border-status-degraded bg-status-degraded-soft px-3 py-2 text-xs text-status-degraded"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-medium">
@@ -69,7 +69,7 @@ export function StalenessBanner({ staleness, retry }: StalenessBannerProps) {
         )}
       </div>
       {retry?.rateLimited === true && (
-        <p className="mt-1 text-amber-700 dark:text-amber-300">
+        <p className="mt-1 text-status-degraded">
           A refresh ran moments ago — wait a few seconds before retrying.
         </p>
       )}
@@ -79,9 +79,9 @@ export function StalenessBanner({ staleness, retry }: StalenessBannerProps) {
             // The same error twice is informative: it says the problem is
             // not transient, which is what the banner could never say
             // before.
-            <span className="text-red-700 dark:text-red-300">Retry failed — {retry.result.error}</span>
+            <span className="text-status-critical">Retry failed — {retry.result.error}</span>
           ) : (
-            <span className="text-emerald-700 dark:text-emerald-300">
+            <span className="text-status-ok">
               {retry.result.changed ? "Retry succeeded — the map has been updated." : "Retry succeeded."}
             </span>
           )}
@@ -105,7 +105,7 @@ export function StalenessBanner({ staleness, retry }: StalenessBannerProps) {
           <li key={`${s.name}:${s.node ?? ""}`}>
             <span className="font-medium">{s.name}</span> ({describeScope(s)}): {describeLastSuccess(s)}
             {s.lastError !== undefined && s.lastError !== "" && (
-              <span className="text-amber-700 dark:text-amber-300"> — {s.lastError}</span>
+              <span className="text-status-degraded"> — {s.lastError}</span>
             )}
           </li>
         ))}

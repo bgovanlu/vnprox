@@ -152,7 +152,7 @@ function StatusDetails({ status }: { status: GitSyncStatus }) {
           {status.issues.map((issue) => (
             <li
               key={`${issue.check}:${issue.detail}`}
-              className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm dark:border-amber-900 dark:bg-amber-950/40"
+              className="rounded-md border border-status-degraded bg-status-degraded-soft p-2 text-sm"
             >
               <code className="font-mono text-xs text-slate-600 dark:text-slate-300">{issue.check}</code>{" "}
               <span className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">
@@ -214,7 +214,7 @@ export function GitSyncPanel({ state }: { state: GitSyncState }) {
         <>
           <div
             role="alert"
-            className="mt-2 rounded-md border border-red-300 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/40"
+            className="mt-2 rounded-md border border-status-critical bg-status-critical-soft p-3"
           >
             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
               The last sync cycle failed

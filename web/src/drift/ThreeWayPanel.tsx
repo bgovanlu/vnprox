@@ -137,7 +137,7 @@ export function ThreeWayPanel({ gitSync, specPresence, writeDisabledReason }: Th
       {actionError !== undefined && (
         <div
           role="alert"
-          className="mt-3 rounded-md border border-red-300 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/40"
+          className="mt-3 rounded-md border border-status-critical bg-status-critical-soft p-3 text-sm"
         >
           <p className="font-semibold text-slate-900 dark:text-slate-100">The daemon refused that action</p>
           <p className="mt-1 text-slate-800 dark:text-slate-100">{actionError}</p>

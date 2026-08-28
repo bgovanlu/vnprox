@@ -60,14 +60,25 @@ export const CONTROL_STATUS_MEANING: Record<ControlStatus, string> = {
     "This build does not recognise the status the daemon reported, so it cannot say what the control's state is. It is not being counted as a pass.",
 };
 
-/** Tailwind classes per status. `unmapped` and `not_evaluated` deliberately
- * do not share `pass`'s colour family — the whole point of the four-value
- * vocabulary is that "we have nothing to say" must not look like "fine". */
+/** T-4204 semantic status scale classes per status. `unmapped` and
+ * `not_evaluated` deliberately do not share `pass`'s colour family — the
+ * whole point of the four-value vocabulary is that "we have nothing to say"
+ * must not look like "fine": `pass`/`fail`/`not_evaluated`/`unmapped` map
+ * onto the scale's ok/critical/degraded/unknown respectively (`unmapped`
+ * fits `unknown` well — "no mapped evidence" IS "nothing to say").
+ *
+ * The fifth member, this module's own `unknown` (a wire status this build
+ * does not recognise at all), deliberately stays OFF the six-state scale
+ * rather than doubling up on `status-unknown`: it needs to visually pop out
+ * from `unmapped` specifically, not blend with it, because "vnprox has
+ * nothing to say about this control" (`unmapped`) and "vnprox cannot even
+ * parse what the daemon said" (this `unknown`) are different failure modes
+ * an operator must not conflate. Left as its own fuchsia, same as it was. */
 export const CONTROL_STATUS_CLASS: Record<ControlStatus, string> = {
-  pass: "border-emerald-300 dark:border-emerald-700",
-  fail: "border-red-300 dark:border-red-700",
-  not_evaluated: "border-amber-300 dark:border-amber-700",
-  unmapped: "border-slate-400 dark:border-slate-500",
+  pass: "border-status-ok",
+  fail: "border-status-critical",
+  not_evaluated: "border-status-degraded",
+  unmapped: "border-status-unknown",
   unknown: "border-fuchsia-400 dark:border-fuchsia-600",
 };
 

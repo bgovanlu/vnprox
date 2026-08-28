@@ -142,11 +142,14 @@ export function SwitchView({
                   {group.switches.length} switch{group.switches.length === 1 ? "" : "es"}
                 </span>
                 {stale && (
-                  // T-2004: text-amber-700 on bg-amber-100 measured 4.52:1 —
-                  // over the 4.5:1 floor but with no headroom. amber-800
-                  // clears it with margin (6.36:1); dark mode (10.37:1) was
-                  // already fine.
-                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                  // T-4204: `stale` is a freshness qualifier, not a health
+                  // state — index.css's status scale deliberately gives it
+                  // no `-solid`/`-soft` filled-badge role, so this renders
+                  // as the bare token on a dashed border rather than the
+                  // amber-filled pill it used to be (which read as its own
+                  // "warning" status competing with whatever this node
+                  // group's actual state is).
+                  <span className="rounded border border-dashed border-status-stale px-1.5 py-0.5 text-[10px] font-medium uppercase text-status-stale">
                     stale
                   </span>
                 )}

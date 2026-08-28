@@ -22,9 +22,9 @@ const SEVERITY_LABELS: Record<Severity, string> = {
 };
 
 const SEVERITY_DOT: Record<Severity, string> = {
-  error: "bg-red-500",
-  warning: "bg-amber-500",
-  info: "bg-slate-400",
+  error: "bg-status-critical",
+  warning: "bg-status-degraded",
+  info: "bg-status-info",
 };
 
 export function FindingsSeverityTile() {

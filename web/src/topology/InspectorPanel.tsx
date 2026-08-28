@@ -326,7 +326,8 @@ export function InspectorPanel({
                     <RadixDropdown.Content
                       align="end"
                       sideOffset={6}
-                      className="z-50 min-w-[12rem] rounded-md border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+                      // T-4203: a floating menu above the inspector — `surface-overlay`.
+                      className="z-50 min-w-[12rem] rounded-md border border-slate-200 bg-surface-overlay p-1 shadow-lg dark:border-slate-700"
                     >
                       <RadixDropdown.Item
                         className="cursor-pointer rounded px-2 py-1.5 text-sm outline-none hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -494,7 +495,8 @@ export function InspectorPanel({
                   {rawSourceEntries.map(([source, text]) => (
                     <section key={source}>
                       <h3 className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">{source}</h3>
-                      <pre className="overflow-x-auto rounded border border-slate-200 bg-slate-50 p-2 font-mono text-[11px] leading-snug text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                      {/* T-4203: an inset code block — `surface-sunken`. */}
+                      <pre className="overflow-x-auto rounded border border-slate-200 bg-surface-sunken p-2 font-mono text-[11px] leading-snug text-slate-700 dark:border-slate-700 dark:text-slate-200">
                         {text}
                       </pre>
                     </section>
@@ -636,7 +638,9 @@ export function InspectorPanel({
       <div
         role="region"
         aria-label={data ? `${data.label} inspector` : "Inspector"}
-        className="flex h-full w-96 shrink-0 flex-col overflow-y-auto rounded-md border border-slate-200 bg-white p-4 shadow dark:border-slate-700 dark:bg-slate-900"
+        // T-4203: an embedded pane floats over the canvas the same way the
+        // single-pane Drawer variant below does — `surface-overlay`.
+        className="flex h-full w-96 shrink-0 flex-col overflow-y-auto rounded-md border border-slate-200 bg-surface-overlay p-4 shadow dark:border-slate-700"
       >
         {body}
       </div>

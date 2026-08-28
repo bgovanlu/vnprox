@@ -219,7 +219,7 @@ describe("SwitchView — T-702 management-path badges", () => {
 // component comments and this task's report) and guard against regressing
 // back to the broken pairing.
 describe("SwitchView / SwitchFaceplate — T-2004 contrast fixes", () => {
-  it("standby badge uses amber-800, not the marginal amber-700 (4.52:1, no headroom)", () => {
+  it("standby badge uses the status-info token, not amber (T-4204: informational, not a warning)", () => {
     const nodes: TopologyNode[] = [
       { id: "bridge:pve1:vmbr9", kind: "bridge", label: "vmbr9", layer: "l2", nodeGroup: "pve1", status: "ok", badges: [] },
       { id: "bond:pve1:bond9", kind: "bond", label: "bond9", layer: "l2", nodeGroup: "pve1", status: "ok", badges: [] },
@@ -246,11 +246,11 @@ describe("SwitchView / SwitchFaceplate — T-2004 contrast fixes", () => {
       </div>,
     );
     const badge = screen.getByText("standby");
-    expect(badge.className).toContain("text-amber-800");
-    expect(badge.className).not.toContain("text-amber-700");
+    expect(badge.className).toContain("text-status-info");
+    expect(badge.className).not.toContain("amber");
   });
 
-  it("a stale node group's 'stale' pill uses amber-800, not the marginal amber-700", () => {
+  it("a stale node group's 'stale' pill uses the status-stale token, not a filled amber badge (T-4204)", () => {
     const topology = buildSwitchModel(full.nodes, full.edges);
     render(
       <div style={{ width: 1200, height: 800 }}>
@@ -266,8 +266,9 @@ describe("SwitchView / SwitchFaceplate — T-2004 contrast fixes", () => {
       </div>,
     );
     const badge = screen.getByText("stale");
-    expect(badge.className).toContain("text-amber-800");
-    expect(badge.className).not.toContain("text-amber-700");
+    expect(badge.className).toContain("text-status-stale");
+    expect(badge.className).not.toContain("text-amber");
+    expect(badge.className).not.toContain("bg-status-stale");
   });
 
   it("the node group's switch-count label uses slate-600/slate-400, not the light-mode-broken slate-400/slate-400 pairing (2.4:1 against bg-slate-100)", () => {

@@ -126,30 +126,30 @@ export const SEVERITY_WORD: Record<Severity, string> = {
   info: "info",
 };
 
-/** Chip colour classes for one severity — same emerald/amber/red-adjacent
- * vocabulary status painting already uses elsewhere (EntityNode.tsx's
- * STATUS_CLASSES, docs/development.md's Visual language section: "Status
- * colours ... are a separate vocabulary and never substitute for the
- * accent"). Colour is additive to SEVERITY_GLYPH, never the only signal. */
+/** Chip colour classes for one severity — T-4204's semantic status scale
+ * (index.css's `-soft` wash + bare fg pairing), the same vocabulary status
+ * painting uses everywhere else (EntityNode.tsx's STATUS_CLASSES,
+ * docs/development.md's Visual language section: "Status colours ... are a
+ * separate vocabulary and never substitute for the accent"). Colour is
+ * additive to SEVERITY_GLYPH, never the only signal.
+ *
+ * These were `bg-*-200 text-*-900 dark:bg-*-900 dark:text-*-100` — opaque,
+ * deliberately (see the AA-contrast history this comment used to carry),
+ * which is exactly the `-soft`/bare pairing index.css's status scale
+ * computes and asserts AA for already, so the opacity reasoning now lives
+ * there instead of being re-derived per call site. `info` maps onto
+ * `status-info` rather than the old neutral slate: severity "info" is a
+ * real rung on this same ok/degraded/critical/info/unknown/stale scale,
+ * not a fourth, differently-sourced neutral. */
 export function findingBadgeClass(severity: Severity): string {
   switch (severity) {
-    // OPAQUE backgrounds, deliberately. These were `bg-*-200/70` until an
-    // axe sweep measured every one of them at 3.13:1 on the topology views.
-    // The pair itself is fine — amber-800 on opaque amber-200 is 5.70:1 —
-    // but a 70%-alpha background is not a colour, it is a blend with
-    // whatever is behind it, and T-3503 put these badges on the switch
-    // faceplate's dark name plate (`bg-slate-800`). Solving the composite
-    // confirms it: (#baad70 - 0.7*amber-200) / 0.3 ~= #1b283f, the plate.
-    //
-    // So the alpha has to go: a badge that can be placed on any surface
-    // cannot depend on what that surface is.
     case "error":
-      return "bg-red-200 text-red-900 dark:bg-red-900 dark:text-red-100";
+      return "bg-status-critical-soft text-status-critical";
     case "warning":
-      return "bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-100";
+      return "bg-status-degraded-soft text-status-degraded";
     case "info":
     default:
-      return "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-100";
+      return "bg-status-info-soft text-status-info";
   }
 }
 

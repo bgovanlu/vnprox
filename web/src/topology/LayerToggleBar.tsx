@@ -179,7 +179,13 @@ export function LayerToggleBar({
           className={clsx(
             "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
             wgLayerActive
-              ? "bg-indigo-600 text-white"
+              // T-4201: was a raw `bg-indigo-600` while its sibling toggle
+              // above used `bg-accent-600`. The two were byte-identical on
+              // screen for as long as the accent alias pointed at indigo,
+              // so the divergence was invisible; re-pointing the accent to
+              // signal azure is what made one active toggle in this bar
+              // paint a different colour from the other.
+              ? "bg-accent-600 text-white"
               : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
           )}
         >

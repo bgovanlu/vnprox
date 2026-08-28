@@ -75,7 +75,7 @@ export function AnnotationsSection({ entityRef }: AnnotationsSectionProps) {
         {notes.map((note) => (
           <li key={note.id} className="rounded border border-slate-200 p-2 dark:border-slate-700">
             {note.orphaned && (
-              <p className="mb-1 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              <p className="mb-1 rounded bg-status-degraded-soft px-1 py-0.5 text-[10px] font-medium text-status-degraded">
                 {ORPHAN_BADGE}
               </p>
             )}

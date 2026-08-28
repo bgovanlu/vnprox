@@ -1346,7 +1346,11 @@ function TopologyPageContent() {
           without that list turns a disclosed gap back into a hidden one. */}
       {previewActive && (
         <div
-          className="rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs text-indigo-900 dark:border-indigo-700 dark:bg-indigo-950 dark:text-indigo-100 print:hidden"
+          /* T-4204: an informational banner, so it uses the `info` status
+             token rather than a hand-picked indigo. The tokens are
+             redefined under `html.dark`, which is why four `dark:`
+             variants disappeared here rather than being re-tinted. */
+          className="rounded-md border border-status-info/40 bg-status-info-soft px-3 py-2 text-xs text-status-info print:hidden"
           role="status"
         >
           <span className="inline-flex items-center gap-1.5 font-medium">

@@ -74,7 +74,7 @@ export function PendingChangesetsTile() {
     >
       <div className="flex flex-col gap-1.5">
         {awaitingConfirmCount > 0 ? (
-          <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+          <p className="text-sm font-medium text-status-degraded">
             {awaitingConfirmCount} awaiting confirm
           </p>
         ) : null}

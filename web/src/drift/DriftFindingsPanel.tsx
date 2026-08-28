@@ -50,7 +50,7 @@ export function DriftFindingsPanel() {
     return <p className="text-sm text-slate-500 dark:text-slate-400">Loading drift findings…</p>;
   }
   if (error) {
-    return <p className="text-sm text-red-600 dark:text-red-400">Could not load drift findings.</p>;
+    return <p className="text-sm text-status-critical">Could not load drift findings.</p>;
   }
 
   return (

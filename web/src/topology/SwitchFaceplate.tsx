@@ -258,12 +258,13 @@ function NicPort({
           }
         >
           {!nic.active && (
-            // T-2004: text-amber-700 on bg-amber-100 measured 4.52:1 in light
-            // mode — technically over the 4.5:1 AA floor but with essentially
-            // no headroom on 9px text, one step from failing outright.
-            // amber-800 clears it with margin (6.36:1); dark mode was already
-            // fine (10.37:1) and is unchanged.
-            <span className="rounded bg-amber-100 px-1 text-[8px] uppercase leading-tight text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            // T-4204: "standby" is a normal, expected state for the inactive
+            // half of an active-backup bond — informational, not a warning
+            // — so it takes the status scale's `info` rung rather than
+            // amber (which the T-2004 comment this replaced only ever
+            // treated as a contrast problem to solve, not a severity
+            // question to ask).
+            <span className="rounded bg-status-info-soft px-1 text-[8px] uppercase leading-tight text-status-info">
               standby
             </span>
           )}

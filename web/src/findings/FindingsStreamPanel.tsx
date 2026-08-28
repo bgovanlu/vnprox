@@ -222,7 +222,7 @@ export function FindingsStreamPanel() {
     return <p className="text-sm text-slate-600 dark:text-slate-400">Loading findings…</p>;
   }
   if (error) {
-    return <p className="text-sm text-red-600 dark:text-red-400">Could not load findings.</p>;
+    return <p className="text-sm text-status-critical">Could not load findings.</p>;
   }
 
   return (

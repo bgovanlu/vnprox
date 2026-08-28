@@ -183,6 +183,13 @@ interface PointerGesture {
   moved: boolean;
 }
 
+// T-4204: the canvas v2 renderer's own literal copy of index.css's semantic
+// status scale — `-soft`/bare pairing for the "finding:" badge chip, per
+// theme (see canvasDraw.ts's findingSeverityFill/findingSeverityText doc
+// comment for why a <canvas> needs these as literal hex rather than
+// `text-status-*`/`dark:` Tailwind classes). Kept in sync by hand with
+// index.css's `--color-status-critical/-degraded/-info` (bare) and
+// `-soft` values, same as this file already hand-syncs mgmtBadgeBg/Text.
 function themeColors(theme: Theme): SceneTheme {
   return theme === "dark"
     ? {
@@ -196,6 +203,12 @@ function themeColors(theme: Theme): SceneTheme {
         mgmtBadgeBg: "#78350f",
         mgmtBadgeText: "#fde68a",
         edgeDefault: "#475569",
+        findingErrorFill: "#3a2837",
+        findingErrorText: "#ffa098",
+        findingWarningFill: "#2f3023",
+        findingWarningText: "#dcbc33",
+        findingInfoFill: "#16334b",
+        findingInfoText: "#57cef7",
       }
     : {
         background: "#f8fafc",
@@ -208,6 +221,12 @@ function themeColors(theme: Theme): SceneTheme {
         mgmtBadgeBg: "#fde68a",
         mgmtBadgeText: "#92400e",
         edgeDefault: "#94a3b8",
+        findingErrorFill: "#f7e7e7",
+        findingErrorText: "#b12c2e",
+        findingWarningFill: "#f0ede1",
+        findingWarningText: "#776300",
+        findingInfoFill: "#e0eff2",
+        findingInfoText: "#036f8c",
       };
 }
 

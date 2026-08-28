@@ -128,12 +128,12 @@ export function NodeResultsList({ results }: { results: readonly { node: string;
           <li key={r.node} className="flex flex-wrap items-baseline gap-1.5">
             <span
               aria-hidden
-              className={`inline-block h-2 w-2 shrink-0 rounded-full ${r.ok ? "bg-emerald-500" : "bg-red-500"}`}
+              className={`inline-block h-2 w-2 shrink-0 rounded-full ${r.ok ? "bg-status-ok" : "bg-status-critical"}`}
             />
             <span className="font-mono text-slate-700 dark:text-slate-200">{r.node}</span>
             {/* The state in words as well as in the dot's colour — WCAG
                 1.4.1, the same rule the faceplate's LEDs follow. */}
-            <span className={r.ok ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}>
+            <span className={r.ok ? "text-status-ok" : "text-status-critical"}>
               {r.ok ? "ok" : "failed"}
             </span>
             {!r.ok && r.error !== undefined && r.error !== "" && (

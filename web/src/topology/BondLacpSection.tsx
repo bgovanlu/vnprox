@@ -54,9 +54,9 @@ function StateDot({ label, ok }: { label: string; ok: boolean }) {
     <span className="inline-flex items-center gap-1">
       <span
         aria-hidden="true"
-        className={clsx("inline-block h-1.5 w-1.5 rounded-full", ok ? "bg-emerald-500" : "bg-red-500")}
+        className={clsx("inline-block h-1.5 w-1.5 rounded-full", ok ? "bg-status-ok" : "bg-status-critical")}
       />
-      <span className={ok ? "text-slate-500 dark:text-slate-400" : "text-red-700 dark:text-red-400"}>{label}</span>
+      <span className={ok ? "text-slate-500 dark:text-slate-400" : "text-status-critical"}>{label}</span>
     </span>
   );
 }
@@ -102,8 +102,8 @@ export function BondLacpSection({ fields }: { fields: Record<string, unknown> })
         className={clsx(
           "rounded border p-2",
           mismatched
-            ? "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
-            : "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
+            ? "border-status-critical bg-status-critical-soft text-status-critical"
+            : "border-status-ok bg-status-ok-soft text-status-ok",
         )}
       >
         {splitBrain
@@ -123,8 +123,8 @@ export function BondLacpSection({ fields }: { fields: Record<string, unknown> })
                   className={clsx(
                     "rounded px-1.5 py-0.5 text-[10px] font-medium",
                     ok
-                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
-                      : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+                      ? "bg-status-ok-soft text-status-ok"
+                      : "bg-status-critical-soft text-status-critical",
                   )}
                 >
                   {ok ? "negotiated" : "not negotiated"}

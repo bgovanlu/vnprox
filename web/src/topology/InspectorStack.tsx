@@ -98,7 +98,10 @@ export function InspectorStack({ selectedRef, onAllClosed, metricsWsClient }: In
     <div
       role="region"
       aria-label={`Inspector panes (${String(panes.length)})`}
-      className="fixed bottom-4 right-4 z-30 flex max-h-[80vh] max-w-full items-stretch gap-3 overflow-x-auto rounded-lg border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
+      // T-4203: floats over the canvas — `surface-overlay`, same level as
+      // the embedded panes it contains (InspectorPanel.tsx's `embedded`
+      // branch).
+      className="fixed bottom-4 right-4 z-30 flex max-h-[80vh] max-w-full items-stretch gap-3 overflow-x-auto rounded-lg border border-slate-200 bg-surface-overlay/95 p-4 shadow-xl backdrop-blur dark:border-slate-700"
     >
       {panes.length === 2 && firstPane && secondPane ? (
         <InspectorCompareView

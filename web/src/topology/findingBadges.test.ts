@@ -107,10 +107,12 @@ describe("findingChipText / findingBadgeClass (glyph + colour, never colour alon
   });
 
   it("gives each severity a distinct colour class", () => {
-    expect(findingBadgeClass("error")).toContain("red");
-    expect(findingBadgeClass("warning")).toContain("amber");
-    expect(findingBadgeClass("info")).not.toContain("red");
-    expect(findingBadgeClass("info")).not.toContain("amber");
+    // T-4204: the semantic status scale, not a hand-picked emerald/amber/red.
+    expect(findingBadgeClass("error")).toContain("status-critical");
+    expect(findingBadgeClass("warning")).toContain("status-degraded");
+    expect(findingBadgeClass("info")).toContain("status-info");
+    expect(findingBadgeClass("info")).not.toContain("status-critical");
+    expect(findingBadgeClass("info")).not.toContain("status-degraded");
   });
 });
 

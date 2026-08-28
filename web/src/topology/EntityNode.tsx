@@ -89,8 +89,8 @@ export type EntityFlowNode = Node<EntityNodeData, "entity">;
 // doc comment), not something to visually alarm on.
 const STATUS_CLASSES: Record<EntityStatus, string> = {
   ok: "border-slate-300 dark:border-slate-600",
-  down: "border-red-500 dark:border-red-500 ring-1 ring-red-500/40",
-  degraded: "border-amber-500 dark:border-amber-500 ring-1 ring-amber-500/40",
+  down: "border-status-critical ring-1 ring-status-critical/40",
+  degraded: "border-status-degraded ring-1 ring-status-degraded/40",
   unknown: "border-slate-400 border-dashed dark:border-slate-500",
 };
 
@@ -141,10 +141,10 @@ const SIM_MARKER_LABEL: Record<SimPathRole, string> = {
 // node, per docs/features/firewall.md §5's requirement — never letting the
 // live result's marker be mistaken for a restyled simulated one.
 const VERIFY_MARKER_CLASS: Record<VerifyOutcome, string> = {
-  reachable: "bg-emerald-500",
-  unreachable: "bg-red-500",
-  timeout: "bg-amber-500",
-  error: "bg-slate-400",
+  reachable: "bg-status-ok",
+  unreachable: "bg-status-critical",
+  timeout: "bg-status-degraded",
+  error: "bg-status-unknown",
 };
 
 const VERIFY_OUTCOME_LABEL: Record<VerifyOutcome, string> = {
