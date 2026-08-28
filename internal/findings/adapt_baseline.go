@@ -76,7 +76,7 @@ func checkBaselineAnomalies(prov BaselineProvider, db *debouncer) []Finding {
 
 	byID := make(map[string]baseline.Anomaly, len(anomalies))
 	for _, a := range anomalies {
-		byID[baselineFindingID(a)] = a
+		byID[BaselineFindingID(a)] = a
 	}
 	ids := make([]string, 0, len(byID))
 	for id := range byID {
@@ -108,8 +108,12 @@ func checkBaselineAnomalies(prov BaselineProvider, db *debouncer) []Finding {
 	return out
 }
 
-// baselineFindingID is the stable, content-derived id for a's finding.
-func baselineFindingID(a baseline.Anomaly) string {
+// BaselineFindingID is the stable, content-derived id for a's finding.
+// Exported so cmd/vnproxd's T-4101 anomaly-triggered-capture wiring can
+// correlate a newly-appeared source="baseline" Finding back to the
+// internal/baseline.Anomaly that produced it, using the exact same id this
+// package computes internally — never a second, drift-prone re-derivation.
+func BaselineFindingID(a baseline.Anomaly) string {
 	return baselineFindingIDPrefix + string(a.Class) + "|" + a.Ref + "|" + a.Subject
 }
 

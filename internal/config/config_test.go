@@ -139,6 +139,45 @@ tls_key = "` + keyPath + `"
 	if cfg.Capture.MaxFilterInstructions != capture.DefaultMaxFilterInstructions {
 		t.Errorf("Capture.MaxFilterInstructions = %d, want default %d", cfg.Capture.MaxFilterInstructions, capture.DefaultMaxFilterInstructions)
 	}
+	// T-4101 [baseline] auto_capture_* defaults: off, with conservative storm
+	// cap defaults ready to go the moment an operator opts in.
+	if cfg.Baseline.AutoCaptureEnabled {
+		t.Error("Baseline.AutoCaptureEnabled = true, want false (off by default)")
+	}
+	if cfg.Baseline.AutoCaptureMaxPerWindow != DefaultBaselineAutoCaptureMaxPerWindow {
+		t.Errorf("Baseline.AutoCaptureMaxPerWindow = %d, want default %d", cfg.Baseline.AutoCaptureMaxPerWindow, DefaultBaselineAutoCaptureMaxPerWindow)
+	}
+	if cfg.Baseline.AutoCaptureWindowMinutes != DefaultBaselineAutoCaptureWindowMinutes {
+		t.Errorf("Baseline.AutoCaptureWindowMinutes = %d, want default %d", cfg.Baseline.AutoCaptureWindowMinutes, DefaultBaselineAutoCaptureWindowMinutes)
+	}
+}
+
+// TestLoad_BaselineAutoCaptureOverride covers T-4101's [baseline]
+// auto_capture_* keys: the opt-in and its storm-cap bounds override cleanly.
+func TestLoad_BaselineAutoCaptureOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+[baseline]
+auto_capture_enabled = true
+auto_capture_max_per_window = 5
+auto_capture_window_minutes = 15
+`
+	cfg, err := Load(writeTemp(t, "baseline_autocapture.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Baseline.AutoCaptureEnabled {
+		t.Error("Baseline.AutoCaptureEnabled = false, want true")
+	}
+	if cfg.Baseline.AutoCaptureMaxPerWindow != 5 {
+		t.Errorf("Baseline.AutoCaptureMaxPerWindow = %d, want 5", cfg.Baseline.AutoCaptureMaxPerWindow)
+	}
+	if cfg.Baseline.AutoCaptureWindowMinutes != 15 {
+		t.Errorf("Baseline.AutoCaptureWindowMinutes = %d, want 15", cfg.Baseline.AutoCaptureWindowMinutes)
+	}
 }
 
 // TestLoad_CaptureOverride covers T-1301's [capture] section: the

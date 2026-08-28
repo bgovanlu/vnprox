@@ -11,6 +11,7 @@ import (
 
 	"github.com/bgovanlu/vnprox/internal/baseline"
 	"github.com/bgovanlu/vnprox/internal/config"
+	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/flow"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
@@ -61,10 +62,21 @@ const (
 // provider — before setupFlows creates flowRepo, the same two-step wiring
 // flowClassifyAdapter uses). Safe for concurrent use.
 type baselineService struct {
-	profiles        *store.BaselineProfileRepo
-	logger          *slog.Logger
-	now             func() time.Time
-	flowRepo        *store.FlowSampleRepo
+	profiles *store.BaselineProfileRepo
+	logger   *slog.Logger
+	now      func() time.Time
+	flowRepo *store.FlowSampleRepo
+	// lastAnomalies caches RecentAnomalies' most recent batch, keyed by the
+	// exact id findings.BaselineFindingID computes for each one — T-4101's
+	// anomaly-triggered-capture tracker (cmd/vnproxd/autocapture.go) looks a
+	// newly-appeared source="baseline" Finding's full Anomaly back up here
+	// (Ref/Class/Subject; a Finding alone doesn't carry Subject) rather than
+	// re-running Detect a second time. Safe because findings.Engine.cycle
+	// calls Findings() (which fills this via RecentAnomalies) to completion
+	// BEFORE calling OnCycle (engine.go) — the same single-goroutine,
+	// sequential-within-a-cycle guarantee every other OnCycle consumer here
+	// already relies on.
+	lastAnomalies   map[string]baseline.Anomaly
 	learnWindowDays int
 	mu              sync.Mutex
 }
@@ -203,7 +215,28 @@ func (s *baselineService) RecentAnomalies() ([]baseline.Anomaly, error) {
 		}
 		out = append(out, baseline.Detect(prof, byRef[row.Ref], cfg)...)
 	}
+
+	cache := make(map[string]baseline.Anomaly, len(out))
+	for _, a := range out {
+		cache[findings.BaselineFindingID(a)] = a
+	}
+	s.mu.Lock()
+	s.lastAnomalies = cache
+	s.mu.Unlock()
+
 	return out, nil
+}
+
+// anomalyForFinding returns the Anomaly behind a source="baseline" Finding
+// id, from the most recent RecentAnomalies batch — see lastAnomalies' doc
+// comment for why this is safe to read from a findings-engine OnCycle hook.
+// ok is false for any id RecentAnomalies didn't just produce (already
+// resolved/pruned, or called before the first cycle completes).
+func (s *baselineService) anomalyForFinding(id string) (baseline.Anomaly, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.lastAnomalies[id]
+	return a, ok
 }
 
 // scanFlowRecords pages flow_samples from fromTs (newest-first) up to rowCap

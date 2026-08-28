@@ -164,6 +164,16 @@ const (
 	DefaultBaselineProfileRetentionDays = 90
 	DefaultBaselineLearnIntervalHours   = 24
 
+	// DefaultBaselineAutoCaptureMaxPerWindow / DefaultBaselineAutoCaptureWindowMinutes
+	// are T-4101's anomaly-triggered-capture storm cap: at most 3
+	// auto-armed captures per rolling 60-minute window when
+	// auto_capture_enabled = true (itself off by default) — conservative
+	// enough that a genuine anomaly burst still gets SOME evidence
+	// captured without an anomaly storm producing anywhere near a hundred
+	// captures.
+	DefaultBaselineAutoCaptureMaxPerWindow  = 3
+	DefaultBaselineAutoCaptureWindowMinutes = 60
+
 	// DefaultMCPPath is where T-1701's MCP Streamable-HTTP/SSE transport mounts
 	// when [mcp] enabled = true (off by default). Under /api/v1 so it shares
 	// the daemon's TLS/request-logging/security-header middleware, but it does
@@ -463,15 +473,35 @@ type SecurityConfig struct {
 }
 
 // BaselineConfig is the [baseline] section (T-1601): the flow-baselining
-// subsystem's own retention/scheduling knobs. Always on (like [latmesh]/
-// [mtuprobe] — learning from already-ingested flow_samples adds no external
-// attack surface, so there's no opt-in gate to carry here).
+// subsystem's own retention/scheduling knobs. Learning/detecting is always on
+// (like [latmesh]/[mtuprobe] — learning from already-ingested flow_samples
+// adds no external attack surface, so there's no opt-in gate to carry here).
 // ProfileRetentionDays caps how long a learned baseline_profiles row is kept
 // (default 90); LearnIntervalHours is the learn job's cadence (default 24).
 // Both default from DefaultBaseline* when unset/non-positive.
+//
+// AutoCapture* (T-4101) is different: arming a bounded internal/capture
+// session automatically, with no operator in the loop, IS a new decision a
+// machine makes about a privacy/resource-sensitive action — so unlike the
+// fields above, it is off by default (AutoCaptureEnabled's zero value) and
+// needs an explicit opt-in distinct from [capture]'s own general
+// availability. AutoCaptureMaxPerWindow/AutoCaptureWindowMinutes bound how
+// many anomaly-armed captures may fire in a sliding window (default 3 per
+// 60 minutes) — the storm cap: an anomaly burst (or every still-firing
+// anomaly looking "new" again right after a daemon restart, since the
+// tracker's new/seen state is in-memory only) must not produce a hundred
+// captures. This is a NEW cap the trigger itself owns — it does not touch
+// or duplicate internal/capture's own duration/size/packet-count ceilings,
+// which every anomaly-armed session inherits completely unmodified
+// (cmd/vnproxd/autocapture.go never sets DurationSec/MaxBytes/MaxPackets on
+// its capture.StartRequest, so capture.Coordinator.clampCaps applies the
+// exact same ceiling a manual session gets).
 type BaselineConfig struct {
-	ProfileRetentionDays int
-	LearnIntervalHours   int
+	ProfileRetentionDays     int
+	LearnIntervalHours       int
+	AutoCaptureMaxPerWindow  int
+	AutoCaptureWindowMinutes int
+	AutoCaptureEnabled       bool
 }
 
 // OIDCConfig is the [oidc] section (T-1207: OIDC SSO). Enabled is derived —
@@ -1081,8 +1111,11 @@ type rawSecurity struct {
 }
 
 type rawBaseline struct {
-	ProfileRetentionDays int `toml:"profile_retention_days"`
-	LearnIntervalHours   int `toml:"learn_interval_hours"`
+	ProfileRetentionDays     int  `toml:"profile_retention_days"`
+	LearnIntervalHours       int  `toml:"learn_interval_hours"`
+	AutoCaptureMaxPerWindow  int  `toml:"auto_capture_max_per_window"`
+	AutoCaptureWindowMinutes int  `toml:"auto_capture_window_minutes"`
+	AutoCaptureEnabled       bool `toml:"auto_capture_enabled"`
 }
 
 type rawOIDC struct {
@@ -1424,8 +1457,11 @@ func loadBytes(data []byte, path string, logger *slog.Logger) (*Config, error) {
 			MaxRows:          firstNonZeroInt64(raw.Latmesh.MaxRows, latmesh.DefaultMaxRows),
 		},
 		Baseline: BaselineConfig{
-			ProfileRetentionDays: firstNonZeroInt(raw.Baseline.ProfileRetentionDays, DefaultBaselineProfileRetentionDays),
-			LearnIntervalHours:   firstNonZeroInt(raw.Baseline.LearnIntervalHours, DefaultBaselineLearnIntervalHours),
+			ProfileRetentionDays:     firstNonZeroInt(raw.Baseline.ProfileRetentionDays, DefaultBaselineProfileRetentionDays),
+			LearnIntervalHours:       firstNonZeroInt(raw.Baseline.LearnIntervalHours, DefaultBaselineLearnIntervalHours),
+			AutoCaptureEnabled:       raw.Baseline.AutoCaptureEnabled,
+			AutoCaptureMaxPerWindow:  firstNonZeroInt(raw.Baseline.AutoCaptureMaxPerWindow, DefaultBaselineAutoCaptureMaxPerWindow),
+			AutoCaptureWindowMinutes: firstNonZeroInt(raw.Baseline.AutoCaptureWindowMinutes, DefaultBaselineAutoCaptureWindowMinutes),
 		},
 		MCP: MCPConfig{
 			Enabled: raw.MCP.Enabled,

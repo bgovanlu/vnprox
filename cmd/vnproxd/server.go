@@ -866,9 +866,17 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// both. newSIEMFindingsTracker/its observe method are both nil-safe, so
 	// a disabled [siemexport] section costs this nothing beyond the call.
 	siemFindingsTrackerVal := newSIEMFindingsTracker(siemExporter)
+	// T-4101: autoCaptureTrackerVal is OnCycle's third consumer — it arms a
+	// bounded internal/capture session when a source="baseline" finding
+	// first appears, off by default (cfg.Baseline.AutoCaptureEnabled). Its
+	// capture.Coordinator reference is late-bound below (captureCoord is
+	// built after setupFindings), the same two-step wiring fedTunnelAdapter/
+	// peerTrustAdapterVal use elsewhere in this function.
+	autoCaptureTrackerVal := newAutoCaptureTracker(baselineSvcVal, newAutoCaptureConfig(cfg.Baseline), logger.With("component", "autocapture"))
 	findingsOnCycle := func(cycleCtx context.Context, fs []findings.Finding) {
 		findingsGuardVal.observe(cycleCtx, fs)
 		siemFindingsTrackerVal.observe(cycleCtx, fs)
+		autoCaptureTrackerVal.observe(cycleCtx, fs)
 	}
 	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, storeCapacitySvc, certFindings, gitSyncFindings, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, neighborFlapAdapterVal, scheduleAdapter, findingsOnCycle, logger)
 
@@ -1432,6 +1440,9 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// documented single-node case).
 	captureCoord := setupCapture(cfg, db, auditRepo, coordPeerClient, localNode, logger)
 	defer captureCoord.StopAll(context.Background())
+	// T-4101: point autoCaptureTrackerVal (constructed above, before
+	// setupFindings) at the now-real coordinator.
+	autoCaptureTrackerVal.set(captureCoord)
 
 	// T-1704: the standby side of HA replication — the active pushes batches to
 	// POST /api/peer/ha/replicate. Left nil (503) when HA is disabled, avoiding
