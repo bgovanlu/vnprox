@@ -35,6 +35,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -287,19 +289,32 @@ func WithCacheTTL(d time.Duration) Option {
 	return func(c *Client) { c.cacheTTL = d }
 }
 
+// schemeFile is the registry URL scheme T-4009's air-gapped bundle uses to
+// point a Client at a local mirror directory (`vnproxctl hub mirror`'s
+// output) instead of a hosted http(s) registry — see LocalRegistryURL and
+// NewLocalDoer. A file URL conventionally carries no authority component
+// ("file:///abs/path", not "file://host/abs/path"), which is why NewClient's
+// validation below treats an empty Host as acceptable for this one scheme
+// only: http(s) still requires one.
+const schemeFile = "file"
+
 // NewClient constructs a Client for the registry at registryURL. registryURL
 // is the base the index and artifacts are fetched from and against which
-// relative artifact URLs resolve.
+// relative artifact URLs resolve. It is normally an absolute http(s) URL; a
+// "file://<absolute mirror directory>" URL (see LocalRegistryURL) points the
+// client at a local `vnproxctl hub mirror` directory instead — the same
+// Index/FetchBlueprintBundle/FetchPluginArtifact calls run unchanged, backed
+// by a doer that reads the mirrored files rather than dialing out (T-4009).
 func NewClient(registryURL string, opts ...Option) (*Client, error) {
 	base, err := url.Parse(strings.TrimSpace(registryURL))
 	if err != nil {
 		return nil, fmt.Errorf("hub: parsing registry URL %q: %w", registryURL, err)
 	}
-	if base.Scheme == "" || base.Host == "" {
-		return nil, fmt.Errorf("hub: registry URL %q must be an absolute http(s) URL", registryURL)
+	if base.Scheme == "" || (base.Host == "" && base.Scheme != schemeFile) {
+		return nil, fmt.Errorf("hub: registry URL %q must be an absolute http(s) URL, or a file:// local mirror path", registryURL)
 	}
 	c := &Client{
-		http:     &http.Client{Timeout: 15 * time.Second},
+		http:     defaultDoer(base),
 		base:     base,
 		cacheTTL: DefaultCacheTTL,
 	}
@@ -307,6 +322,16 @@ func NewClient(registryURL string, opts ...Option) (*Client, error) {
 		o(c)
 	}
 	return c, nil
+}
+
+// defaultDoer picks the transport NewClient installs absent a WithHTTPClient
+// override: the ordinary network client for http(s), or a LocalDoer rooted
+// at the file:// URL's path for a local mirror directory.
+func defaultDoer(base *url.URL) httpDoer {
+	if base.Scheme == schemeFile {
+		return NewLocalDoer(base.Path)
+	}
+	return &http.Client{Timeout: 15 * time.Second}
 }
 
 // indexURL is the base URL with index.json appended to its path.
@@ -375,6 +400,25 @@ func (c *Client) FetchPluginArtifact(ctx context.Context, entry Entry) (PluginAr
 	return art, nil
 }
 
+// FetchArtifactRaw downloads the exact bytes of an entry's artifact with no
+// JSON decoding at all — the primitive `vnproxctl hub mirror` (T-4009) uses
+// to copy an artifact byte-for-byte into a local mirror directory, and that
+// `vnproxctl hub pull` uses to write a fetched artifact straight to disk.
+// It goes through the same resolveArtifact host-pinning check
+// FetchBlueprintBundle/FetchPluginArtifact use, so a mirror can never be
+// steered into fetching something the registry didn't itself serve at that
+// entry's artifact URL. Like its typed siblings, this performs NO signature
+// verification — that is unchanged, and still happens at install time
+// (blueprint.VerifySignature) or, for the catalog document itself, in
+// internal/hubreg's Gate/Verify (see the package doc above).
+func (c *Client) FetchArtifactRaw(ctx context.Context, entry Entry) ([]byte, error) {
+	artifactURL, err := c.resolveArtifact(entry.ArtifactURL)
+	if err != nil {
+		return nil, err
+	}
+	return c.getBytes(ctx, artifactURL, maxArtifactBytes)
+}
+
 // resolveArtifact resolves raw against the registry base and requires the
 // result to stay on the registry host (ErrForeignArtifact otherwise).
 func (c *Client) resolveArtifact(raw string) (string, error) {
@@ -394,24 +438,164 @@ func (c *Client) resolveArtifact(raw string) (string, error) {
 
 // getJSON GETs url and decodes a JSON body no larger than maxBytes into out.
 func (c *Client) getJSON(ctx context.Context, url string, maxBytes int64, out any) error {
+	raw, err := c.getBytes(ctx, url, maxBytes)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("hub: decoding %s: %w", url, err)
+	}
+	return nil
+}
+
+// getBytes GETs url and returns its body, capped at maxBytes+1 (so an
+// oversized body is detected rather than silently truncated).
+func (c *Client) getBytes(ctx context.Context, url string, maxBytes int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return fmt.Errorf("hub: building request for %s: %w", url, err)
+		return nil, fmt.Errorf("hub: building request for %s: %w", url, err)
 	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("hub: fetching %s: %w", url, err)
+		return nil, fmt.Errorf("hub: fetching %s: %w", url, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("hub: fetching %s: registry returned %d", url, resp.StatusCode)
+		return nil, fmt.Errorf("hub: fetching %s: registry returned %d", url, resp.StatusCode)
 	}
-	dec := json.NewDecoder(io.LimitReader(resp.Body, maxBytes))
-	if err := dec.Decode(out); err != nil {
-		return fmt.Errorf("hub: decoding %s: %w", url, err)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("hub: reading %s: %w", url, err)
 	}
-	return nil
+	if int64(len(raw)) > maxBytes {
+		return nil, fmt.Errorf("hub: fetching %s: body exceeds %d bytes", url, maxBytes)
+	}
+	return raw, nil
+}
+
+// --- T-4009: local mirror consumption --------------------------------------
+//
+// A `vnproxctl hub mirror <dir>` directory lays artifacts out at
+// <dir><entry.ArtifactURL> — i.e. it takes each entry's own absolute-path
+// artifact URL (hubreg.ArtifactPath's "/artifacts/<type>/<id>/<version>.json"
+// convention; see hub mirror's own doc comment for why a mirror requires
+// this convention) and writes the artifact under dir joined with that path,
+// so the mirror's on-disk tree matches the shape a static http(s) hosting of
+// the same registry would serve at its document root.
+//
+// LocalDoer reconstructs a Client's normal requests against that tree, but it
+// has to compensate for an asymmetry in how the two request URLs this client
+// builds are formed:
+//
+//   - indexURL() appends "/index.json" onto c.base.Path directly (a plain
+//     string concatenation), so an index request's URL.Path is
+//     "<c.base.Path>/index.json" — the mirror root IS present in the path.
+//   - resolveArtifact() resolves an entry's absolute-path ArtifactURL via
+//     net/url's RFC 3986 reference resolution, which (correctly, per the
+//     RFC) REPLACES c.base.Path with the absolute-path reference rather than
+//     appending to it — so an artifact request's URL.Path is just the entry's
+//     own ArtifactURL, e.g. "/artifacts/blueprint/foo/1.0.0.json" — the
+//     mirror root is ABSENT.
+//
+// Both are correct for their own code path; they just disagree about whether
+// the base path survives. LocalDoer resolves the disagreement once, here,
+// rather than by changing either of those (otherwise-correct, otherwise-
+// unmodified) call sites: root is stripped off the front of the request path
+// if it is already there (the index case), and joined on if it is not (the
+// artifact case) — both land at the same place, "<root>/index.json" and
+// "<root>/artifacts/...", matching exactly what `vnproxctl hub mirror` wrote.
+type LocalDoer struct {
+	// root is the local mirror directory (a Client's base.Path for a
+	// "file://<root>" registry URL — see LocalRegistryURL).
+	root string
+}
+
+// NewLocalDoer returns a Doer that serves index.json and every artifact from
+// under root, the way a `vnproxctl hub mirror <root>` directory is laid out.
+// It is what NewClient installs by default for a "file://" registry URL, and
+// what a caller wrapping the client's HTTP seam with its own middleware
+// (internal/hubreg.Gate, via WithHTTPClient) must install as that
+// middleware's own inner doer for a local mirror to actually read from disk
+// instead of the network — see cmd/vnproxd/hubinstall.go's newHubClient.
+func NewLocalDoer(root string) LocalDoer {
+	return LocalDoer{root: filepath.Clean(root)}
+}
+
+// Do implements the httpDoer/hubreg.Doer shape.
+func (d LocalDoer) Do(req *http.Request) (*http.Response, error) {
+	p := d.resolve(req.URL.Path)
+	f, err := os.Open(p) //nolint:gosec // p is root-anchored by resolve(); root is operator/daemon-configured, not request-controlled
+	if err != nil {
+		if os.IsNotExist(err) {
+			body := io.NopCloser(strings.NewReader("not found: " + p))
+			return &http.Response{StatusCode: http.StatusNotFound, Status: "404 Not Found", Body: body, Header: http.Header{}, Request: req}, nil
+		}
+		return nil, fmt.Errorf("hub: reading local mirror file %s: %w", p, err)
+	}
+	fi, statErr := f.Stat()
+	if statErr != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("hub: statting local mirror file %s: %w", p, statErr)
+	}
+	if fi.IsDir() {
+		_ = f.Close()
+		body := io.NopCloser(strings.NewReader("not found: " + p + " is a directory"))
+		return &http.Response{StatusCode: http.StatusNotFound, Status: "404 Not Found", Body: body, Header: http.Header{}, Request: req}, nil
+	}
+	return &http.Response{
+		StatusCode:    http.StatusOK,
+		Status:        "200 OK",
+		Body:          f,
+		ContentLength: fi.Size(),
+		Header:        http.Header{"Content-Type": []string{"application/json"}},
+		Request:       req,
+	}, nil
+}
+
+// resolve maps a request path onto a file under d.root — see the LocalDoer
+// doc comment above for exactly which of the two shapes reqPath arrives in
+// and why both need to land at the same file.
+//
+// indexURL() is the ONLY call site that builds a request URL by
+// concatenating onto base.Path rather than through resolveArtifact's RFC
+// 3986 resolution, and it always produces exactly "<root>/index.json" — so
+// that one exact string (not a general prefix match, which could
+// misidentify an artifact whose own absolute path happens to start with the
+// same characters as root) is the sole case treated as already-rooted.
+// Everything else — every artifact fetch — is joined onto root fresh.
+func (d LocalDoer) resolve(reqPath string) string {
+	if d.root != "" && d.root != "." && reqPath == d.root+"/index.json" {
+		return filepath.Clean(reqPath)
+	}
+	return filepath.Join(d.root, reqPath)
+}
+
+// LocalRegistryURL builds the "file://<absolute dir>" registry URL form
+// NewClient (and NormalizeRegistryURL) accept for a local mirror directory —
+// the single place that string is constructed, so `vnproxctl hub mirror`'s
+// printed configuration hint and any test/consumer building one by hand stay
+// in sync.
+func LocalRegistryURL(dir string) (string, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", fmt.Errorf("hub: resolving mirror directory %q: %w", dir, err)
+	}
+	return "file://" + filepath.ToSlash(abs), nil
+}
+
+// NormalizeRegistryURL accepts either an already-absolute registry URL
+// (http(s):// or file://, returned unchanged) or a bare local directory path
+// (no "://" at all), which it converts to the file:// form via
+// LocalRegistryURL — so an operator (or [hub] registry_url, or
+// `vnproxctl hub pull --registry`) can write a plain mirror directory path
+// without hand-constructing a file:// URL.
+func NormalizeRegistryURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if strings.Contains(raw, "://") {
+		return raw, nil
+	}
+	return LocalRegistryURL(raw)
 }
 
 // clone deep-copies an Index so a cached copy can never be mutated by a caller.

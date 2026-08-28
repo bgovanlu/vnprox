@@ -48,6 +48,21 @@ this is the contract.**
 Option 2 is the strongest candidate on current evidence, but this is a **product decision about
 what an integration is allowed to imply**, and it should be made deliberately.
 
+### Evidence from building the Ansible side (T-4002, 2026-08-28)
+
+Implementing the second integration produced a concrete argument the Terraform work could not:
+
+- **Option 1 is structurally unreachable for Ansible.** Ansible has no state file, so there is no
+  persisted "last known changeset id" a later run could check the status of. Every run has only
+  live inventory to compare against. A "permanent diff until applied" model has nowhere to store
+  the thing it would diff against. Choosing option 1 would therefore make the two integrations
+  behave *differently*, which is worse than either behaviour alone.
+- **Option 2 already half-exists there.** The Ansible modules return `result.changeset.status` on
+  every changed run, so a pipeline can write `until: result.changeset.status == "applied"` today.
+  The gate pattern option 2 proposes is a documentation and consistency job, not new machinery.
+
+That asymmetry is the strongest evidence so far, and it points at option 2.
+
 ## Deliverables
 
 - A decision, recorded as an ADR under `docs/adr/` (the D1–D11 set now lives there), naming which

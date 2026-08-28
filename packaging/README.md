@@ -16,6 +16,9 @@ packaging/
   bin/vnprox-setup        per-node interactive setup (docs/deployment.md "Manual install")
   install.sh              the curl-fetchable quick-install script (docs/deployment.md "Quick install")
   build-apt-repo.sh       assembles + signs the apt repo release.yml publishes (see apt-repo.md)
+  bundle-offline.sh       T-4009: assembles a self-contained offline install bundle (.deb + install.sh
+                          + signature + checksums + optional hub mirror) for a cluster with no
+                          outbound network — see docs/deployment.md "Offline install bundle"
   apt-repo.md             apt repo layout + signing key doc (docs/development.md's release.yml spec)
   test/                   container-based verification scripts (see below)
 ```

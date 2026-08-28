@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,6 +49,18 @@ func newHubClient(cfg config.HubConfig, logger *slog.Logger) *hub.Client {
 	if regURL == "" {
 		return nil
 	}
+	// T-4009: registry_url may be an explicit "file://<local mirror dir>"
+	// URL (`vnproxctl hub mirror`'s output) instead of a hosted http(s) one
+	// — internal/hub.NewClient understands that scheme directly. Deliberately
+	// NOT the same bare-directory-path convenience `vnproxctl hub pull
+	// --registry` offers (internal/hub.NormalizeRegistryURL): unattended
+	// daemon config that silently reinterprets a malformed URL as "must be a
+	// local directory" is a config typo turning into a config typo nobody
+	// notices, not a convenience — a daemon config error should fail exactly
+	// as loudly as it always has (see TestNewHubClient_IndexSignersInstall
+	// TheGate's "off and malformed" case: "not-a-url" must leave the hub
+	// off, not guess).
+	local := strings.HasPrefix(regURL, "file://")
 	// T-2904: unsigned-trust is a server config decision, said out loud at
 	// startup exactly like the [peer] tls_trust escape hatches — the knob is
 	// named so an operator reading the log knows which key to remove.
@@ -56,7 +69,19 @@ func newHubClient(cfg config.HubConfig, logger *slog.Logger) *hub.Client {
 	}
 	var opts []hub.Option
 	if len(cfg.IndexSigners) > 0 {
-		opts = append(opts, hub.WithHTTPClient(hubreg.NewGate(nil, cfg.IndexSigners)))
+		// Gate's own inner doer defaults to the network — a local mirror
+		// needs its inner doer to be the SAME LocalDoer NewClient would
+		// install by default, or an air-gapped daemon with index_signers
+		// configured (the case that actually matters for T-4009: verified
+		// offline, never unverified offline) would otherwise try to dial
+		// out for every artifact fetch after a perfectly good local Index().
+		var inner hubreg.Doer
+		if local {
+			if u, perr := url.Parse(regURL); perr == nil {
+				inner = hub.NewLocalDoer(u.Path)
+			}
+		}
+		opts = append(opts, hub.WithHTTPClient(hubreg.NewGate(inner, cfg.IndexSigners)))
 	} else {
 		logger.Warn("blueprint & plugin hub: registry index signature verification is OFF ([hub] index_signers is empty) — the catalog is unauthenticated and published revocations are not enforced (artifact signatures and the trust store still gate every install)", "url", regURL)
 	}
@@ -64,6 +89,9 @@ func newHubClient(cfg config.HubConfig, logger *slog.Logger) *hub.Client {
 	if err != nil {
 		logger.Warn("blueprint & plugin hub disabled: invalid registry URL", "url", regURL, "err", err)
 		return nil
+	}
+	if local {
+		logger.Info("blueprint & plugin hub: reading a local mirror directory ([hub] registry_url is a file:// path, T-4009) — no network access for hub browsing/install", "url", regURL)
 	}
 	return c
 }

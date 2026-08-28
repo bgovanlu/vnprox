@@ -72,6 +72,10 @@ func runHub(args []string, stdout, stderr io.Writer) int {
 		return runHubVerify(args[1:], stdout, stderr)
 	case "keygen":
 		return runHubKeygen(args[1:], stdout, stderr)
+	case "mirror":
+		return runHubMirror(args[1:], stdout, stderr)
+	case "pull":
+		return runHubPull(args[1:], stdout, stderr)
 	default:
 		_, _ = fmt.Fprintf(stderr, "vnproxctl hub: unknown subcommand %q\n\n", args[0])
 		printHubUsage(stderr)
@@ -132,6 +136,23 @@ func printHubUsage(w io.Writer) {
 
   vnproxctl hub keygen --key <path>
         Create an Ed25519 signing key file (0600, never overwritten).
+
+  vnproxctl hub mirror --registry <https://hub...> --signers <fp[,fp...]> --out <dir>
+        T-4009: fetch a hosted registry's signed index and every live entry's
+        artifact, byte-for-byte, into <dir> — refuses to write anything if
+        the index does not verify against --signers. Prints the
+        [hub] registry_url line to configure the daemon (or "hub pull
+        --registry") to consume <dir> with no further network access.
+
+  vnproxctl hub pull --registry <url-or-mirror-dir> --signers <fp[,fp...]>
+                     --type blueprint|plugin --id <id> --version <version>
+                     --out <file>
+        T-4009: fetch one artifact through the same signature-verifying path
+        the daemon uses (index verified against --signers, then the artifact
+        checked against that verified index's allowlist/revocations) — from
+        a hosted registry, or from a "hub mirror" directory (--registry
+        names a plain directory or an explicit file:// path), with zero
+        network access in the mirror case.
 `)
 }
 

@@ -594,6 +594,46 @@ file (0600, never overwritten).
 | `fingerprint` | string | the new key's fingerprint |
 <!-- cli-json:hub keygen:end -->
 
+## hub mirror
+
+`vnproxctl hub mirror --registry <url> --signers <fp,...> --out <dir> -o json`
+(T-4009) — fetches a hosted registry's signed index and every live entry's
+artifact, byte-for-byte, into a local directory. Refuses to write anything if
+the index does not verify against `--signers`.
+
+<!-- cli-json:hub mirror:begin -->
+| Field | Type | Description |
+|---|---|---|
+| `registry` | string | the hosted registry URL that was mirrored |
+| `out` | string | the local directory written |
+| `registryUrl` | string | the `file://` URL form to use as `[hub] registry_url` or `hub pull --registry` |
+| `entries` | number | total entries in the mirrored index, including revoked ones |
+| `live` | number | entries not currently revoked (the ones whose artifacts were fetched) |
+| `artifacts` | number | artifact files written |
+| `revocations` | number | published revocation entries carried into the mirror |
+| `signerFingerprint` | string | the index's own signer fingerprint |
+| `warnings` | array of string | non-fatal notes (e.g. an entry whose artifactUrl is not the self-hosted absolute-path form, so it was mirrored but is not offline-consumable) |
+<!-- cli-json:hub mirror:end -->
+
+## hub pull
+
+`vnproxctl hub pull --registry <url-or-dir> --signers <fp,...> --type T --id ID --version V --out <file> -o json`
+(T-4009) — fetches one artifact through the same signature-verifying path the
+daemon uses, from a hosted registry or a `hub mirror` directory.
+
+<!-- cli-json:hub pull:begin -->
+| Field | Type | Description |
+|---|---|---|
+| `registry` | string | the `--registry` value as given |
+| `local` | boolean | whether the registry resolved to a local mirror directory (`file://`) rather than a hosted URL |
+| `out` | string | the file the artifact's raw bytes were written to |
+| `type` | string | `blueprint` or `plugin` |
+| `id` | string | the pulled artifact's id |
+| `version` | string | the pulled artifact's version |
+| `bytes` | number | bytes written |
+| `signerFingerprint?` | string | the artifact entry's own signer fingerprint, if signed |
+<!-- cli-json:hub pull:end -->
+
 ## plugin scaffold
 
 `vnproxctl plugin scaffold <name> -o json` — stamps out a compiling

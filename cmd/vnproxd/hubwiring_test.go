@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/bgovanlu/vnprox/internal/blueprint"
@@ -22,13 +24,13 @@ import (
 // signedIndexServer serves one signed registry index, plus an artifact.
 func signedIndexServer(t *testing.T, doc hubreg.Document, key ed25519.PrivateKey) *httptest.Server {
 	t.Helper()
-	signed, err := hubreg.Sign(doc, key)
-	if err != nil {
-		t.Fatalf("Sign: %v", err)
+	signed, signErr := hubreg.Sign(doc, key)
+	if signErr != nil {
+		t.Fatalf("Sign: %v", signErr)
 	}
-	raw, err := json.Marshal(signed)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
+	raw, signErr := json.Marshal(signed)
+	if signErr != nil {
+		t.Fatalf("marshal: %v", signErr)
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/index.json", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(raw) })
@@ -62,9 +64,12 @@ func discardSlog() *slog.Logger {
 // registry gate on the client the daemon uses — verification and revocation
 // enforced — and clearing it must leave the pre-T-2803 behaviour untouched.
 func TestNewHubClient_IndexSignersInstallTheGate(t *testing.T) {
-	pub, key, err := ed25519.GenerateKey(nil)
-	if err != nil {
-		t.Fatalf("GenerateKey: %v", err)
+	// keyErr, not err: the file-writing blocks below use the idiomatic
+	// `if err := ...` form, which govet's shadow check flags against an
+	// outer err.
+	pub, key, keyErr := ed25519.GenerateKey(nil)
+	if keyErr != nil {
+		t.Fatalf("GenerateKey: %v", keyErr)
 	}
 	fp := blueprint.Fingerprint(pub)
 	srv := signedIndexServer(t, hubWiringDoc(), key)
@@ -117,4 +122,67 @@ func TestNewHubClient_IndexSignersInstallTheGate(t *testing.T) {
 			t.Fatal("a malformed registry URL must leave the hub off, not construct a client")
 		}
 	})
+}
+
+// TestNewHubClient_LocalMirror is T-4009's daemon-side wiring assertion: a
+// "file://" registry_url with index_signers configured must read the
+// mirrored files on disk (internal/hub.NewLocalDoer, via the Gate's inner
+// doer) rather than trying to reach the network for every artifact fetch
+// after a perfectly good local Index() — a daemon that verified an index
+// offline and then dialed out for the artifact would defeat the entire
+// point of an air-gapped mirror.
+func TestNewHubClient_LocalMirror(t *testing.T) {
+	// keyErr, not err: the file-writing blocks below use the idiomatic
+	// `if err := ...; err != nil` form, which govet's shadow check flags
+	// against an outer err in the same function.
+	pub, key, keyErr := ed25519.GenerateKey(nil)
+	if keyErr != nil {
+		t.Fatalf("GenerateKey: %v", keyErr)
+	}
+	fp := blueprint.Fingerprint(pub)
+
+	dir := t.TempDir()
+	doc := hubWiringDoc()
+	signed, signErr := hubreg.Sign(doc, key)
+	if signErr != nil {
+		t.Fatalf("Sign: %v", signErr)
+	}
+	raw, signErr := json.Marshal(signed)
+	if signErr != nil {
+		t.Fatalf("marshal: %v", signErr)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "index.json"), raw, 0o644); err != nil { //nolint:gosec // test fixture
+		t.Fatalf("write index.json: %v", err)
+	}
+	artifactPath := filepath.Join(dir, "artifacts", "blueprint", "bp-a", "1.0.0.json")
+	if err := os.MkdirAll(filepath.Dir(artifactPath), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	bundleBody := []byte(`{"bundleVersion":1,"blueprint":{"id":"bp-a","name":"BP-A","blueprintVersion":1,"nodeSelector":{"mode":"all"},"params":null,"entities":null}}`)
+	if err := os.WriteFile(artifactPath, bundleBody, 0o644); err != nil { //nolint:gosec // test fixture
+		t.Fatalf("write artifact: %v", err)
+	}
+
+	regURL, err := hub.LocalRegistryURL(dir)
+	if err != nil {
+		t.Fatalf("LocalRegistryURL: %v", err)
+	}
+	c := newHubClient(config.HubConfig{RegistryURL: regURL, IndexSigners: []string{fp}}, discardSlog())
+	if c == nil {
+		t.Fatal("hub client is nil for a valid file:// registry URL")
+	}
+	idx, idxErr := c.Index(context.Background())
+	if idxErr != nil {
+		t.Fatalf("Index: %v", idxErr)
+	}
+	if len(idx.Entries) != 1 || idx.Entries[0].ID != "bp-a" {
+		t.Fatalf("entries = %+v, want only the unrevoked bp-a", idx.Entries)
+	}
+	bundle, fetchErr := c.FetchBlueprintBundle(context.Background(), idx.Entries[0])
+	if fetchErr != nil {
+		t.Fatalf("FetchBlueprintBundle: %v", fetchErr)
+	}
+	if bundle.Blueprint.ID != "bp-a" {
+		t.Fatalf("bundle id = %q, want bp-a", bundle.Blueprint.ID)
+	}
 }

@@ -178,6 +178,7 @@ var versionSeeds = map[int]versionSeed{
 	48: {seedV48, assertV48},
 	49: {seedV49, assertV49},
 	50: {seedV50, assertV50},
+	51: {seedV51, assertV51},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1848,6 +1849,41 @@ func assertV50(t *testing.T, db *sql.DB) {
 		}
 		if state != "REACHABLE" {
 			t.Errorf("neighbor_bindings (v50) state = %q, want REACHABLE", state)
+		}
+	}
+}
+
+func seedV51(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// A recorded freeze-window override (0051_freeze_override.sql —
+	// T-4006), against the changeset seeded at v1 (cs-v1 persists
+	// cumulatively through every later version's seed, per
+	// freezeAndSeed's doc comment).
+	mustExec(t, db, `INSERT INTO changeset_freeze_override (changeset_id, reason, invoked_by, invoked_at, ops_fingerprint)
+	      VALUES ('cs-v1', 'emergency router replacement, on-call approved', 'bob', 1792000000, 'fp-v51')`)
+}
+
+func assertV51(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+
+	var reason, invokedBy, opsFingerprint string
+	var invokedAt int64
+	if err := db.QueryRowContext(ctx, `SELECT reason, invoked_by, invoked_at, ops_fingerprint FROM changeset_freeze_override WHERE changeset_id = 'cs-v1'`).
+		Scan(&reason, &invokedBy, &invokedAt, &opsFingerprint); err != nil {
+		t.Errorf("changeset_freeze_override row (v51) lost across migration: %v", err)
+	} else {
+		if reason != "emergency router replacement, on-call approved" {
+			t.Errorf("changeset_freeze_override (v51) reason = %q, unexpected", reason)
+		}
+		if invokedBy != "bob" {
+			t.Errorf("changeset_freeze_override (v51) invoked_by = %q, want bob", invokedBy)
+		}
+		if invokedAt != 1792000000 {
+			t.Errorf("changeset_freeze_override (v51) invoked_at = %d, want 1792000000", invokedAt)
+		}
+		if opsFingerprint != "fp-v51" {
+			t.Errorf("changeset_freeze_override (v51) ops_fingerprint = %q, want fp-v51", opsFingerprint)
 		}
 	}
 }

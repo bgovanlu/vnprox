@@ -156,10 +156,17 @@ type Config struct {
 	// field. See health_neighborflap.go's doc comment for how this relates
 	// to arp_spoof_suspected.
 	NeighborFlap NeighborFlapProvider
-	Notifier     Notifier
-	Graph        *inventory.Graph
-	Logger       *slog.Logger
-	OnChange     func(count int)
+	// Maintenance is T-4007's node maintenance-window seam
+	// (change.Service.MaintenanceWindows), backing suppression of every
+	// OTHER producer's findings for a node currently inside a declared
+	// window — see maintenance.go's own doc comment. Nil skips suppression
+	// entirely: every finding reports exactly as it does today, the same
+	// degradation as every other optional Config field.
+	Maintenance MaintenanceProvider
+	Notifier    Notifier
+	Graph       *inventory.Graph
+	Logger      *slog.Logger
+	OnChange    func(count int)
 	// OnCycle (T-2603) receives the WHOLE stream at the end of every cycle,
 	// changed or not — unlike OnChange, which fires only on a transition and
 	// carries just a count. It is the seam the change engine's
@@ -224,6 +231,7 @@ type Engine struct {
 	storeCapacityDB  *debouncer
 	gitSyncSvc       GitSyncProvider
 	neighborFlapSvc  NeighborFlapProvider
+	maintenanceSvc   MaintenanceProvider
 	bondDB           *debouncer
 	wgStaleDB        *debouncer
 	arpChurnDB       *arpChurnTracker
@@ -338,6 +346,7 @@ func New(cfg Config) *Engine {
 		storeCapacityDB:  newDebouncer(),
 		gitSyncSvc:       cfg.GitSync,
 		neighborFlapSvc:  cfg.NeighborFlap,
+		maintenanceSvc:   cfg.Maintenance,
 	}
 }
 
@@ -377,7 +386,10 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, e.healthFindings()...)
 	out = append(out, e.rogueFindings()...)
 	sortFindings(out)
-	return out
+	// T-4007: mark (never remove) findings suppressed by a currently-active
+	// node maintenance window. Last, so it decorates the complete unified
+	// stream regardless of which producer raised a given finding.
+	return decorateMaintenance(out, e.maintenanceSvc, e.now())
 }
 
 // rogueFindings runs T-1605's rogue-service detection producer (source

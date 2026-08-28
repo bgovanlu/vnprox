@@ -198,6 +198,14 @@ type Config struct {
 	// nil-safe: without it InvokeFreezeOverride reports
 	// ErrFreezeOverrideNotConfigured and no freeze is ever overridden.
 	FreezeOverrides *store.ChangesetFreezeOverrideRepo
+	// MaintenanceWindows (T-4007) backs declared node maintenance windows —
+	// see maintenance.go's own doc comment for why this is a separate table
+	// from Policies rather than a reuse of PolicyRule. Optional/nil-safe:
+	// without it DeclareMaintenanceWindow reports
+	// ErrMaintenanceWindowNotConfigured and internal/findings suppresses
+	// nothing, the same "absent feature is a no-op" degradation every other
+	// optional store here uses.
+	MaintenanceWindows *store.MaintenanceWindowRepo
 	// ProtectedClasses (T-2604) declares which classes of change require N
 	// distinct approvers before they may be applied — op-type globs
 	// ("fw.*"), ProtectedClassMgmtPath, or "tag:<policy tag>" (twoperson.go).
@@ -310,6 +318,9 @@ type Service struct {
 	// freezeOverrides (T-4006): see Config.FreezeOverrides — nil-safe,
 	// freeze_override.go owns all access.
 	freezeOverrides *store.ChangesetFreezeOverrideRepo
+	// maintenanceWindows (T-4007): see Config.MaintenanceWindows — nil-safe,
+	// maintenance.go owns all access.
+	maintenanceWindows *store.MaintenanceWindowRepo
 	// policies (T-2601): see Config.Policies — nil-safe,
 	// policy_service.go owns all access.
 	policies *store.PolicySetRepo
@@ -420,8 +431,8 @@ func NewService(cfg Config) (*Service, error) {
 		sdnPendingAcks: cfg.SDNPendingAcks,
 		policies:       cfg.Policies, policyUnmatchedAfter: cfg.PolicyUnmatchedAfter,
 		signoffs: cfg.Signoffs, breakGlass: cfg.BreakGlass, protectedClasses: protectedClasses,
-		freezeOverrides: cfg.FreezeOverrides,
-		stages:          cfg.Stages, canary: cfg.Canary, holdTimers: map[string]Stopper{},
+		freezeOverrides: cfg.FreezeOverrides, maintenanceWindows: cfg.MaintenanceWindows,
+		stages: cfg.Stages, canary: cfg.Canary, holdTimers: map[string]Stopper{},
 		guards: map[string]*autoRollbackGuard{}, autoRollbackDefault: cfg.AutoRollbackOnError,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
 		localClusterID: cfg.LocalClusterID, membership: cfg.ClusterMembership, impactPreflight: cfg.ImpactPreflight,

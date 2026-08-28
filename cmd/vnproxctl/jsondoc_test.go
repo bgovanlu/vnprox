@@ -186,6 +186,8 @@ func TestEveryDataEmittingCommandSupportsOJSON(t *testing.T) {
 		{"hub", "revoke"},
 		{"hub", "verify"},
 		{"hub", "keygen"},
+		{"hub", "mirror"},
+		{"hub", "pull"},
 		{"plugin", "scaffold"},
 		{"spec", "export"},
 		{"spec", "import"},

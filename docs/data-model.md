@@ -277,6 +277,29 @@ CREATE TABLE changeset_freeze_override (
   ops_fingerprint TEXT NOT NULL DEFAULT ''
 );
 
+-- T-4007 (migration 0052): declared node maintenance windows — the
+-- {start, end} pairs internal/findings suppresses a node's findings/alerts
+-- against, VISIBLY (a suppressed finding is still returned, marked
+-- suppressed: true) and only for as long as the window is active. Its OWN
+-- table, deliberately not a PolicyRule/policy_sets row like a freeze window
+-- above: a maintenance window enforces nothing about whether a changeset may
+-- apply, so it is never passed through EvaluatePolicy. What IS reused from
+-- T-4006 is the time representation (an absolute unix instant range,
+-- resolved once at declare time) and the mandatory-IANA-zone discipline —
+-- zone is NOT NULL, with no UTC/server-local fallback anywhere above this
+-- layer. GET /calendar renders these rows alongside freeze windows and
+-- pending schedules on one timeline.
+CREATE TABLE maintenance_windows (
+  id TEXT PRIMARY KEY,               -- ULID (store.NewULID)
+  node TEXT NOT NULL,                -- the single node this window suppresses findings for
+  reason TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  zone TEXT NOT NULL,                -- IANA name declared in (display/audit fidelity)
+  start_epoch INTEGER NOT NULL,      -- unix seconds; suppression is active on [start_epoch, end_epoch)
+  end_epoch INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
 -- T-2602 (migration 0038): the PAUSED STATE of a staged (canary) apply — the
 -- one row that exists between the canary stage completing and the sequence
 -- being either promoted or aborted. It is a table, not an in-memory map,

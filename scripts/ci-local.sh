@@ -55,7 +55,7 @@ cd "$REPO_ROOT"
 FUZZTIME="${FUZZTIME:-60s}"
 LOG_DIR="${LOG_DIR:-$REPO_ROOT/.ci-local}"
 
-ALL_JOBS=(check e2e cross-arm64 fuzz package packaging-matrix cluster-ssh dco reproducible openapi-client license terraform-provider)
+ALL_JOBS=(check e2e cross-arm64 fuzz package packaging-matrix cluster-ssh dco reproducible openapi-client license terraform-provider ansible-collection)
 
 # --- job selection ---------------------------------------------------------
 
@@ -340,6 +340,51 @@ job_terraform_provider() {
     fi
 }
 
+# job_ansible_collection (T-4002) lints and tests
+# contrib/ansible-collection-vnprox — a stage-only Ansible collection
+# (modules + a dynamic inventory plugin) structurally isolated from the main
+# Go module the same way job_terraform_provider's provider is (this
+# collection's README's "Module boundary" section), except there is no Go
+# dependency graph to guard here: Python/YAML have no way to end up linked
+# into vnproxd/vnproxctl, so the isolation is purely "lives under contrib/,
+# never imported by cmd/ or internal/" rather than a go-list-deps assertion.
+# Like job_terraform_provider (and job_dco/job_reproducible/
+# job_openapi_client/job_license), it has no ci.yml counterpart today —
+# Actions is unfunded (docs/development.md's "CI" section) — so this script
+# is the only place it runs.
+#
+# The fast lint suite (tests/test_route_lint.py — T-4002 acceptance
+# criterion 2's grep-checkable "no apply/confirm/rollback route" rule) always
+# runs and needs no server. The acceptance suite
+# (tests/test_modules.py/tests/test_inventory_plugin.py) builds and runs the
+# REAL cmd/pvemock and cmd/vnproxd binaries from THIS module as subprocesses
+# (contrib/ansible-collection-vnprox/tests/harness.py, mirroring
+# contrib/terraform-provider-vnprox/internal/provider/harness_test.go's exact
+# discipline) and drives them with REAL ansible-playbook/ansible-inventory
+# subprocess calls — gated behind ANSIBLE_ACC=1 (this collection's own
+# opt-in convention, matching the provider's TF_ACC=1) so a bare `pytest`
+# never builds Go binaries. It needs `go` (always present in this repo's dev
+# environment) and `ansible-core` (this job installs it into a throwaway
+# venv if it isn't already importable, so a missing local ansible-core
+# doesn't silently skip the acceptance half the way a missing
+# terraform/tofu binary does for job_terraform_provider — ansible-core has
+# no comparable "external tool" excuse, it's an ordinary pip package).
+job_ansible_collection() {
+    ( cd contrib/ansible-collection-vnprox && python3 -m pytest tests/test_route_lint.py -v ) || return 1
+
+    local py=python3
+    if ! "$py" -c 'import ansible, pytest' >/dev/null 2>&1; then
+        echo ">> ansible-collection: ansible-core/pytest not importable on system python3 — using a throwaway venv" >&2
+        local venv_dir="$LOG_DIR/ansible-collection-venv"
+        rm -rf "$venv_dir"
+        python3 -m venv "$venv_dir" || return 1
+        "$venv_dir/bin/pip" install --quiet ansible-core pytest || return 1
+        py="$venv_dir/bin/python3"
+    fi
+
+    ( cd contrib/ansible-collection-vnprox && ANSIBLE_ACC=1 "$py" -m pytest tests/ -v )
+}
+
 # --- dispatch --------------------------------------------------------------
 
 for j in "${JOBS[@]}"; do
@@ -356,6 +401,7 @@ for j in "${JOBS[@]}"; do
         openapi-client)   run_job openapi-client   job_openapi_client ;;
         license)          run_job license          job_license ;;
         terraform-provider) run_job terraform-provider job_terraform_provider ;;
+        ansible-collection) run_job ansible-collection job_ansible_collection ;;
     esac
 done
 

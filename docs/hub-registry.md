@@ -99,6 +99,10 @@ Verify a published index yourself, exactly as the daemon does:
 vnproxctl hub verify --index index.json --signers <fingerprint>
 ```
 
+`registry_url` also accepts a local mirror directory (a bare path, or an
+explicit `file://` URL) instead of a hosted `https://` one — see "Air-gapped
+operation" below for a cluster with no outbound network at all.
+
 ## Sigstore-backed key custody (T-3709)
 
 `index_signers` above is a list of trusted fingerprints an operator has to
@@ -369,6 +373,89 @@ into an installation and remove something already installed. Withdrawing
 something already deployed is an operator action, and the revocation reason is
 what tells them to take it.
 
+## Air-gapped operation (T-4009)
+
+A cluster with no outbound network can still browse and install from this
+registry, via `vnproxctl hub mirror` plus a `file://` registry URL —
+`internal/hub`'s client and `internal/hubreg`'s Gate run **unmodified** in
+both cases; only the transport at the bottom changes (a network `http.Client`
+vs. `internal/hub.LocalDoer` reading the mirrored files off disk).
+
+**Mirror, from a machine that does have network access:**
+
+```
+vnproxctl hub mirror --registry https://hub.example.com/vnprox \
+                     --signers <index signer fingerprint> \
+                     --out ./hub-mirror
+```
+
+This fetches the signed index and every live (non-revoked) entry's artifact,
+byte-for-byte, into `./hub-mirror`, laid out exactly the way `vnproxctl hub
+index` lays out a registry root (`index.json` + `artifacts/<type>/<id>/
+<version>.json`). It refuses to write anything at all if the fetched index
+does not verify against `--signers` — a mirror of an unverifiable catalog is
+not a mirror of anything trustworthy, so there is no partial or "trust it
+this once" output.
+
+**Carry `./hub-mirror` across the air gap** (removable media, a one-way
+transfer diode, whatever the site's policy is), then point the air-gapped
+installation at it — a config value, not a different code path:
+
+```toml
+# /etc/vnprox/vnprox.toml
+[hub]
+registry_url  = "file:///var/lib/vnprox/hub-mirror"
+index_signers = ["<the same fingerprint given to --signers above>"]
+```
+
+or fetch one artifact by hand with no daemon involved at all:
+
+```
+vnproxctl hub pull --registry ./hub-mirror --signers <fingerprint> \
+                   --type blueprint --id <id> --version <version> \
+                   --out artifact.json
+```
+
+Both paths run the full verification `hub verify`/the daemon's Gate already
+run against a hosted registry — `hubreg.Verify` on the index, then the
+artifact fetch checked against that verified index's own
+allowlist/revocations — with **zero network access**: `internal/hub.
+NewLocalDoer` only ever opens files under the mirror directory, so there is
+no `*http.Client`, no DNS resolution, no socket, on this path at all. A
+mirror directory that has been tampered with since it was written — a
+corrupted copy, a stripped signature, an edited entry — fails verification
+exactly as a tampered network response would; nothing is silently accepted
+because the network isn't there to double-check it.
+
+**What an air-gapped operator can know about revocations, and what they
+cannot.** A revocation published into the mirrored index *before* the mirror
+was made is fully honoured, offline, forever — it rides inside the signed
+document, and `Gate.doArtifact` refuses a revoked entry's fetch without any
+network call (the same property the "Revocation" section above describes for
+an online client whose registry has gone unreachable). What an air-gapped
+operator **cannot** know is whether a revocation has been published *since*
+the mirror was taken: there is no push channel across an air gap, and this
+document is not going to pretend one exists. A mirror is a snapshot of the
+catalog's trust state at the moment `hub mirror` ran, nothing more current.
+The operational consequence is the same one any offline security-advisory
+feed has: re-mirror on a cadence proportional to how much a stale
+revocation would cost you, and treat "when was this mirror last refreshed"
+as an auditable fact (`vnproxctl hub verify --index ./hub-mirror/index.json
+--signers <fp>` prints `generatedAt`) rather than an assumption.
+
+**Scope limitation.** Offline consumption only works for entries using the
+registry's default self-hosted artifact URL convention — an absolute path
+like `/artifacts/blueprint/<id>/<version>.json` (`hubreg.ArtifactPath`'s
+default, and what `vnproxctl hub index` always produces). An entry whose
+`artifactUrl` is a full `https://...` URL on a *different* host cannot be
+resolved by a `file://` client at all (the same origin-pinning check that
+refuses a foreign artifact URL online, `hub.ErrForeignArtifact`, has no
+concept of "this registry's own host" once the registry is a local
+directory) — `hub mirror` still copies its bytes for archival and prints a
+warning, but a local `hub pull`/daemon cannot fetch it back. The hosted
+`registry.vnprox.com` registry (T-3709) uses the default convention
+throughout, so this is not a limitation in practice against it.
+
 ## Keys
 
 Two distinct Ed25519 identities, both in T-1107's on-disk format
@@ -478,6 +565,18 @@ new key.
   a forgery claim); and a by-signer revocation withdrawing an entry that was
   never named in any revoke command. Transcript:
   `planning/reports/evidence/hub-registry-verification-2026-08-24.txt`.
+- **Air-gapped consumption, T-4009 (2026-08-28):** `vnproxctl hub mirror`
+  plus `internal/hub`'s `file://` support (`internal/hub.LocalDoer`) exist
+  and are exercised end to end — mirror creation, offline consumption
+  through the real `internal/hub.Client`+`internal/hubreg.Gate` stack with
+  the origin registry's socket closed, signature verification against the
+  mirrored index (including a tampered-index case, two ways: a corrupted
+  signed byte, and a stripped signature), and a revoked entry honoured
+  purely from the mirrored bytes — all in `cmd/vnproxctl/hubcmd_mirror_
+  test.go`. Not yet exercised: mirroring the real `registry.vnprox.com`
+  itself (unreachable from this environment per the DNS note above; tested
+  here against a local registry built through the real `hub publish`/`hub
+  index` pipeline instead, same posture as the harness script above).
 
 ## Automated vetting (T-3709)
 

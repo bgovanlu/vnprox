@@ -565,7 +565,17 @@ if [ -n "$OFFLINE_DEB" ]; then
 		warn "no $OFFLINE_DEB.asc next to the package: installing a local file on your say-so, unverified. A release download ships a .asc alongside the .deb; put it next to the package to have this verified."
 	fi
 	if command -v apt-get >/dev/null 2>&1; then
-		apt-get install -y "$OFFLINE_DEB"
+		# T-4009: --no-install-recommends. vnprox's control file carries no
+		# hard Depends beyond base OS — only Recommends: lldpd, ifupdown2
+		# (optional LLDP discovery / network-reload integration). Plain
+		# `apt-get install` resolves Recommends by default
+		# (APT::Install-Recommends), which means a network call to fetch
+		# them — exactly the call an air-gapped --offline install must not
+		# make (T-4009's card: "completes without any call that would 404
+		# offline"). Skip them here; an operator who wants lldpd/ifupdown2
+		# installs them from their own offline apt mirror separately, same
+		# as any other optional package on a disconnected host.
+		apt-get install -y --no-install-recommends "$OFFLINE_DEB"
 	else
 		dpkg -i "$OFFLINE_DEB" || die "dpkg -i $OFFLINE_DEB failed"
 	fi

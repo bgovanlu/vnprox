@@ -56,7 +56,7 @@ dependency with an incompatible or unrecognized license fails CI before it fails
 the task report's license note is what a reviewer reads to understand *why* the gate passed, not
 what makes it pass.
 
-Toolchain note: the module requires Go 1.25+ (`go 1.25.0` in go.mod). A host with an older `go` binary still builds, but only via `GOTOOLCHAIN` auto-download of a matching toolchain — which needs network access and therefore fails air-gapped. Install Go 1.25+ natively for offline builds.
+Toolchain note: the module requires Go 1.25+ (`go 1.25.0` in go.mod). A host with an older `go` binary still builds, but only via `GOTOOLCHAIN` auto-download of a matching toolchain — which needs network access and therefore fails air-gapped. Install Go 1.25+ natively for offline builds. This matters for *building* vnprox offline (e.g. `scripts/verify-reproducible.sh` on an air-gapped build host); it does not affect *installing* it — T-4009's offline bundle (`packaging/bundle-offline.sh`, `docs/deployment.md`'s "Offline install bundle" section) ships prebuilt binaries in the `.deb`, so an air-gapped target node needs no Go toolchain at all, native or otherwise.
 
 ## Repo layout
 

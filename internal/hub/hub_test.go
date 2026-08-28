@@ -8,6 +8,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -194,5 +196,116 @@ func TestCanonicalManifestBytes_Deterministic(t *testing.T) {
 	b, _ := CanonicalManifestBytes(m)
 	if string(a) != string(b) {
 		t.Fatal("canonical bytes not deterministic")
+	}
+}
+
+// --- T-4009: local mirror (file://) consumption -----------------------------
+
+// writeMirrorFixture lays a directory out exactly the way `vnproxctl hub
+// mirror` does: index.json at the root, artifacts under the entries' own
+// absolute-path ArtifactURLs.
+func writeMirrorFixture(t *testing.T, idx Index, artifacts map[string][]byte) string {
+	t.Helper()
+	dir := t.TempDir()
+	raw, err := json.Marshal(idx)
+	if err != nil {
+		t.Fatalf("marshal index: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "index.json"), raw, 0o644); err != nil { //nolint:gosec // test fixture
+		t.Fatalf("write index.json: %v", err)
+	}
+	for artifactURL, body := range artifacts {
+		p := filepath.Join(dir, filepath.FromSlash(artifactURL))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(p, body, 0o644); err != nil { //nolint:gosec // test fixture
+			t.Fatalf("write artifact: %v", err)
+		}
+	}
+	return dir
+}
+
+func TestClient_LocalMirror_IndexAndArtifact(t *testing.T) {
+	idx := fixtureIndex()
+	bundleBody, err := json.Marshal(blueprint.Bundle{
+		BundleVersion: blueprint.CurrentBundleVersion,
+		Blueprint:     blueprint.Blueprint{BlueprintVersion: blueprint.CurrentBlueprintVersion, ID: "bp-a", Name: "Blueprint A"},
+	})
+	if err != nil {
+		t.Fatalf("marshal bundle: %v", err)
+	}
+	dir := writeMirrorFixture(t, idx, map[string][]byte{"/artifacts/bp-a.json": bundleBody})
+
+	regURL, err := LocalRegistryURL(dir)
+	if err != nil {
+		t.Fatalf("LocalRegistryURL: %v", err)
+	}
+	c, err := NewClient(regURL)
+	if err != nil {
+		t.Fatalf("NewClient(%q): %v", regURL, err)
+	}
+
+	got, err := c.Index(context.Background())
+	if err != nil {
+		t.Fatalf("Index: %v", err)
+	}
+	if len(got.Entries) != 2 {
+		t.Fatalf("entries = %d, want 2", len(got.Entries))
+	}
+
+	bundle, err := c.FetchBlueprintBundle(context.Background(), got.Entries[0])
+	if err != nil {
+		t.Fatalf("FetchBlueprintBundle: %v", err)
+	}
+	if bundle.Blueprint.ID != "bp-a" {
+		t.Fatalf("bundle id = %q, want bp-a", bundle.Blueprint.ID)
+	}
+
+	raw, err := c.FetchArtifactRaw(context.Background(), got.Entries[0])
+	if err != nil {
+		t.Fatalf("FetchArtifactRaw: %v", err)
+	}
+	if string(raw) != string(bundleBody) {
+		t.Fatalf("FetchArtifactRaw returned different bytes than were mirrored:\ngot:  %s\nwant: %s", raw, bundleBody)
+	}
+}
+
+func TestClient_LocalMirror_MissingArtifact404s(t *testing.T) {
+	idx := fixtureIndex()
+	dir := writeMirrorFixture(t, idx, nil) // no artifacts written
+	regURL, err := LocalRegistryURL(dir)
+	if err != nil {
+		t.Fatalf("LocalRegistryURL: %v", err)
+	}
+	c, err := NewClient(regURL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	idx2, err := c.Index(context.Background())
+	if err != nil {
+		t.Fatalf("Index: %v", err)
+	}
+	if _, err := c.FetchArtifactRaw(context.Background(), idx2.Entries[0]); err == nil {
+		t.Fatal("FetchArtifactRaw on a non-mirrored artifact: want an error (registry returned 404), got nil")
+	}
+}
+
+func TestNormalizeRegistryURL(t *testing.T) {
+	dir := t.TempDir()
+	got, err := NormalizeRegistryURL(dir)
+	if err != nil {
+		t.Fatalf("NormalizeRegistryURL(%q): %v", dir, err)
+	}
+	want, err := LocalRegistryURL(dir)
+	if err != nil {
+		t.Fatalf("LocalRegistryURL: %v", err)
+	}
+	if got != want {
+		t.Fatalf("NormalizeRegistryURL(%q) = %q, want %q", dir, got, want)
+	}
+	// An already-absolute URL passes through unchanged.
+	if got, err := NormalizeRegistryURL("https://hub.example.com/vnprox"); err != nil || got != "https://hub.example.com/vnprox" {
+		t.Fatalf("NormalizeRegistryURL(http URL) = (%q, %v), want passthrough", got, err)
 	}
 }

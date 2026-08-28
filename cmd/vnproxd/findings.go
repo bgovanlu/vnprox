@@ -316,15 +316,16 @@ func (a *mgmtStatusAdapter) MgmtStatus() (change.MgmtStatus, error) {
 }
 
 // scheduleMissedAdapter adapts a lazily-set *change.Service into
-// findings.ScheduleMissedProvider (T-1103's schedule_missed health check)
-// AND findings.BreakGlassProvider (T-2604's change_break_glass check), the
-// exact same lazily-set pattern mgmtStatusAdapter above establishes and for
-// the identical reason: server.go builds the findings.Engine (via
-// setupFindings) before change.Service exists.
+// findings.ScheduleMissedProvider (T-1103's schedule_missed health check),
+// findings.BreakGlassProvider (T-2604's change_break_glass check), AND
+// findings.MaintenanceProvider (T-4007's node maintenance-window
+// suppression), the exact same lazily-set pattern mgmtStatusAdapter above
+// establishes and for the identical reason: server.go builds the
+// findings.Engine (via setupFindings) before change.Service exists.
 //
-// One adapter serves both because both are the same seam — "ask the change
-// service what it has recorded" — over the same lazily-set target; a second
-// struct would be a second place to forget to call set().
+// One adapter serves all three because all three are the same seam — "ask
+// the change service what it has recorded" — over the same lazily-set
+// target; a second struct would be a second place to forget to call set().
 type scheduleMissedAdapter struct {
 	svc *change.Service
 	mu  sync.Mutex
@@ -361,6 +362,25 @@ func (a *scheduleMissedAdapter) BreakGlassEvents() []change.BreakGlassRecord {
 		return nil
 	}
 	return svc.BreakGlassEvents(context.Background())
+}
+
+// MaintenanceWindows implements findings.MaintenanceProvider (T-4007). Same
+// degrade-before-ready contract as MissedSchedules/BreakGlassEvents above:
+// nil until the change service is set, which suppresses nothing rather than
+// panicking — a fresh daemon's first findings cycle simply sees no
+// maintenance windows declared yet.
+func (a *scheduleMissedAdapter) MaintenanceWindows() []change.MaintenanceWindow {
+	a.mu.Lock()
+	svc := a.svc
+	a.mu.Unlock()
+	if svc == nil {
+		return nil
+	}
+	windows, err := svc.MaintenanceWindows(context.Background())
+	if err != nil {
+		return nil
+	}
+	return windows
 }
 
 // corosyncStatusAdapter adapts a host.Reader + a localNode closure into
@@ -483,7 +503,7 @@ type findingsBroadcaster interface {
 // disabling the notification hook entirely — the P1 half of this task's
 // deliverable is present but harmless to omit if, say, the PVE client
 // failed to construct).
-func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, breakGlassSvc findings.BreakGlassProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, wgSvc findings.WGProvider, wanSvc findings.WanProvider, flowSvc findings.FlowProvider, k8sPoller *k8s.Poller, cephSvc findings.CephProvider, rogueSvc findings.RogueProvider, protectedSegments []string, capacitySvc findings.CapacityProvider, baselineSvc findings.BaselineProvider, federationSvc findings.FederationProvider, peerTrustSvc findings.PeerTrustProvider, storeCapacitySvc findings.StoreCapacityProvider, certSvc findings.CertProvider, gitSyncSvc findings.GitSyncProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, thresholds findings.HealthThresholds, haSvc findings.HAReplicationProvider, neighborFlapSvc findings.NeighborFlapProvider, onCycle func(context.Context, []findings.Finding), logger *slog.Logger) *findings.Engine {
+func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, breakGlassSvc findings.BreakGlassProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, wgSvc findings.WGProvider, wanSvc findings.WanProvider, flowSvc findings.FlowProvider, k8sPoller *k8s.Poller, cephSvc findings.CephProvider, rogueSvc findings.RogueProvider, protectedSegments []string, capacitySvc findings.CapacityProvider, baselineSvc findings.BaselineProvider, federationSvc findings.FederationProvider, peerTrustSvc findings.PeerTrustProvider, storeCapacitySvc findings.StoreCapacityProvider, certSvc findings.CertProvider, gitSyncSvc findings.GitSyncProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, thresholds findings.HealthThresholds, haSvc findings.HAReplicationProvider, neighborFlapSvc findings.NeighborFlapProvider, maintenanceSvc findings.MaintenanceProvider, onCycle func(context.Context, []findings.Finding), logger *slog.Logger) *findings.Engine {
 	return findings.New(findings.Config{
 		Graph:       graph,
 		Drift:       driftSvc,
@@ -568,9 +588,14 @@ func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc finding
 		// bindings, backing neighbor_binding_flap — nil-safe, same
 		// degradation convention as every other producer here uses.
 		NeighborFlap: neighborFlapSvc,
-		Thresholds:   thresholds,
-		Logger:       logger,
-		Notifier:     notifier,
+		// T-4007: node maintenance-window suppression — see maintenance.go's
+		// own doc comment. Late-bound like Schedule/BreakGlass above
+		// (scheduleMissedAdapter also implements this seam) and nil-safe:
+		// a nil target suppresses nothing.
+		Maintenance: maintenanceSvc,
+		Thresholds:  thresholds,
+		Logger:      logger,
+		Notifier:    notifier,
 		OnChange: func(count int) {
 			data, err := json.Marshal(findingsChangedEvent{Event: "findings.changed", Count: count})
 			if err != nil {

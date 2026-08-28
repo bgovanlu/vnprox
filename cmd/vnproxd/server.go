@@ -246,6 +246,18 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		selfMetrics.ObserveStoreQuery(op, dur)
 	})
 
+	// T-4012: the SIEM export sink + bounded Exporter, built here (right
+	// after selfMetrics, which its drop/sent counters feed) and ahead of
+	// auditRepo below, whose SetOnAppend hook (wireAuditAppendedEvents,
+	// further down this function) is siemExporter's audit-side feed. nil
+	// when [siemexport] is disabled — every consumer of siemExporter in
+	// this function is nil-safe, the same degradation convention every
+	// other optional subsystem here follows.
+	siemExporter, err := setupSIEMExport(cfg.SIEMExport, selfMetrics, logger)
+	if err != nil {
+		return fmt.Errorf("initializing siemexport: %w", err)
+	}
+
 	// T-1905: one-time conversion to SQLite incremental auto-vacuum mode,
 	// so RunCompactionLoop (registered with the run group below) has a free
 	// list to reclaim from. Deliberately run here, before the daemon starts
@@ -333,7 +345,7 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// right alongside, so both the WS "events" topic and registered
 	// webhook targets are fed from the exact same fan-in point (hub.go's
 	// eventsSourceTopics doc comment).
-	wireAuditAppendedEvents(auditRepo, topoSvc, logger)
+	wireAuditAppendedEvents(auditRepo, topoSvc, siemExporter, logger)
 	// T-2905: every active dev knob is named out loud at startup — the same
 	// treatment the fwlog/server dev knobs already get, extended to the two
 	// families that silently changed security posture: the login-limiter
@@ -834,7 +846,24 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// late-bound below, the same convention mgmtAdapter/scheduleAdapter use.
 	findingsGuardVal := newFindingsGuard(time.Now, logger.With("component", "findings-guard"))
 	neighborFlapAdapterVal := neighborFlapAdapter{baseCtx: ctx, recorder: neighborHistory, logger: logger}
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, storeCapacitySvc, certFindings, gitSyncFindings, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, neighborFlapAdapterVal, findingsGuardVal.observe, logger)
+	// T-4007: scheduleAdapter also implements findings.MaintenanceProvider
+	// (see cmd/vnproxd/findings.go's scheduleMissedAdapter doc comment) —
+	// same lazily-set-then-activated instance as the Schedule/BreakGlass
+	// arguments immediately before it.
+	//
+	// T-4012: siemFindingsTracker is OnCycle's second consumer, alongside
+	// findingsGuardVal.observe above — findings.Config.OnCycle only ever
+	// holds one func (the same single-registration-point constraint
+	// store.AuditRepo.SetOnAppend/topology.Hub.SetEventSink have), so this
+	// is the one combined closure that fans every cycle's findings out to
+	// both. newSIEMFindingsTracker/its observe method are both nil-safe, so
+	// a disabled [siemexport] section costs this nothing beyond the call.
+	siemFindingsTrackerVal := newSIEMFindingsTracker(siemExporter)
+	findingsOnCycle := func(cycleCtx context.Context, fs []findings.Finding) {
+		findingsGuardVal.observe(cycleCtx, fs)
+		siemFindingsTrackerVal.observe(cycleCtx, fs)
+	}
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, storeCapacitySvc, certFindings, gitSyncFindings, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, neighborFlapAdapterVal, scheduleAdapter, findingsOnCycle, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -1129,6 +1158,11 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		// internal/change/freeze_override.go's doc comment for why it is
 		// separate from BreakGlass above.
 		FreezeOverrides: store.NewChangesetFreezeOverrideRepo(db),
+		// T-4007: declared node maintenance windows — always wired
+		// (app-owned table on the same shared db); a deployment that never
+		// declares one has an empty table, which suppresses nothing, so
+		// this is a no-op until an operator opts in.
+		MaintenanceWindows: store.NewMaintenanceWindowRepo(db),
 		// T-2604: which classes of change need N distinct approvers. Empty
 		// unless [[changesets.protected_class]] says otherwise; a malformed
 		// entry fails NewService, and therefore startup, on purpose.
@@ -2085,6 +2119,14 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// down here like every other actor. Only added when HA is enabled.
 	if haMgr != nil {
 		g.add(haMgr.RunLoop)
+	}
+	if siemExporter != nil {
+		// T-4012: drains the bounded export buffer into the configured
+		// sink for the daemon's lifetime, closing it on shutdown — see
+		// internal/siemexport.Exporter.Run's own doc comment. Only added
+		// when [siemexport] is enabled, the same "registered only when
+		// enabled" convention haMgr.RunLoop just above uses.
+		g.add(siemExporter.Run)
 	}
 	if fwlogSvc != nil {
 		// T-505: continuously merges the local + every peer's pve-firewall
