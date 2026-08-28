@@ -1,7 +1,8 @@
 # T-4215 — The design language has no foreground or border tokens, which is why ~1000 `dark:` pairs survive
 
 **Phase:** 42 (Design language)
-**Status:** open
+**Status:** criteria 1–3 and 5 done (commit `8635f2fc`); criterion 4 partially done — the 186
+contrast failures are fixed, the 824 AA-clearing text pairs and 43 border pairs are not
 **Depends on:** T-4203 (surface ladder), T-4204 (status scale)
 **Blocks:** the remaining T-4203/T-4204 adoption sweep, and T-4301 (canvas palette)
 
@@ -108,6 +109,31 @@ at.** T-4215 lands first, T-4301 second.
 5. A gate that fails on reintroduction of `text-slate-*`/`border-slate-*` in `web/src`, with an
    allowlist. The three always-dark surfaces `slateContrast.test.ts` already documents
    (`DemoBanner`, `IncidentsPage`, `SwitchFaceplate`) are the known exceptions.
+
+## What landed, and what the sweep turned up
+
+Offences went **186 → 0**. 172 were the one subtle recipe and fell to a scripted substitution.
+The other 14 needed reading, and three were worth more than their count:
+
+- **The changeset badge chips measured 4.08:1** — worse than any page surface — because they sit
+  on their own `bg-slate-200/70` fill. A guard that measures against surfaces still cannot see a
+  call site that brings its own background. That limitation is now the honest boundary of this
+  test rather than an unknown.
+- **`FabricsView`'s "no member nodes reported"** was live informational text at 2.37:1.
+- **Two chart gridlines looked inverted and were not.** `text-slate-200 dark:text-slate-700` on a
+  `CartesianGrid stroke="currentColor"` is the *correct* faint pairing; forcing it to AA would
+  overpower the chart it belongs to. Established by opening the element, not by reading the
+  pattern — the pattern says "inverted, broken in both themes."
+
+`ALWAYS_DARK_SURFACES` became `OFF_LADDER`, keyed by className rather than by file. Exempting a
+file silently exempts every element added to it later, and "always dark" turned out to be one of
+three ways to sit off the ladder — the others being an always-*coloured* fill (a `slate-900`
+count pill on `bg-amber-500`, identical in both themes) and a non-text stroke.
+
+One change was deliberately *not* made: `EvpnView`'s chip keeps `bg-slate-100 dark:bg-slate-800`
+rather than `bg-surface-sunken`. The chip sits below the page in light mode and above it in dark,
+which is the ordinary subtle-chip idiom; the surface token would have put it below in both. That
+is a visible change to fix a contrast failure that was never in the background.
 
 ## Note
 

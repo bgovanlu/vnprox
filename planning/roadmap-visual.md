@@ -354,8 +354,8 @@ worth a round-trip before implementation starts.
 |---|---|
 | T-4201 identity | done — signal azure (OKLCH 224), literal hex, ramp solved so no call site moved |
 | T-4202 typography | done — IBM Plex Sans/Mono, self-hosted, latin + latin-ext |
-| T-4203 elevation | tokens done; adoption **blocked on T-4215** — no border token to point at |
-| T-4204 status scale | tokens done; status pairs sweepable, the 999 slate pairs **blocked on T-4215** |
+| T-4203 elevation | tokens done; `--color-border`/`-strong` added at T-4215, adoption unblocked |
+| T-4204 status scale | tokens done; 148 status pairs remain, all AA-clearing |
 | T-4205 pictograms | done — 23 glyphs in `web/src/icons/`, kinds derived from `internal/inventory/ref.go` |
 | T-4206 motion | tokens done + one global reduced-motion gate; primitive adoption in the same wave |
 | T-4207 density | not started — scoped: the seam works, the new primitives just never joined it (below) |
@@ -424,8 +424,16 @@ below the 4.5 floor, at 172 call sites. `slateContrast.test.ts` exists to catch 
 cannot, because its measurement table is written against `bg-white` and `dark:bg-slate-900` — the
 surfaces from before T-4203 introduced the ladder. **Introducing a surface ladder changed the
 denominator of every contrast measurement in the codebase, and the one guard that measures
-contrast still uses the old denominator.** Filed as **T-4215**, which now blocks both the
-remaining sweep and T-4301.
+contrast still uses the old denominator.** Fixed at **T-4215**: six role tokens, the guard
+re-pointed at the ladder and strengthened to measure both halves of a pair rather than count
+them, and offences taken from **186 to 0**. The 824 remaining text pairs and 43 border pairs all
+clear AA — consistency, not correctness — and are now sweepable, which they were not before.
+
+One more thing the sweep taught, worth carrying: **a guard that measures against a surface is
+blind to a call site that brings its own surface.** Three changeset badge chips measured 4.08:1 —
+worse than on any page surface — because they sit on their own `bg-slate-200/70` fill. That is
+now the stated boundary of `slateContrast.test.ts` rather than an unknown, and it is the reason
+the *rendered* check in each card's acceptance criteria is not redundant with the numeric one.
 
 **And the second-largest finding is about Phase 43.** Counting hardcoded hex literals after the
 design language landed: **155 in `web/src`, and nearly every one is in `src/topology/`** — 35 in
