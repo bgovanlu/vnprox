@@ -45,9 +45,38 @@ order, with the dates that force it:
 | ~~`AlertRules.tsx` local filter union (12-of-17 sources defect twin)~~ | **CLOSED — already fixed.** Re-derived 2026-08-27: `AlertSourceFilterValue = FindingSource` and `SOURCE_LABELS: Record<FindingSource, string>` make a missing source a compile error, not a silent `undefined`. Test strengthened to derive expectations exhaustively so it stays that way. | ✅ done |
 | `planning/implementation-plan.md` stops at Phase 6 | this roadmap makes the staleness worse unless fixed; fold phases 7–41 into the index | docs |
 
-**Owner decisions already pending, restated:** GitHub Actions billing (owner committed to restore —
-gates T-3808 and T-4108); public DNS for `registry./apt./demo.vnprox.com` (deferred by owner —
-gates the hosted half of T-4008/T-4009 and the Sigstore end-to-end run).
+**Owner decisions already pending, restated:** public DNS for `registry./apt./demo.vnprox.com`
+(deferred by owner — gates the hosted half of T-4008/T-4009, the Sigstore end-to-end run, the
+ADR/docs site at `docs.vnprox.com`, and a working `security@` mailbox).
+
+> ### ⚠️ Unresolved conflict: is hosted CI retired or being restored?
+>
+> Two live positions contradict each other, and several cards in this file were written assuming
+> the second without knowing about the first:
+>
+> - **`docs/development.md`, T-3301, dated 2026-08-18:** *"hosted GitHub Actions is retired, not
+>   paused."* The three workflows stay `disabled_manually` **on purpose**; `scripts/ci-local.sh`
+>   is "the permanent gate, not a stopgap while billing is down." It explicitly warns: *"don't
+>   restore Actions reflexively just because billing gets fixed."* Reasons given: a self-hosted
+>   runner is another always-on service for a single maintainer to secure, and hosted Actions
+>   re-introduces the "red X independent of the diff" failure mode.
+> - **The owner, later, in the 2026-08-25 session:** chose "You'll get Actions running again" when
+>   asked which blocked items they would clear.
+>
+> The later statement may simply supersede T-3301 — but it may also have been made without T-3301
+> in view, since that decision lives in a CI section nobody re-reads. **This roadmap does not
+> assume either way.**
+>
+> **Open-sourcing changes the calculus, which is worth putting in front of the decision.** T-3301
+> was reasoned from a solo-maintainer, effectively-private project. On a public repo, local CI
+> cannot validate a *contributor's* pull request: the maintainer must fetch every fork branch and
+> run the gate by hand, or merge on trust. That is a real adoption barrier and a real security
+> boundary (running an untrusted fork's code locally is worse, not better, than running it in a
+> disposable hosted runner). T-3301's own text anticipates exactly this: *"If that calculus
+> changes (a team forms…), revisit."* Open-sourcing is that change.
+>
+> Until this is answered, **T-3808 is contested rather than blocked**, and T-4108 (nightly lab
+> burndown) and the first genuine Sigstore keyless signature inherit the same uncertainty.
 
 > **Wave 0 audit result (2026-08-27).** Executing this gate found that **three of its eight items
 > were already fixed** and had survived only as uncorrected records: the tenant privilege gap
@@ -76,7 +105,7 @@ adoptable rather than merely visible.*
 | T-3805 | **Security policy & coordinated disclosure.** SECURITY.md exists — extend it with a private vulnerability reporting channel, embargo/advisory workflow, and a documented supported-versions window. | S | — |
 | T-3806 | **Reproducible builds.** Pinned toolchains, `SOURCE_DATE_EPOCH`, stripped paths, and a `verify-reproducible` script proving byte-identical rebuild — closing the residual `internal/hubreg` vetting note that says this check is NOT performed. | M | — |
 | T-3807 | **SBOM + provenance on releases.** Cosign signing and installer verification already exist — the real gap is CycloneDX SBOMs for both trees on every release, plus SLSA provenance once Actions run. | M | Actions (partial) |
-| T-3808 | **Fork-safe public CI.** The seven `ci-local` jobs as Actions workflows that run on fork PRs without secrets exposure. `main` already has partial protection (enforce_admins, no force-push); the real gap is required status checks — narrower than "no branch protection". | M | owner: Actions billing |
+| T-3808 | **Fork-safe public CI.** The seven `ci-local` jobs as Actions workflows that run on fork PRs without secrets exposure. `main` already has partial protection (enforce_admins, no force-push); the real gap is required status checks — narrower than "no branch protection". **See the CI-strategy conflict below — this card's premise is contested, not merely blocked.** | M | owner: resolve T-3301 vs. restore |
 | T-3809 | **Published OpenAPI spec.** The generator already exists (T-2405, gated by `TestOpenAPI_EveryRouteIsDescribed`) — the gap is publishing it on the docs site and a generated-TS-client type-check as the drift tripwire. | M | — |
 | T-3810 | **Contributor quickstart.** One-command dev environment against `pvemock` (no PVE needed), an architecture walkthrough written for a stranger, and a "first change" tutorial that ends in a passing `make check`. | M | — |
 | T-3811 | **Plugin developer portal.** The frozen SDK's docs published properly, an example-plugin template repo, and `vnproxctl plugin scaffold` to stamp one out. | M | — |
