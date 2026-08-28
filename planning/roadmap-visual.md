@@ -407,13 +407,26 @@ none of it arrived. Nothing in the app reads a CSS custom property at runtime �
 appears three times in `web/src` and all three are comments explaining that jsdom can't resolve
 them.
 
-So the product's palette, status scale, surface ladder and motion system are all invisible to the
-one screen the product exists for. It is already drifting: `Minimap.tsx` paints its background
-`#0f172a` while `--color-surface-page` is `#0f172b`, chosen independently one digit apart, with
-nothing able to reconcile them. And the per-theme conditional the token layer exists to delete is
-alive there in a form no `dark:` grep will find — `ctx.strokeStyle = dark ? "#3b82f6" : "#2563eb"`.
-The same blue also still ships as the PWA `theme-color` in `index.html` and the web manifest, so
-on a phone the OS chrome is a colour the product abandoned at T-4201.
+The canvas is not un-themed — it has a hand-built 16-field `SceneTheme`, and T-4204's sweep did
+extend it with six status fields, under a comment saying they are *"kept in sync by hand"* with
+`index.css`. Measured: **three of those twelve values match the tokens they name.** The dark
+critical badge is 78 RGB units from the colour it claims to be. The tokens have not changed since
+that commit, so the copy was wrong when it was written — in the change titled "convert
+hand-picked status colours to the semantic scale." A comment promising manual synchronisation is
+not a synchronisation mechanism.
+
+It is drifting elsewhere too: `Minimap.tsx` paints its background `#0f172a` while
+`--color-surface-page` is `#0f172b`, chosen independently one digit apart, with nothing able to
+reconcile them. The per-theme conditional the token layer exists to delete is alive there in a
+form no `dark:` grep will find — `ctx.strokeStyle = dark ? "#3b82f6" : "#2563eb"`. That same blue
+still ships as the PWA `theme-color` in `index.html` and the web manifest, so on a phone the OS
+chrome is a colour the product abandoned at T-4201.
+
+And the canvas carries a whole palette Phase 42 never defined: `KIND_ACCENT` gives every entity
+kind its own hue (bond sky, bridge indigo, VLAN violet, SDN teal, guest emerald), a **categorical**
+scale the design language has no equivalent for — it has status colours and a brand accent and
+nothing for "these are different kinds of thing." That is a design decision to make once, not to
+re-point.
 
 Filed as **T-4301**, ahead of any drawing work, because every other Phase 43 card would otherwise
 hand-pick its colours again.
