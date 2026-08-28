@@ -337,7 +337,7 @@ worth a round-trip before implementation starts.
 
 | Phase | Items | Status |
 |---|---|---|
-| 42 — Design language | T-4201–T-4210 | not started |
+| 42 — Design language | T-4201–T-4210 | **in progress** — see below |
 | 43 — Canvas rendering | T-4301–T-4310 | not started |
 | 44 — Canvas interaction | T-4401–T-4410 | not started |
 | 45 — Telemetry visible | T-4501–T-4510 | not started |
@@ -347,3 +347,33 @@ worth a round-trip before implementation starts.
 | 49 — Dashboard & wayfinding | T-4901–T-4910 | not started |
 | 50 — Physical world | T-5001–T-5010 | not started |
 | 51 — Presentation & export | T-5101–T-5110 | not started |
+
+### Phase 42 detail
+
+| Card | Status |
+|---|---|
+| T-4201 identity | done — signal azure (OKLCH 224), literal hex, ramp solved so no call site moved |
+| T-4202 typography | done — IBM Plex Sans/Mono, self-hosted, latin + latin-ext |
+| T-4203 elevation | tokens done; primitive adoption in the same wave |
+| T-4204 status scale | tokens done; call-site adoption in the same wave |
+| T-4205 pictograms | done — 23 glyphs in `web/src/icons/`, kinds derived from `internal/inventory/ref.go` |
+| T-4206 motion | tokens done + one global reduced-motion gate; primitive adoption in the same wave |
+| T-4207 density | not started |
+| T-4208 component library | not started |
+| T-4209 empty states | not started — unblocked now that T-4205 has landed |
+| T-4210 visual gate | done — `web/e2e/visual.spec.ts`, route list derived from `App.tsx` |
+
+**Defects this phase found, all filed rather than absorbed:**
+
+- **T-4211** — formalising an amber `degraded` put it ~22deg from demo mode's amber accent, so in
+  demo mode a *selected* row and a *degraded* row nearly match. Introduced by T-4204.
+- **T-4212** — the axe sweep's hand-kept route list has drifted from `App.tsx`: `/guest` and
+  `/wireguard` have never been accessibility-checked. Found by T-4210 deriving its own inventory
+  from source instead of copying that list.
+
+**The lesson worth carrying into Phase 43,** because it will recur on the canvas: on this phase's
+palette work the *measurement disagreed with the screen twice*. The amber that satisfied the
+hue-separation metric rendered as olive; the dark-mode critical it liked rendered as salmon.
+Rendering four candidates and looking at them is what settled it, and the metric — not the palette
+— turned out to be the thing that was wrong. Every card below that claims a visual property should
+produce an image of that property, not only a number.
