@@ -39,19 +39,33 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
-  // T-3401 re-pointed the accent alias blue -> indigo, which invalidated
-  // T-905's blue-on-white measurement below it used to justify accent-700.
-  // Re-measured (T-3405) from the real Tailwind v4 indigo swatches shipped
-  // in this repo's tailwindcss package (computed via OKLCH -> linear sRGB
-  // -> WCAG relative luminance, not eyeballed):
-  //   indigo-600 oklch(51.1% .262 276.966) -> #4f39f6 -> 6.44:1 vs white
-  //   indigo-700 oklch(45.7% .240 277.023) -> #432dd7 -> 8.07:1 vs white
-  // Unlike blue-600 (which failed WCAG AA's 4.5:1 and forced the move to
-  // accent-700), indigo-600 clears AA on its own with margin to spare, so
-  // the resting state moves back down to accent-600 — closer to the
-  // reference design's brand accent. Hover brightens to accent-500
-  // (oklch(58.5% .233 277.117) -> #615fff -> 4.58:1 vs white); as before,
-  // a hover state is transient and not the gating resting contrast.
+  // This variant's `bg-accent-600 text-white` is the pairing the accent
+  // ramp is SOLVED AROUND, so it is the reason the identity can change
+  // without this file changing. The history is worth knowing before
+  // touching either number:
+  //
+  //   T-905   accent was blue; blue-600 measured below AA's 4.5:1, which
+  //           forced the resting state up to accent-700.
+  //   T-3401  re-pointed the alias blue -> indigo, invalidating that
+  //           measurement.
+  //   T-3405  re-measured indigo (6.44:1 at 600) and moved the resting
+  //           state back down to accent-600.
+  //   T-4201  replaced the stock-indigo alias with vnprox's own signal
+  //           azure. Cyan is intrinsically light at a given OKLCH
+  //           lightness, so a naive azure ramp measured 3.67:1 here and
+  //           would have forced a fourth move. Instead L(600) and L(700)
+  //           were solved against these very targets, landing accent-600
+  //           at 4.94:1 vs white — so this line, and the ~10 other solid
+  //           `bg-accent-600 text-white` controls, did not move at all.
+  //
+  // Hover brightens to accent-500 (3.09:1): a hover state is transient
+  // and not the gating resting contrast, as it was not at T-3405 either.
+  //
+  // Every ratio above is now recomputed by index.css.test.ts rather than
+  // recorded here by hand. Four separate hand-derivations of this same
+  // pairing (T-905, T-3401, T-3405, T-3406) were each correct and each
+  // left nothing behind that would catch the next one; do not start a
+  // fifth. Change the token, run the test.
   primary:
     "bg-accent-600 text-white hover:bg-accent-500 focus-visible:outline-accent-500 disabled:bg-accent-600/50",
   secondary:

@@ -5,34 +5,338 @@
  * instead, so `dark:` variants respond to `<html class="dark">`. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ---------------------------------------------------------------------
+ * T-4202 · Typefaces.
+ *
+ * Self-hosted, and that is not a preference: the daemon serves this app
+ * from the PVE host, which is routinely on a management network with no
+ * route to the internet. A font CDN link would fail *silently* there —
+ * the page renders in the fallback and nobody files a bug, which is the
+ * worst failure mode available. Everything under /fonts/ is same-origin.
+ *
+ * IBM Plex Sans + IBM Plex Mono (SIL OFL 1.1; the licence travels with
+ * the files in web/public/fonts/LICENSE.txt). Chosen for what this app
+ * actually renders: Plex Mono's unambiguous 0/O, 1/l/I and even digit
+ * widths are load-bearing for MACs, IPv6 addresses and hex, which appear
+ * on nearly every page. Deliberately NOT Inter or Space Grotesk — both
+ * are the reflexive default, and a tool whose whole complaint was "no
+ * identity" gains nothing from the most-used sans on the web.
+ *
+ * Latin + latin-ext only, split by unicode-range so a Latin-script user
+ * downloads ~207 KB and never fetches the ext faces at all. `swap` so a
+ * cold cache shows text immediately rather than blocking on the face. */
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-sans-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-sans-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-sans-500-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-sans-500-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-sans-600-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-sans-600-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-sans-700-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-sans-700-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-mono-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-mono-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-mono-500-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-mono-500-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 @theme {
-  /* "accent" aliases a Tailwind scale so components (Button, Sidebar, ...)
-   * can use a semantic `accent-*` name instead of a raw color, without
-   * hand-maintaining a second palette.
+  /* T-4202: `font-sans` / `font-mono` utilities, and the default body face
+   * below, both resolve from here. The system stack stays as the fallback
+   * chain so a blocked or corrupt woff2 degrades to something reasonable
+   * rather than to Times. */
+  --font-sans:
+    "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* T-4201 · The accent.
    *
-   * T-3401: re-pointed blue -> indigo. Indigo is the closest scale in
-   * Tailwind's default palette to the reference design's violet-leaning
-   * accent; the alias layer is what makes this a one-file change rather
-   * than a sweep through every component. Contrast is not preserved for
-   * free by an alias swap — indigo-700 and blue-700 are close but not
-   * identical against white — so Button's primary variant and every other
-   * accent-on-solid pairing is re-checked by this phase's axe runs
-   * (T-3406), not assumed.
+   * "accent" aliases a scale so components (Button, Sidebar, ...) use a
+   * semantic `accent-*` name rather than a raw colour, and so `html.demo`
+   * can re-tint the whole app (T-2801) by re-pointing eleven properties.
    *
-   * If a future task wants a non-Tailwind brand hex here, it belongs in
-   * this block as literal values; nothing downstream reads the blue/indigo
-   * scale names directly. */
-  --color-accent-50: var(--color-indigo-50);
-  --color-accent-100: var(--color-indigo-100);
-  --color-accent-200: var(--color-indigo-200);
-  --color-accent-300: var(--color-indigo-300);
-  --color-accent-400: var(--color-indigo-400);
-  --color-accent-500: var(--color-indigo-500);
-  --color-accent-600: var(--color-indigo-600);
-  --color-accent-700: var(--color-indigo-700);
-  --color-accent-800: var(--color-indigo-800);
-  --color-accent-900: var(--color-indigo-900);
-  --color-accent-950: var(--color-indigo-950);
+   * These are now LITERAL hex values, not `var(--color-indigo-*)`. Through
+   * T-3401 the accent was an alias of Tailwind's stock indigo, which is
+   * the single most-used accent on the web and gave the product no
+   * identity of its own — the defect this card exists to fix. index.css's
+   * own T-3401 comment predicted this: "If a future task wants a
+   * non-Tailwind brand hex here, it belongs in this block as literal
+   * values; nothing downstream reads the blue/indigo scale names
+   * directly." That held — nothing did.
+   *
+   * The hue is 224 in OKLCH: a cold signal-azure, the colour of a link
+   * light and an instrument trace. Hue was picked under a hard constraint
+   * rather than by taste — the semantic status scale below needs green,
+   * amber and red to be unmistakable, so the brand hue must stay far from
+   * all three. Measured separations: 69deg from ok/emerald, 149deg from
+   * degraded/amber, 161deg from critical/red. (53deg from the indigo it
+   * replaces, which is the point.)
+   *
+   * The RAMP IS SOLVED, NOT PICKED. `Button`'s primary variant is
+   * `bg-accent-600 text-white`, shared with ~10 other solid controls, so
+   * accent-600 has to clear WCAG AA 4.5:1 against white or every one of
+   * those call sites has to move — exactly the churn the alias layer
+   * exists to prevent. A naive azure ramp fails that (a first cut measured
+   * 3.67:1, because cyan is intrinsically light at a given OKLCH L). So
+   * L(600) and L(700) were solved to hit contrast targets and the rest of
+   * the curve interpolated around them. Every pairing the app relies on,
+   * measured via OKLCH -> linear sRGB -> WCAG relative luminance (the same
+   * path Button.tsx's own comment documents):
+   *
+   *     white on accent-600  (Button primary)             4.94  AA
+   *     white on accent-500  (Button primary hover)       3.09  transient
+   *     accent-700 on white  (selected-row/tab text)      7.01  AA
+   *     accent-700 on 10% accent-600 wash over white      6.13  AA
+   *     accent-300 on slate-900 (dark selected text)     10.58  AA
+   *     accent-400 on slate-900 (dark links)              7.91  AA
+   *     accent-300 on 10% wash over slate-900             9.67  AA
+   *
+   * Consequently this change moved ZERO component call sites. */
+  --color-accent-50: #eefaff;
+  --color-accent-100: #d8f4ff;
+  --color-accent-200: #afe7fe;
+  --color-accent-300: #6ed4f9;
+  --color-accent-400: #0bbbe9;
+  --color-accent-500: #039fc7;
+  --color-accent-600: #027a9a;
+  --color-accent-700: #01617b;
+  --color-accent-800: #004f65;
+  --color-accent-900: #003d4f;
+  --color-accent-950: #002734;
+
+  /* T-4204 · The semantic status scale.
+   *
+   * One health vocabulary for the whole product. Before this, every page
+   * picked its own emerald/amber/rose by hand, so the same condition drew
+   * differently on the dashboard, in a findings badge and on the canvas —
+   * drift that reads to an operator as a bug in the data.
+   *
+   * These are defined here for light mode and REDEFINED under `html.dark`
+   * further down. That is the mechanism that matters: a call site writes
+   * `text-status-critical` with no `dark:` prefix and is correct in both
+   * themes. It is the same re-point trick `html.demo` already uses for the
+   * accent, applied to status — and it is why this scale can be adopted by
+   * a sweep that deletes conditional classes rather than adding them.
+   *
+   * Three roles per state, and only three, so the vocabulary stays
+   * learnable: `-fg` (bare token: text/icon on the page surface), `-solid`
+   * (a filled badge, with white text in light mode), `-soft` (a wash
+   * behind `-fg` text). Measured on the two surfaces this app actually
+   * uses, `bg-white` and `dark:bg-slate-900` (#0f172b):
+   *
+   *              light: fg/surface  fg/soft  white/solid | dark: fg/surface  fg/soft
+   *     ok             5.56          5.02      4.97      |       10.01        7.33
+   *     degraded       5.07          4.58      4.80      |        9.28        7.05
+   *     critical       6.46          5.70      5.79      |        5.92        4.86
+   *     info           5.74          5.15      5.15      |        9.83        7.19
+   *     unknown        5.88          5.31      5.24      |        9.59        7.00
+   *
+   * All clear AA. A first derivation produced an `ok-solid` at 4.38:1 —
+   * it failed, which is the whole reason these are computed rather than
+   * chosen, and why index.css.test.ts now recomputes every cell above.
+   *
+   * THE HUES WERE MOVED BY MEASUREMENT, AND THEN BY LOOKING. Colour only
+   * encodes status if the encodings are separable, so every pair was
+   * checked — first numerically, then rendered and inspected, which is
+   * the step that actually decided the palette.
+   *
+   * Numerically: emerald `ok` sat too close to the azure accent, so `ok`
+   * moved to hue 145. That widened `ok` but pulled amber and red together
+   * on a dark ground — the "is that a warning or an error" failure.
+   *
+   * Then the specimen was rendered, and it contradicted the arithmetic
+   * twice. (1) The amber that satisfied the separation metric — hue 95 —
+   * read on screen as OLIVE, not amber; a "degraded" chip the colour of
+   * moss does not say degraded. (2) The dark-mode critical that the metric
+   * liked was a pale SALMON, which does not say critical either. Four
+   * candidate pairs were rendered side by side in both themes and looked
+   * at; the pair that reads correctly at a glance is `degraded` at hue 70
+   * (a true burnt amber, #9b6200 / #fea92f) with `critical` at hue 22 and
+   * a deepened dark step (#b52332 / #f76467, saturated rather than pink).
+   *
+   * The metric was the thing that was wrong, not the palette: sRGB-HSL
+   * hue compresses the warm region, so it scored a pair that reads
+   * unmistakably as 36deg apart. index.css.test.ts therefore measures
+   * separation in OKLCH — the space this palette is designed in — where
+   * every pair clears 40deg with 48.2deg the worst case, in both themes.
+   * A gate that disagrees with what the screen shows is a gate that will
+   * eventually be satisfied by something nobody can read.
+   *
+   * `info` is the one deliberate exception: it sits ON the brand hue
+   * (0.1deg from accent-600), because an informational status IS the
+   * accent. The test asserts that convergence rather than forbidding it.
+   *
+   * `stale` is deliberately the odd one out: it has NO `-solid` and NO
+   * `-soft`. Stale is a freshness qualifier, not a health state — "we have
+   * not re-read this recently", which can be true of a perfectly healthy
+   * entity — so it renders as a desaturation or a dashed border on top of
+   * whatever the real state is, never as a filled badge competing with
+   * one. Giving it a wash also produced the only sub-AA pairing in the
+   * whole set (3.90:1), which is the design telling you the same thing. */
+  --color-status-ok: #297731;
+  --color-status-ok-solid: #317f38;
+  --color-status-ok-soft: #eff5ef;
+  --color-status-degraded: #9b6200;
+  --color-status-degraded-solid: #a16500;
+  --color-status-degraded-soft: #f7f3eb;
+  --color-status-critical: #b52332;
+  --color-status-critical-solid: #be2d39;
+  --color-status-critical-soft: #faeeef;
+  --color-status-info: #036f8c;
+  --color-status-info-solid: #007796;
+  --color-status-info-soft: #ebf4f7;
+  --color-status-unknown: #5f656d;
+  --color-status-unknown-solid: #666d74;
+  --color-status-unknown-soft: #f3f3f4;
+  --color-status-stale: #717579;
+
+  /* T-4203 · The surface ladder.
+   *
+   * Four levels — sunken, page, raised, overlay — redefined under
+   * `html.dark` like the status scale above, so `bg-surface-raised` is
+   * correct in both themes with no `dark:` prefix.
+   *
+   * In light mode elevation rises toward white and shadow does the work.
+   * In dark mode SHADOW DOES NOT WORK: a drop shadow on a near-black
+   * ground is invisible, which is why "dark mode" built by inverting a
+   * light design loses all its depth. So the dark ladder lightens
+   * instead — #090f1c -> #0f172b -> #182133 -> #222b3d — and each step is
+   * a real surface an element can sit on. Body text (#e2e8f0) measures
+   * 15.53 / 14.46 / 13.06 / 11.50 against the four, so the ladder never
+   * costs legibility as it climbs. */
+  --color-surface-sunken: #f4f6f8;
+  --color-surface-page: #fafbfd;
+  --color-surface-raised: #ffffff;
+  --color-surface-overlay: #ffffff;
+
+  /* T-4206 · Motion.
+   *
+   * Three durations and three curves, so animation across the app is a
+   * vocabulary rather than a per-component guess. `--ease-*` sits in
+   * `@theme` because Tailwind v4 generates `ease-standard` /
+   * `ease-entrance` / `ease-exit` utilities from that namespace;
+   * durations are plain properties on `:root` below (v4 has no
+   * `--duration-*` theme namespace) and are consumed as
+   * `duration-[var(--motion-base)]` or from component CSS.
+   *
+   * The curves are asymmetric on purpose: things enter decelerating (they
+   * arrive and settle) and leave accelerating (they get out of the way).
+   * A single symmetric ease for both is the tell of motion that was added
+   * rather than designed.
+   *
+   * Every duration is zeroed under `prefers-reduced-motion` at the bottom
+   * of this file — one global gate, so a component opts into motion by
+   * using a token and gets the reduced-motion behaviour for free instead
+   * of each one re-implementing the check. */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-entrance: cubic-bezier(0, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.3, 0, 1, 1);
 
   /* T-3401: the reference design's page-action buttons are fully rounded
    * pills. Named rather than spelled `rounded-full` at call sites so the
@@ -41,13 +345,50 @@
   --radius-pill: 9999px;
 }
 
+:root {
+  /* T-4206: see the motion note in `@theme`. Zeroed under
+   * `prefers-reduced-motion` at the bottom of this file. */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 320ms;
+}
+
+/* T-4203: the dark half of the surface ladder and the status scale.
+ *
+ * `html.dark` (0,1,1) outranks `:root` (0,1,0), which is what lets a
+ * single unprefixed utility resolve correctly per theme. Same mechanism
+ * as `html.demo` below; see the `@theme` comments for the measurements. */
+html.dark {
+  --color-status-ok: #86d489;
+  --color-status-ok-solid: #6dba70;
+  --color-status-ok-soft: #203437;
+  --color-status-degraded: #fea92f;
+  --color-status-degraded-solid: #e19000;
+  --color-status-degraded-soft: #352d23;
+  --color-status-critical: #f76467;
+  --color-status-critical-solid: #e55458;
+  --color-status-critical-soft: #362233;
+  --color-status-info: #57cef7;
+  --color-status-info-solid: #37b4dc;
+  --color-status-info-soft: #16334b;
+  --color-status-unknown: #b7bfc7;
+  --color-status-unknown-solid: #9ea5ad;
+  --color-status-unknown-soft: #293142;
+  --color-status-stale: #82878c;
+
+  --color-surface-sunken: #090f1c;
+  --color-surface-page: #0f172b;
+  --color-surface-raised: #182133;
+  --color-surface-overlay: #222b3d;
+}
+
 /* T-2801: demo mode's distinct accent colour.
  *
  * The card asks for one, and this is the cheapest honest way to get it:
- * `accent` is already an alias layer over a Tailwind scale (see @theme
- * above), so re-pointing the alias under `<html class="demo">` re-tints
- * every accent-* utility in the app — buttons, the nav rail's selection,
- * focus rings — without touching a single component.
+ * `accent` is already an alias layer (see @theme above), so re-pointing
+ * the properties under `<html class="demo">` re-tints every accent-*
+ * utility in the app — buttons, the nav rail's selection, focus rings —
+ * without touching a single component.
  *
  * Amber and not, say, green: it has to read as "this is not your cluster"
  * at a glance from across a room, and it must not collide with the
@@ -63,40 +404,40 @@
  *
  * T-3406: the 600 and 700 steps are deliberately one Tailwind step darker
  * than their own numbers (600 -> amber-700, 700 -> amber-800), found by
- * this phase's demo-amber axe sweep (T-3406, the first time this app's
- * axe suite ever ran every routed page in demo mode against the finished
- * shell). Two real WCAG AA failures, both load-bearing enough to be
- * everywhere in the app: (1) `Button`'s primary variant and every other
- * solid `bg-accent-600 text-white` control (LayerToggleBar's layer
- * toggles, the density toggle, TopBar's account chip, ...) — white on
- * amber-600 (#e17100) measures 3.19:1 against a 4.5:1 floor; white on
- * amber-700 (#bb4d00) measures ~5.3:1. (2) the `bg-accent-600/10
- * text-accent-700` "selected row/tab" wash used across Sidebar, SdnPage,
- * FlowExplorer, BlueprintsPage, AlertRules and FederationClusters —
- * amber-700 text over a 10%-opacity amber-600 wash measures 4.31:1
- * (a 10%-opacity wash barely darkens regardless of which step it's mixed
- * from, so darkening the wash's own source color doesn't fix this on its
- * own); amber-800 text over the same wash measures ~5.9:1. Both patterns
- * pass fine against the BASE (indigo) accent at their own numbers —
- * indigo-600/700 are dark enough on their own — so this is demo-mode-only,
- * hence a demo-only remap rather than a change to Button.tsx or any of
- * the ~10 call sites sharing these two patterns; re-pointing the alias is
- * exactly what it exists for (see this block's own T-2801 comment above).
+ * that phase's demo-amber axe sweep. Two real WCAG AA failures, both
+ * load-bearing: (1) `Button`'s primary variant and every other solid
+ * `bg-accent-600 text-white` control — white on amber-600 measures
+ * 3.19:1 against a 4.5:1 floor; white on amber-700 measures 5.03:1.
+ * (2) the `bg-accent-600/10 text-accent-700` "selected row/tab" wash used
+ * across Sidebar, SdnPage, FlowExplorer, BlueprintsPage, AlertRules and
+ * FederationClusters — amber-700 text over a 10%-opacity amber-600 wash
+ * measures 4.31:1 (a 10% wash barely darkens regardless of which step it
+ * is mixed from, so darkening the wash's own source colour does not fix
+ * this on its own); amber-800 text over the same wash clears AA.
  * 500/800/900/950 are untouched: no violation implicated them, and 800
  * already is amber-800 (the new value for 700), so nothing here relies on
- * 700 and 800 being visually distinct. */
+ * 700 and 800 being visually distinct.
+ *
+ * T-4201: these are now literal hex rather than `var(--color-amber-*)`,
+ * for symmetry with the base accent above — the base could no longer be
+ * expressed as an alias once it stopped being a stock Tailwind scale, and
+ * a block where one half is literal and the other is indirected cannot be
+ * compared by any test that does not itself resolve Tailwind. The values
+ * are Tailwind v4's own amber swatches resolved to hex, so every
+ * measurement T-3406 recorded above carries over unchanged (amber-700 is
+ * still #bb4d00, exactly as that sweep recorded it). */
 html.demo {
-  --color-accent-50: var(--color-amber-50);
-  --color-accent-100: var(--color-amber-100);
-  --color-accent-200: var(--color-amber-200);
-  --color-accent-300: var(--color-amber-300);
-  --color-accent-400: var(--color-amber-400);
-  --color-accent-500: var(--color-amber-500);
-  --color-accent-600: var(--color-amber-700);
-  --color-accent-700: var(--color-amber-800);
-  --color-accent-800: var(--color-amber-800);
-  --color-accent-900: var(--color-amber-900);
-  --color-accent-950: var(--color-amber-950);
+  --color-accent-50: #fffbeb;
+  --color-accent-100: #fef3c6;
+  --color-accent-200: #fee685;
+  --color-accent-300: #ffd230;
+  --color-accent-400: #ffb900;
+  --color-accent-500: #fe9a00;
+  --color-accent-600: #bb4d00;
+  --color-accent-700: #973c00;
+  --color-accent-800: #973c00;
+  --color-accent-900: #7b3306;
+  --color-accent-950: #461901;
 }
 
 html,
@@ -106,8 +447,56 @@ body,
 }
 
 body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* T-4202: was a bare system stack; now resolves the Plex faces declared
+   * above, with that same stack retained as the fallback chain. */
+  font-family: var(--font-sans);
+}
+
+/* T-4202: digits that sit in a column must not wobble as they tick.
+ * Applied at the element level rather than left to call sites because the
+ * places it matters most — live rate counters, port statistics, latency
+ * samples — are exactly the places that re-render every second, and a
+ * proportional-figure column visibly jitters. `<code>`, `<kbd>` and
+ * `<samp>` get the mono face for the same reason the mono face was chosen
+ * (see the @font-face block): this app renders addresses and hex
+ * constantly. */
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* T-4206: the single reduced-motion gate.
+ *
+ * Zeroing the duration tokens is what makes this global: any component
+ * that animates through `--motion-*` becomes instant here without
+ * knowing this rule exists. The blanket override underneath catches
+ * everything that does not yet use a token — including third-party
+ * styles (Radix, React Flow) this app does not own. `0.01ms` rather than
+ * `0` so animation/transition end events still fire and state machines
+ * waiting on them do not hang.
+ *
+ * `useReducedMotion()` (src/lib) stays: JS-driven animation and canvas
+ * rendering cannot be reached by CSS, and some components must render a
+ * genuinely different, static representation rather than the same one
+ * faster. This rule and that hook are the two halves of one policy. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0.01ms;
+    --motion-base: 0.01ms;
+    --motion-slow: 0.01ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* T-906 print stylesheet: hides app-frame chrome that has no place on a
