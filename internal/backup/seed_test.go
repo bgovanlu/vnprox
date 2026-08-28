@@ -45,6 +45,7 @@ var secretMarkers = map[string]string{
 	"federation_credential":   "SEEDMARK-federation-credential-CCCC",
 	"oidc_pve_credential":     "SEEDMARK-oidc-pve-credential-DDDD",
 	"switch_credential":       "SEEDMARK-switch-driver-credential-EEEE",
+	"switch_snmp_community":   "SEEDMARK-switch-snmp-community-string-EEEF",
 	"wireguard_private_key":   "SEEDMARK-wireguard-private-key-FFFF",
 	"wireguard_preshared_key": "SEEDMARK-wireguard-preshared-key-GGGG",
 	"k8s_kubeconfig":          "SEEDMARK-kubeconfig-HHHH",
@@ -244,6 +245,11 @@ func (f *fixture) seedStore(t *testing.T) {
 	must("switch", store.NewSwitchRepo(db).Insert(ctx, store.Switch{
 		ID: "sw-1", Name: "tor-1", MgmtAddr: "10.0.0.9", DriverType: "gnmi", AddedBy: "root@pam",
 		CredentialsEnc: seal("switch_credential"), AddedAt: 1700000000,
+	}))
+	must("switch snmp target", store.NewSwitchSNMPTargetRepo(db).Insert(ctx, store.SwitchSNMPTarget{
+		ID: "snmp-1", ChassisID: "aa:bb:cc:dd:ee:ff", ChassisIDType: "mac-address", MgmtAddr: "10.0.0.9",
+		Port: 161, Enabled: true, AddedBy: "root@pam",
+		CommunityEnc: seal("switch_snmp_community"), AddedAt: 1700000000,
 	}))
 	wgRepo := store.NewWireGuardRepo(db)
 	must("wg tunnel", wgRepo.InsertTunnel(ctx, store.WireGuardTunnel{

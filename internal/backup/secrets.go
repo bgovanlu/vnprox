@@ -134,6 +134,13 @@ var secretClasses = []SecretClass{
 		Column:  "switches.credentials_enc",
 	},
 	{
+		ID:      "switch_snmp_community",
+		Name:    "SNMP v2c community string",
+		Detail:  "read access to IF-MIB port counters on each switch an operator has opted into T-4013's counter poller",
+		Storage: StorageSealedColumn,
+		Column:  "switch_snmp_targets.community_enc",
+	},
+	{
 		ID:      "wireguard_private_key",
 		Name:    "WireGuard tunnel private key",
 		Detail:  "the X25519 private key of every site-to-site tunnel this node terminates",

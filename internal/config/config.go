@@ -25,6 +25,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/flow"
 	"github.com/bgovanlu/vnprox/internal/flow/hostsample"
 	"github.com/bgovanlu/vnprox/internal/ha"
+	"github.com/bgovanlu/vnprox/internal/ifcounters"
 	"github.com/bgovanlu/vnprox/internal/latmesh"
 	"github.com/bgovanlu/vnprox/internal/mtuprobe"
 	"github.com/bgovanlu/vnprox/internal/peer"
@@ -215,6 +216,7 @@ type Config struct {
 	MTUProbe    MTUProbeConfig
 	Webhooks    WebhooksConfig
 	Switches    SwitchesConfig
+	IfCounters  IfCountersConfig
 	MCP         MCPConfig
 	SIEMExport  SIEMExportConfig
 	Demo        bool
@@ -876,6 +878,20 @@ type MTUProbeConfig struct {
 	ProbeIntervalSec int
 }
 
+// IfCountersConfig is the [ifcounters] section (T-4013): the read-only SNMP
+// switch-counter poller's own scheduling knob. Always on, same reasoning as
+// [mtuprobe]/[wan] above: internal/ifcounters.Service.Tick only ever sends
+// outbound UDP GET/GETBULK toward a switch that is both LLDP-discovered AND
+// has an operator-configured, enabled switch_snmp_targets row (community
+// string included) — a node with no such rows simply polls nothing, so
+// there is no listening-port attack surface to gate behind a second,
+// daemon-level flag the way [switches]' write path needs one.
+// PollIntervalSec defaults to internal/ifcounters' own documented constant
+// (60s) when unset/non-positive.
+type IfCountersConfig struct {
+	PollIntervalSec int
+}
+
 // WanConfig is the [wan] section (T-1405): the WAN health probe's own
 // scheduling/retention knobs, independent of [latmesh]'s (see internal/wan's
 // package doc comment for why a WAN link's own ring gets its own bound
@@ -1016,6 +1032,7 @@ type rawConfig struct {
 	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
 	Webhooks    rawWebhooks    `toml:"webhooks"`
 	Switches    rawSwitches    `toml:"switches"`
+	IfCounters  rawIfCounters  `toml:"ifcounters"`
 	MCP         rawMCP         `toml:"mcp"`
 	SIEMExport  rawSIEMExport  `toml:"siemexport"`
 }
@@ -1264,6 +1281,10 @@ type rawMTUProbe struct {
 	ProbeIntervalSec int `toml:"probe_interval_sec"`
 }
 
+type rawIfCounters struct {
+	PollIntervalSec int `toml:"poll_interval_sec"`
+}
+
 type rawCerts struct {
 	Root           string `toml:"root"`
 	ExpiryWarnDays int    `toml:"expiry_warn_days"`
@@ -1468,6 +1489,9 @@ func loadBytes(data []byte, path string, logger *slog.Logger) (*Config, error) {
 		},
 		MTUProbe: MTUProbeConfig{
 			ProbeIntervalSec: firstNonZeroInt(raw.MTUProbe.ProbeIntervalSec, mtuprobe.DefaultProbeIntervalSec),
+		},
+		IfCounters: IfCountersConfig{
+			PollIntervalSec: firstNonZeroInt(raw.IfCounters.PollIntervalSec, ifcounters.DefaultPollIntervalSec),
 		},
 		Certs: CertsConfig{
 			Root:           raw.Certs.Root,

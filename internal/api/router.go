@@ -158,40 +158,43 @@ type Options struct {
 	// (GET/PUT /policies, POST /policies/test). Nil leaves those routes
 	// unmounted; it never disables enforcement, which lives in the change
 	// engine's validate stage, not here.
-	Policy               PolicyService
-	SpecPinAudit         specPinAuditor
-	Simulator            SimulatorGraph
-	Blueprints           BlueprintService
-	Auth                 AuthService
-	History              HistoryAuditSource
-	QosShapes            QosShapeSource
-	Qos                  QosShapeListService
-	GuestInteriorToggles GuestInteriorToggleStore
-	GuestInteriorGraph   GuestInteriorGraph
-	GuestInteriorHost    GuestInteriorHostReader
-	GuestInteriorPeers   PeerContainerSource
-	GuestInteriorIPAM    GuestInteriorIPAMSource
-	FwLog                FwLogService
-	Peer                 PeerServer
-	PeerAudit            PeerAuditSource
-	PeerSnapshots        PeerSnapshotSource
-	Flows                FlowLocalSource
-	PeerFlows            PeerFlowSource
-	NeighborHistory      NeighborHistoryLocalSource
-	PeerNeighborHistory  PeerNeighborHistorySource
-	LatMesh              LatMeshService
-	MTUProbe             MTUProbeService
-	Ceph                 CephService
-	Failsim              FailsimService
-	Microseg             MicrosegService
-	WireGuard            WireGuardService
-	WgCarriers           change.WgCarrierSource
-	Wan                  WanService
-	WanAudit             wanAuditor
-	Captures             CaptureService
-	Conntrack            ConntrackLocalSource
-	PeerConntrack        PeerConntrackSource
-	ConntrackGuests      ConntrackGuestResolver
+	Policy                PolicyService
+	SpecPinAudit          specPinAuditor
+	Simulator             SimulatorGraph
+	Blueprints            BlueprintService
+	Auth                  AuthService
+	History               HistoryAuditSource
+	QosShapes             QosShapeSource
+	Qos                   QosShapeListService
+	GuestInteriorToggles  GuestInteriorToggleStore
+	GuestInteriorGraph    GuestInteriorGraph
+	GuestInteriorHost     GuestInteriorHostReader
+	GuestInteriorPeers    PeerContainerSource
+	GuestInteriorIPAM     GuestInteriorIPAMSource
+	FwLog                 FwLogService
+	Peer                  PeerServer
+	PeerAudit             PeerAuditSource
+	PeerSnapshots         PeerSnapshotSource
+	Flows                 FlowLocalSource
+	PeerFlows             PeerFlowSource
+	NeighborHistory       NeighborHistoryLocalSource
+	PeerNeighborHistory   PeerNeighborHistorySource
+	LatMesh               LatMeshService
+	MTUProbe              MTUProbeService
+	IfCounters            IfCountersService
+	IfCounterTargets      IfCounterTargetStore
+	IfCounterSecretCipher SecretCipher
+	Ceph                  CephService
+	Failsim               FailsimService
+	Microseg              MicrosegService
+	WireGuard             WireGuardService
+	WgCarriers            change.WgCarrierSource
+	Wan                   WanService
+	WanAudit              wanAuditor
+	Captures              CaptureService
+	Conntrack             ConntrackLocalSource
+	PeerConntrack         PeerConntrackSource
+	ConntrackGuests       ConntrackGuestResolver
 	// MDB/PeerMDB (T-3902) back GET /mdb: the bridge multicast/MDB
 	// browser's live cluster fan-out, the same local/peer seam shape
 	// Conntrack/PeerConntrack use above.
@@ -449,6 +452,7 @@ func NewRouter(opts Options) http.Handler {
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 		mountLatMeshRoutes(r, opts.LatMesh, opts.Auth)
 		mountMTUProbeRoutes(r, opts.MTUProbe, opts.Auth)
+		mountIfCountersRoutes(r, opts.IfCounters, opts.IfCounterTargets, opts.IfCounterSecretCipher, opts.Auth)
 		mountCephRoutes(r, opts.Ceph, opts.Auth)
 		mountFailsimRoutes(r, opts.Failsim, opts.Auth)
 		mountMicrosegRoutes(r, opts.Microseg, opts.Auth)

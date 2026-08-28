@@ -81,7 +81,17 @@ const secretTerms = `secret|password|passwd|passphrase|` +
 	`priv(?:ate)?[_-]?key|preshared[_-]?key|psk|` +
 	`session[_-]?key|signing[_-]?key|encryption[_-]?key|secret[_-]?key|` +
 	`ssh[_-]?key|wg[_-]?key|auth[_-]?key|access[_-]?key|host[_-]?key|api[_-]?key|` +
-	`kubeconfig|client[_-]?secret`
+	`kubeconfig|client[_-]?secret|` +
+	// SNMP v2c/v1 community string (T-4013): a bearer credential for
+	// reading (and, on a real device's own agent, sometimes writing) a
+	// switch's management plane — internal/ifcounters/internal/snmp's own
+	// doc comments name it a credential like any other; this is that
+	// classification's belt-and-braces half for unstructured text (a
+	// Scrub'd error message, a support-bundle field) that has no finite
+	// key set to allowlist against. Bare "community" (not just
+	// "community_string"), matching this list's existing bias toward
+	// over-matching (doc.go's "conservative in one direction only").
+	`community`
 
 // secretKeyPattern matches a *key* name (a JSON object key, a TOML key, an
 // interfaces(5) option name, or the left-hand side of a `key: value` in a

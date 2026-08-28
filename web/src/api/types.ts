@@ -4780,3 +4780,71 @@ export interface NftRulesetResponse {
   rules: NftRule[];
   empty: boolean;
 }
+
+// --- Switch counters / SNMP (GET /snmp/counters, /snmp/targets; internal/api/ifcounters.go, T-4013) --
+
+/** One polled port's honest current state (docs/api.md's "Switch counters
+ * (SNMP)" section) — never collapsed into a single "no data" signal.
+ * `notConfigured`: no enabled SNMP target for this switch's chassis (the
+ * common default). `unreachable`: a poll was attempted and the transport
+ * failed. `noCounters`: the switch answered, but this port's counters
+ * could not be obtained. `ok`: real counters this tick. */
+export type SNMPCounterState = "not_configured" | "unreachable" | "no_counters" | "ok";
+
+/** One GET /snmp/counters item (internal/ifcounters.Result). The six
+ * counter fields and `operUp` are only meaningful (non-zero-valued) when
+ * `state` is `"ok"` — a caller must switch on `state` before reading them,
+ * never infer "no data" from a zero value alone. */
+export interface SNMPCounterResult {
+  chassisId: string;
+  switchName: string;
+  node: string;
+  localIface: string;
+  switchPort: string;
+  state: SNMPCounterState;
+  inErrors?: number;
+  outErrors?: number;
+  inDiscards?: number;
+  outDiscards?: number;
+  inOctets?: number;
+  outOctets?: number;
+  operUp?: boolean;
+  at: number;
+}
+
+/** GET /snmp/counters response envelope. */
+export interface SNMPCounterResults {
+  items: SNMPCounterResult[];
+}
+
+/** One GET/PUT /snmp/targets item (store.SwitchSNMPTarget, community never
+ * included — `hasCommunity` only, matching `AlertRule`'s `hasSecret`
+ * convention). `mgmtAddr` empty means "use whichever address this
+ * chassis's LLDP neighbor(s) currently advertise". */
+export interface SNMPTarget {
+  chassisId: string;
+  chassisIdType?: string;
+  mgmtAddr?: string;
+  port: number;
+  enabled: boolean;
+  hasCommunity: boolean;
+  addedBy: string;
+  addedAt: number;
+}
+
+/** GET /snmp/targets response envelope. */
+export interface SNMPTargetsResponse {
+  items: SNMPTarget[];
+}
+
+/** PUT /snmp/targets/{chassisId} request body. `community` follows the
+ * same three-state contract `AlertRuleRequest.targetSecret` uses: omitted
+ * leaves the stored community untouched, `""` clears it, non-empty
+ * replaces it. */
+export interface SNMPTargetRequest {
+  chassisIdType?: string;
+  mgmtAddr?: string;
+  port?: number;
+  enabled: boolean;
+  community?: string;
+}

@@ -749,6 +749,14 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// measured upgrade) directly below and api.Options.MTUProbe further
 	// down; mtuProbeActors joins the same run group.
 	mtuProbeSvc, mtuProbeActors := setupMTUProbe(cfg, latMeshDiscoverer, logger)
+	// T-4013: the read-only SNMP switch-counter poller — topoSvc is already
+	// available (constructed above) as the exact ifcounters.NeighborLister
+	// instance the map/Ports table itself reads (setupIfCounters's own
+	// doc comment: "never a second discovery mechanism"); switchSNMPTargetRepo
+	// is this feature's own app-store table, sessionCipher is the same
+	// AES-256-GCM cipher every other sealed credential in this daemon uses.
+	switchSNMPTargetRepo := store.NewSwitchSNMPTargetRepo(db)
+	ifCounterSvc, ifCounterActors := setupIfCounters(cfg, topoSvc, switchSNMPTargetRepo, sessionCipher, logger)
 	// T-4106: overlay-readiness preflight (change.OverlayReadinessPreflighter).
 	// mtuProbeSvc is available now; evpnSvc is built later in this function
 	// (it needs peerClient/sdnSvc) and wired in via overlayAdapterVal.set()
@@ -1859,33 +1867,36 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		// WebhookSecretCipher above already wire in, and
 		// IngressDiscoverers is the default HAProxy/nginx/Caddy/Traefik
 		// registry (the seam T-1702's plugin SDK later extends).
-		IngressTargets:      ingressTargetRepo,
-		IngressSecretCipher: sessionCipher,
-		IngressDiscoverers:  ingress.NewDefaultRegistry(nil),
-		FwLog:               fwLogAPI,
-		Peer:                peerSrv,
-		PeerAudit:           peerAudit,
-		PeerSnapshots:       peerSnapshots,
-		Flows:               flowRepo,
-		PeerFlows:           peerFlows,
-		NeighborHistory:     neighborHistory,
-		PeerNeighborHistory: peerNeighborHistory,
-		FlowClassifier:      flowClassifier,
-		LatMesh:             latMeshSvc,
-		MTUProbe:            mtuProbeSvc,
-		Ceph:                cephAdapter,
-		Failsim:             failsimSvc,
-		Microseg:            microsegSvc,
-		WireGuard:           wgReadSvc,
-		WgCarriers:          wgReadSvc,
-		Wan:                 wanSvc,
-		WanAudit:            auditRepo,
-		Captures:            captureCoord,
-		Conntrack:           realHost,
-		PeerConntrack:       peerConntrack,
-		ConntrackGuests:     conntrackGuests,
-		MDB:                 realHost,
-		PeerMDB:             peerMDB,
+		IngressTargets:        ingressTargetRepo,
+		IngressSecretCipher:   sessionCipher,
+		IngressDiscoverers:    ingress.NewDefaultRegistry(nil),
+		FwLog:                 fwLogAPI,
+		Peer:                  peerSrv,
+		PeerAudit:             peerAudit,
+		PeerSnapshots:         peerSnapshots,
+		Flows:                 flowRepo,
+		PeerFlows:             peerFlows,
+		NeighborHistory:       neighborHistory,
+		PeerNeighborHistory:   peerNeighborHistory,
+		FlowClassifier:        flowClassifier,
+		LatMesh:               latMeshSvc,
+		MTUProbe:              mtuProbeSvc,
+		IfCounters:            ifCounterSvc,
+		IfCounterTargets:      switchSNMPTargetRepo,
+		IfCounterSecretCipher: sessionCipher,
+		Ceph:                  cephAdapter,
+		Failsim:               failsimSvc,
+		Microseg:              microsegSvc,
+		WireGuard:             wgReadSvc,
+		WgCarriers:            wgReadSvc,
+		Wan:                   wanSvc,
+		WanAudit:              auditRepo,
+		Captures:              captureCoord,
+		Conntrack:             realHost,
+		PeerConntrack:         peerConntrack,
+		ConntrackGuests:       conntrackGuests,
+		MDB:                   realHost,
+		PeerMDB:               peerMDB,
 		// T-3904: the compiled-ruleset inspector's live node-routed read —
 		// realHost (local node) and peerNftRuleset (peers), the same
 		// local/peer seam MDB/PeerMDB above use. Firewall (already wired
@@ -2235,6 +2246,14 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// comment) — always on, its own coarser interval; no prune-loop actor
 	// (current-state only, no SQLite ring — internal/mtuprobe's doc.go).
 	for _, actor := range mtuProbeActors {
+		g.add(actor)
+	}
+	// T-4013: the SNMP switch-counter poller's own poll loop
+	// (setupIfCounters's doc comment) — always on, its own coarser
+	// interval; no prune-loop actor (current state only, no SQLite ring —
+	// internal/ifcounters' doc.go). A node with no LLDP-discovered,
+	// operator-enabled switches simply polls nothing every tick.
+	for _, actor := range ifCounterActors {
 		g.add(actor)
 	}
 	// T-1405: the WAN health probe loop and prune loop (setupWan's doc

@@ -303,6 +303,13 @@ enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); 
 # [mtuprobe]                       # T-1306: always-on path MTU prober, built on [latmesh]'s own scheduler
 # probe_interval_sec = 300         # far coarser than [latmesh] — MTU rarely changes
 
+# [ifcounters]                     # T-4013: always-on read-only SNMP switch-counter poller (no opt-in flag
+#                                   # here — see [switches] above for why this one differs: the only switches
+#                                   # ever polled are ones with BOTH a live LLDP neighbor relationship AND an
+#                                   # operator-enabled row in the switch_snmp_targets table, community string
+#                                   # included; a node with no such rows polls nothing)
+# poll_interval_sec = 60           # per-switch SNMPv2c GET/GETBULK cadence
+
 # [changesets]                     # T-2003: change review — approvals, comments, side-by-side diff.
 #                                   # Every key below defaults to the value shown; an omitted section
 #                                   # leaves apply behavior byte-identical to every pre-T-2003 deployment.

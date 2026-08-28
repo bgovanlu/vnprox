@@ -276,6 +276,7 @@ var configKeyAllowlist = map[string]bool{
 	"wan.probe_interval_sec":             true,
 	"latmesh.probe_interval_sec":         true,
 	"mtuprobe.probe_interval_sec":        true,
+	"ifcounters.poll_interval_sec":       true,
 	"retention.aggregate_retention_days": true,
 	"capacity.aggregate_retention_days":  true,
 	"baseline.profile_retention_days":    true,

@@ -96,6 +96,32 @@ ADR/docs site at `docs.vnprox.com`, and a working `security@` mailbox).
 
 ---
 
+## Delivery status (2026-08-28)
+
+| Phase | Delivered | Remaining, and why |
+|---|---|---|
+| Wave 0 debt gate | ✅ all 8 | Four needed no code — see the audit note above. |
+| **38 · Open the source** | 9 of 12 | T-3802's *remediation* half (owner call on the scan's findings), T-3807's SLSA half and T-3808 entirely (CI-strategy conflict, below). |
+| **39 · Deepen the map** | ✅ 12 of 12 | — |
+| **40 · Operate at scale** | 13 of 15 | T-4008 needs public DNS; T-4013 is a dependency call. T-4015 shipped its UI; its CLI half followed separately. |
+| **41 · Intelligence & envelope** | 7 of 11 | T-4107 (scale envelope) wants an uncontended host; T-4110 is hardware-flagged; T-4108 needs Actions; T-4111 is the eBPF dependency call. |
+
+**Defects and decisions this work surfaced, none of which anyone was looking for:** T-3714
+(tenant scoping — already fixed, record stale), T-3715 (telemetry undiscoverable), T-3716 (the
+frozen plugin SDK lives under `internal/`, so no third party can import it), T-3717 (the OpenAPI
+coverage gate is green because the routes it misses never mount), T-3718 (the compiled-ruleset
+inspector reads nftables; default PVE 9.2.4 compiles to iptables), T-3719 (LLDP tables omit
+undiscovered NICs), T-4016 (stage-only integrations report converged while nothing is live),
+T-4112 (SDN DNS record endpoints target routes real PVE does not have).
+
+**The recurring shape, stated once:** on every card that touched the node, the live output
+contradicted the premise the card was written from — STP is off everywhere so "is root" is
+meaningless; the MDB table was not empty; FRR was running despite a probe saying otherwise;
+PVE ships two firewall engines with nftables off by default; history playback already replayed
+traffic; the flow ring is 60 minutes, not 24 hours. None of that was available from documentation.
+
+---
+
 ## Phase 38 — Open the source (12 items, T-3801–T-3812)
 
 *The repo is already public; this phase closes the exposure that implies and makes the project

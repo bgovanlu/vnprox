@@ -180,6 +180,7 @@ var versionSeeds = map[int]versionSeed{
 	50: {seedV50, assertV50},
 	51: {seedV51, assertV51},
 	52: {seedV52, assertV52},
+	53: {seedV53, assertV53},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1924,6 +1925,48 @@ func assertV52(t *testing.T, db *sql.DB) {
 		}
 		if createdAt != 1792999000 {
 			t.Errorf("maintenance_windows (v52) created_at = %d, want 1792999000", createdAt)
+		}
+	}
+}
+
+func seedV53(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// An active tc mirror session (0053_tc_mirror_sessions.sql — T-4014).
+	mustExec(t, db, `INSERT INTO tc_mirror_sessions (id, node, source_iface, dest_iface, max_mbit, max_duration_sec, status, created_by, started_at, expires_at)
+	      VALUES ('mirror-v53', 'pve1', 'eth0', 'eth1', 100, 3600, 'active', 'carol', 1793000000, 1793003600)`)
+}
+
+func assertV53(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+
+	var node, sourceIface, destIface, status, createdBy string
+	var maxMbit sql.NullInt64
+	var maxDurationSec, startedAt, expiresAt int64
+	if err := db.QueryRowContext(ctx, `SELECT node, source_iface, dest_iface, max_mbit, max_duration_sec, status, created_by, started_at, expires_at FROM tc_mirror_sessions WHERE id = 'mirror-v53'`).
+		Scan(&node, &sourceIface, &destIface, &maxMbit, &maxDurationSec, &status, &createdBy, &startedAt, &expiresAt); err != nil {
+		t.Errorf("tc_mirror_sessions row (v53) lost across migration: %v", err)
+	} else {
+		if node != "pve1" {
+			t.Errorf("tc_mirror_sessions (v53) node = %q, want pve1", node)
+		}
+		if sourceIface != "eth0" || destIface != "eth1" {
+			t.Errorf("tc_mirror_sessions (v53) source/dest = %q/%q, want eth0/eth1", sourceIface, destIface)
+		}
+		if !maxMbit.Valid || maxMbit.Int64 != 100 {
+			t.Errorf("tc_mirror_sessions (v53) max_mbit = %+v, want 100", maxMbit)
+		}
+		if maxDurationSec != 3600 {
+			t.Errorf("tc_mirror_sessions (v53) max_duration_sec = %d, want 3600", maxDurationSec)
+		}
+		if status != "active" {
+			t.Errorf("tc_mirror_sessions (v53) status = %q, want active", status)
+		}
+		if createdBy != "carol" {
+			t.Errorf("tc_mirror_sessions (v53) created_by = %q, want carol", createdBy)
+		}
+		if startedAt != 1793000000 || expiresAt != 1793003600 {
+			t.Errorf("tc_mirror_sessions (v53) started/expires = %d/%d, want 1793000000/1793003600", startedAt, expiresAt)
 		}
 	}
 }

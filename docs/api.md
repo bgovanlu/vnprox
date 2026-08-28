@@ -959,6 +959,35 @@ Added by T-1306 (`internal/mtuprobe`): active per-path MTU discovery — a binar
 
 **WireGuard hook (declared, not wired)**: `Service.ProbeWireGuardLink(ctx, tunnelRef)` is a capability-gated seam that always returns `mtuprobe.ErrWireGuardNotAvailable` today (`mtuprobe.WireGuardCapability` defaults `false` — there is no WireGuard tunnel entity kind in `internal/inventory` yet, and no capability flag exists to check). Phase 14's T-1401 is the task expected to introduce that capability flag and a WireGuard tunnel entity, then wire a real implementation into this exact method — see `planning/reports/T-1306.md` for the precise call-site this task leaves for it. This card's own work stops at the declared, tested, dark seam. (T-1401 note: T-1401 adds the `wg-tunnel`/`wg-peer` Ref kinds and the `wireguard_tunnels` store table, but leaves this MTU-prober hook still dark — wiring a real per-tunnel MTU probe is out of T-1401's scope and remains a follow-up.)
 
+## Switch counters (SNMP) (T-4013)
+
+Added by T-4013 (`internal/snmp`, `internal/ifcounters`): read-only port errors/discards/utilization from LLDP-discovered switches, painted on map edges. Read-only end to end — `internal/switchdrv`'s guarded-push boundary (its `ErrNeighborMismatch` re-verification before every write) is untouched; this feature adds a read path that never calls `SetPortConfig` or anything else in that package. `internal/snmp` is a hand-rolled, stdlib-only SNMPv2c client (no third-party dependency — `docs/development.md`'s locked stack has no SNMP entry) scoped to exactly GET/GET-NEXT/GET-BULK: there is no SET PDU anywhere in that package, structurally, not by convention (`internal/snmp/noset_test.go`).
+
+**Never a second discovery mechanism**: `internal/ifcounters.Service.Tick`'s only source of "which switches exist" is the same current-state LLDP neighbor set `GET /lldp`/`GET /ports` already read (`internal/topology.Service.LLDPNeighbors()`) — a switch this daemon has never seen an LLDP neighbor relationship with can never become a poll target, regardless of what is configured via `PUT /snmp/targets/{chassisId}` below.
+
+**Off by default, per-switch opt-in**: the poller itself is always-on scheduling (`[ifcounters] poll_interval_sec` in `vnprox.toml`, default 60 — no daemon-level master flag, since a low-rate outbound UDP query toward an already-known switch carries no listening-port attack surface, the same reasoning `[latmesh]`/`[mtuprobe]`/`[wan]` document above), but it polls nothing until an operator explicitly registers a switch's chassis with an enabled `PUT /snmp/targets/{chassisId}` row, community string included.
+
+**Honest states**: every currently-known LLDP-observed local-port↔switch-port edge reports exactly one of four `state` values — `not_configured` (the common default: no enabled target for this switch's chassis), `unreachable` (a poll was attempted and the transport failed — timeout, refused, wrong community), `no_counters` (the switch answered, but this port's counters could not be correlated, or came back as one of RFC 3416's exception values), or `ok` (real counters this tick). These are never collapsed into a single "no data" signal.
+
+**Credentials**: the SNMP v2c community string is a credential, handled like every other secret in this codebase — stored as `switch_snmp_targets.community_enc`, AES-256-GCM ciphertext via the same `internal/store.SessionCipher` every other sealed credential uses (registered in `internal/backup/secrets.go`'s inventory), never returned by any API response (`GET /snmp/targets` reports `hasCommunity: bool` only, matching `GET /alert-rules`'s `hasSecret` convention), never logged, and `community` is in `internal/redact`'s secret-term vocabulary as belt-and-braces for unstructured text.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/snmp/counters` | every currently-known polled port result (current state, not a history) |
+| GET | `/snmp/targets` | every configured per-switch poll target (community never echoed back) |
+| PUT | `/snmp/targets/{chassisId}` | create-or-replace one switch's poll config, keyed by its LLDP `chassisId` |
+| DELETE | `/snmp/targets/{chassisId}` | remove a switch's poll config |
+
+**`GET /snmp/counters`** response: `{items: [SNMPCounterResult]}`. `SNMPCounterResult`: `{chassisId, switchName, node, localIface, switchPort, state, inErrors?, outErrors?, inDiscards?, outDiscards?, inOctets?, outOctets?, operUp?, at}` — `inOctets`/`outOctets` are IF-MIB's `ifHCInOctets`/`ifHCOutOctets` (64-bit counters); the six counter fields and `operUp` are omitted (zero value) unless `state` is `"ok"`. netRead-gated, node-local (no peer fan-out), matching every other read-only monitoring route above.
+
+**`GET /snmp/targets`** response: `{items: [SNMPTarget]}`. `SNMPTarget`: `{chassisId, chassisIdType?, mgmtAddr?, port, enabled, hasCommunity, addedBy, addedAt}` — `mgmtAddr` empty means "use whichever management IP this chassis's LLDP neighbor(s) currently advertise" rather than an operator-pinned address. netRead-gated.
+
+**`PUT /snmp/targets/{chassisId}`** request: `{chassisIdType?, mgmtAddr?, port?, enabled, community?}`. `community` is a `*string` with the same three-state contract `PUT /alert-rules/{id}`'s `targetSecret` uses: absent/null leaves the stored community untouched (an update-only no-op on that field; on first create with no `community` at all, the target simply starts with no community configured, i.e. never actually pollable until one is set), `""` clears it, non-empty replaces it. `port` defaults to 161 (`snmp.DefaultPort`) when omitted/zero. Creating a target for a chassis with no current LLDP neighbor relationship is not an error — see "never a second discovery mechanism" above; the row simply never gets polled until that chassis is (re)discovered. netWrite+CSRF-gated, matching `PUT /alert-rules/{id}`'s write gate — this is ordinary app config, not a network mutation, so it never touches the change engine.
+
+**`DELETE /snmp/targets/{chassisId}`** removes the target; `204` whether or not it existed. netWrite+CSRF-gated.
+
+**Map-edge rendering**: the web client paints each polled edge's counters (or its honest `not_configured`/`unreachable`/`no_counters` state) as its own layer, following the same overlay-compute/canvas-draw division of labor `web/src/topology/mtuOverlay.ts`'s "Verified MTU" layer establishes above — a distinct badge from any other per-edge annotation, never merged with configured-vs-observed values elsewhere on the map.
+
 ## WAN & upstream health (T-1405)
 
 Added by T-1405 (`internal/wan`): per-uplink availability/latency/loss to operator-configured *external* reference targets (a public DNS resolver, an upstream gateway, ...), answering "is this the ISP, not the cluster?" — visibility and a `wan_degraded` finding only, **no WAN failover automation** (no changeset op type or write route exists anywhere for uplink switching; `internal/change`'s `TestNoWanFailoverOpType` pins this structurally, mirroring T-1404 AC7's own `TestNoDHCPv6PDOpType`).
