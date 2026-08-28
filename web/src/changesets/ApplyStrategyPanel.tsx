@@ -60,7 +60,7 @@ export function ApplyStrategyPanel({
       data-testid="apply-strategy-panel"
     >
       <div className="flex items-center gap-1.5">
-        <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400">Apply strategy</h3>
+        <h3 className="text-xs font-medium text-fg-subtle">Apply strategy</h3>
         <HelpAnchor topic="canary-apply" />
       </div>
 
@@ -77,7 +77,7 @@ export function ApplyStrategyPanel({
           />
           <span>
             <span className="font-medium">All nodes at once</span>
-            <span className="block text-slate-500 dark:text-slate-400">
+            <span className="block text-fg-subtle">
               Every affected node is applied together, then the commit-confirm window opens. This is what apply has
               always done.
             </span>
@@ -97,7 +97,7 @@ export function ApplyStrategyPanel({
           />
           <span>
             <span className="font-medium">Canary — a few nodes first, then hold</span>
-            <span className="block text-slate-500 dark:text-slate-400">
+            <span className="block text-fg-subtle">
               Applies only the nodes you pick, pauses, and applies the rest once the hold is released. The
               commit-confirm window covers the whole sequence, so a stalled canary still rolls everything back.
             </span>
@@ -105,7 +105,7 @@ export function ApplyStrategyPanel({
                 and "canary does not apply to this change" must not look the
                 same. */}
             {!eligibility.eligible && eligibility.reason !== undefined && (
-              <span className="mt-1 block text-slate-500 dark:text-slate-400" data-testid="canary-ineligible-reason">
+              <span className="mt-1 block text-fg-subtle" data-testid="canary-ineligible-reason">
                 Unavailable: {eligibility.reason}
               </span>
             )}
@@ -116,7 +116,7 @@ export function ApplyStrategyPanel({
       {selection.mode === "canary" && eligibility.eligible && (
         <div className="mt-3 flex flex-col gap-3 border-t border-slate-200 pt-3 dark:border-slate-700">
           <fieldset>
-            <legend className="text-xs font-medium text-slate-500 dark:text-slate-400">Canary nodes</legend>
+            <legend className="text-xs font-medium text-fg-subtle">Canary nodes</legend>
             <div className="mt-1 flex flex-wrap gap-3">
               {eligibility.nodes.map((node) => (
                 <label key={node} className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-200">
@@ -133,7 +133,7 @@ export function ApplyStrategyPanel({
             </div>
           </fieldset>
 
-          <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          <label className="flex items-center gap-1.5 text-xs text-fg-subtle">
             Hold (s)
             <input
               type="number"
@@ -149,7 +149,7 @@ export function ApplyStrategyPanel({
           </label>
 
           <fieldset>
-            <legend className="text-xs font-medium text-slate-500 dark:text-slate-400">Gate</legend>
+            <legend className="text-xs font-medium text-fg-subtle">Gate</legend>
             <div className="mt-1 flex flex-col gap-1">
               <label className={radioLabelClass}>
                 <input
@@ -180,7 +180,7 @@ export function ApplyStrategyPanel({
                   Automatic — promotes at the hold deadline only if the canary nodes are healthy and no new
                   error-severity finding is attributable to them; otherwise it aborts.
                   {autoBlocked !== undefined && (
-                    <span className="mt-1 block text-slate-500 dark:text-slate-400" data-testid="auto-gate-reason">
+                    <span className="mt-1 block text-fg-subtle" data-testid="auto-gate-reason">
                       Unavailable: {autoBlocked}
                     </span>
                   )}
@@ -188,7 +188,7 @@ export function ApplyStrategyPanel({
                       health checker wired?) is not visible from the browser,
                       so say so rather than promise it will work. */}
                   {autoBlocked === undefined && (
-                    <span className="mt-1 block text-slate-500 dark:text-slate-400">
+                    <span className="mt-1 block text-fg-subtle">
                       Needs a daemon with a canary health checker wired; if this one has none, the apply is refused
                       up front rather than promoted on silence.
                     </span>
@@ -211,7 +211,7 @@ export function ApplyStrategyPanel({
         />
         <span>
           <span className="font-medium">Roll back automatically on a new error finding</span>
-          <span className="block text-slate-500 dark:text-slate-400">
+          <span className="block text-fg-subtle">
             Off by default. This governs the commit-confirm <em>window</em>, not the fan-out: it does not change which
             nodes are applied or in what order. A new error-severity finding attributable to something this changeset
             touches, arriving inside the window, rolls it back immediately instead of waiting the window out. During a
@@ -220,7 +220,7 @@ export function ApplyStrategyPanel({
           {/* The cluster default is a daemon-side setting with no read route,
               so the unticked state cannot honestly be reported as "off". Say
               what leaving it alone actually does instead of guessing. */}
-          <span className="block text-slate-500 dark:text-slate-400">
+          <span className="block text-fg-subtle">
             Ticking it arms the guard for this apply. Leaving it unticked asks for the cluster default, which is off
             unless an administrator set `auto_rollback_on_error`.
           </span>

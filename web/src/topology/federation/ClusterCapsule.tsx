@@ -68,7 +68,7 @@ export function ClusterCapsule({ summary, onDrill, interconnect }: ClusterCapsul
 
       {reachable ? (
         <>
-          <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-fg-subtle">
             <div className="flex items-center justify-between">
               <dt>Nodes</dt>
               <dd className="font-mono text-slate-700 dark:text-slate-200">

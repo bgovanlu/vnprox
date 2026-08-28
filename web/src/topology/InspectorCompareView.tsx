@@ -215,13 +215,13 @@ export function InspectorCompareView({
           <RadixTabs.Content value="metrics" className="mt-3 flex-1 overflow-y-auto">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <h3 className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                <h3 className="mb-1 text-xs font-medium text-fg-subtle">
                   {dataA.label} ({dataA.node || "cluster"})
                 </h3>
                 <MetricsTab entityRef={refA} kind={dataA.kind} wsClient={metricsWsClient} />
               </div>
               <div>
-                <h3 className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                <h3 className="mb-1 text-xs font-medium text-fg-subtle">
                   {dataB.label} ({dataB.node || "cluster"})
                 </h3>
                 <MetricsTab entityRef={refB} kind={dataB.kind} wsClient={metricsWsClient} />

@@ -63,13 +63,21 @@ function blockBody(selector: string): string {
  * Only literal values are captured — a `var(...)` indirection returns
  * nothing, which is intentional: a token this suite cannot resolve is a
  * token whose contrast it cannot check, and that should fail loudly
- * rather than silently pass. */
+ * rather than silently pass.
+ *
+ * T-4215: the suffix is optional, and a bare `--<prefix>` lands under the
+ * key `""`. The families that existed before this all had suffixed names
+ * (`--color-status-critical`, `--color-surface-page`, `--color-accent-600`)
+ * so nothing else changes; `--color-fg` and `--color-border` are the first
+ * roles whose *default* is the natural call-site name, and a helper that
+ * silently skipped them would have reported them as undefined rather than
+ * as unreadable. */
 function tokensIn(block: string, prefix: string): Map<string, string> {
   const out = new Map<string, string>();
-  const re = new RegExp(`--${prefix}-([a-z0-9-]+)\\s*:\\s*([^;]+);`, "g");
+  const re = new RegExp(`--${prefix}(?:-([a-z0-9-]+))?\\s*:\\s*([^;]+);`, "g");
   for (const m of block.matchAll(re)) {
     const [, name, value] = m;
-    if (name !== undefined && value !== undefined) out.set(name, value.trim());
+    if (value !== undefined) out.set(name ?? "", value.trim());
   }
   return out;
 }
@@ -356,6 +364,113 @@ describe("surface ladder (T-4203)", () => {
     for (const level of SURFACE_LEVELS) {
       expect(contrast("#e2e8f0", token(night, level)), `text on dark ${level}`).toBeGreaterThanOrEqual(7);
     }
+  });
+});
+
+describe("foreground and border roles (T-4215)", () => {
+  const lightFg = tokensIn(theme, "color-fg");
+  const nightFg = tokensIn(dark, "color-fg");
+  const lightBorder = tokensIn(theme, "color-border");
+  const nightBorder = tokensIn(dark, "color-border");
+
+  /** AA is 4.5:1 for normal text; the two roles that carry actual prose are
+   * held to AAA-adjacent 7:1, which is what they already measured. */
+  const FG_TARGET: Record<string, number> = {
+    "": 7, // --color-fg
+    body: 7,
+    muted: 4.5,
+    subtle: 4.5,
+  };
+
+  it("defines the same role set in both themes", () => {
+    // Same equality the status scale gets, and for the same reason: a role
+    // defined in @theme but missing under html.dark silently leaks a
+    // light-mode text colour onto a dark surface, and the five that ARE
+    // present look right in review.
+    expect([...nightFg.keys()].sort()).toEqual([...lightFg.keys()].sort());
+    expect([...nightBorder.keys()].sort()).toEqual([...lightBorder.keys()].sort());
+    for (const role of Object.keys(FG_TARGET)) {
+      expect(lightFg.get(role), `light --color-fg${role ? `-${role}` : ""}`).toMatch(HEX);
+      expect(nightFg.get(role), `dark --color-fg${role ? `-${role}` : ""}`).toMatch(HEX);
+    }
+  });
+
+  it("clears its contrast target on every surface, in both themes", () => {
+    // Measured against the SURFACE TOKENS, not against literal white.
+    // slateContrast.test.ts measured against `bg-white`/`dark:bg-slate-900`
+    // and was correct when written; T-4203 then introduced a ladder whose
+    // sunken level is darker than white, and the guard could not see that
+    // its denominator had moved. Reading the surfaces from the same
+    // stylesheet means the next surface change breaks this test rather
+    // than quietly breaking the contrast.
+    for (const [themeName, fg, surfaces] of [
+      ["light", lightFg, tokensIn(theme, "color-surface")],
+      ["dark", nightFg, tokensIn(dark, "color-surface")],
+    ] as const) {
+      for (const [role, target] of Object.entries(FG_TARGET)) {
+        const name = `--color-fg${role ? `-${role}` : ""}`;
+        for (const level of SURFACE_LEVELS) {
+          const ratio = contrast(token(fg, role), token(surfaces, level));
+          expect(ratio, `${themeName}: ${name} on surface-${level}`).toBeGreaterThanOrEqual(target);
+        }
+      }
+    }
+  });
+
+  it("does not let fg-subtle regress to slate-500", () => {
+    // The specific live failure this card was filed for: slate-500 measures
+    // 4.39:1 on surface-sunken, under AA, at 172 call sites. It passes on
+    // white (4.76), which is why it survived. Asserted by value as well as
+    // by ratio, because the ratio test above would also be satisfied by
+    // someone darkening the SURFACE instead — which would fix the number
+    // and break the ladder.
+    expect(token(lightFg, "subtle").toLowerCase()).not.toBe("#64748b");
+    expect(contrast("#64748b", token(tokensIn(theme, "color-surface"), "sunken"))).toBeLessThan(4.5);
+  });
+
+  it("keeps fg-muted and fg-subtle distinct where there is room to be", () => {
+    // Light mode has room and uses it. Dark mode does not: slate-400 is the
+    // dimmest grey that clears AA on all four dark surfaces (5.53), and the
+    // next step down measures 2.98-4.02. So the two roles collapsing in
+    // dark is forced, and asserting it here stops someone "fixing" the
+    // duplication by picking an unreadable slate-500.
+    expect(token(lightFg, "muted")).not.toBe(token(lightFg, "subtle"));
+    expect(token(nightFg, "muted")).toBe(token(nightFg, "subtle"));
+    const darkSurfaces = tokensIn(dark, "color-surface");
+    for (const level of SURFACE_LEVELS) {
+      expect(
+        contrast("#64748b", token(darkSurfaces, level)),
+        `slate-500 on dark surface-${level} — the step below fg-muted`,
+      ).toBeLessThan(4.5);
+    }
+  });
+
+  it("keeps borders visible against the surfaces they separate", () => {
+    // Borders are boundaries, not text, so AA does not apply — but a border
+    // that measures 1.0 against its surface is not a border. The floor is
+    // set just under the weakest real pairing so it catches a border going
+    // invisible without dictating how strong it should be.
+    for (const [themeName, borders, surfaces] of [
+      ["light", lightBorder, tokensIn(theme, "color-surface")],
+      ["dark", nightBorder, tokensIn(dark, "color-surface")],
+    ] as const) {
+      for (const role of ["", "strong"]) {
+        const name = `--color-border${role ? `-${role}` : ""}`;
+        for (const level of ["page", "raised"] as const) {
+          const ratio = contrast(token(borders, role), token(surfaces, level));
+          expect(ratio, `${themeName}: ${name} on surface-${level}`).toBeGreaterThan(1.08);
+        }
+      }
+    }
+  });
+
+  it("leaves neutrals alone in demo mode", () => {
+    // Demo mode re-points the accent so the app reads as "not your
+    // cluster". Retinting body text would make it read as broken instead.
+    // Asserted rather than left implicit so a future demo-mode change has
+    // to argue with a test instead of silently widening its blast radius.
+    expect([...tokensIn(demo, "color-fg").keys()]).toEqual([]);
+    expect([...tokensIn(demo, "color-border").keys()]).toEqual([]);
   });
 });
 

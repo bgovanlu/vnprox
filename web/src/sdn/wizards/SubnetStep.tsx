@@ -169,7 +169,7 @@ export function SubnetStep({ zoneType, value, onChange, evpnExitNodeCount }: Sub
           </div>
 
           {isolated ? (
-            <p className="text-xs text-slate-500 dark:text-slate-400">{S.common.gatewayModeIsolatedHelp}</p>
+            <p className="text-xs text-fg-subtle">{S.common.gatewayModeIsolatedHelp}</p>
           ) : (
             <>
               <Field label="Gateway" help={S.common.gatewayZoneCopy[zoneType]} errors={gatewayErr ? [gatewayErr] : undefined}>

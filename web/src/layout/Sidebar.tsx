@@ -242,7 +242,7 @@ function NavGroupSection({ group, currentPath }: { group: NavGroup; currentPath:
         onClick={() => {
           setExpanded(group.id, !isExpanded);
         }}
-        className="flex w-full items-center justify-between gap-1 rounded px-2.5 py-1 text-left text-[11px] font-semibold tracking-wide text-slate-500 uppercase hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+        className="flex w-full items-center justify-between gap-1 rounded px-2.5 py-1 text-left text-[11px] font-semibold tracking-wide text-fg-subtle uppercase hover:text-fg-body"
       >
         <span>{group.label}</span>
         {isExpanded ? (

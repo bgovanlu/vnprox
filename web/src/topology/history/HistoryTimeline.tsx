@@ -271,7 +271,7 @@ export function HistoryTimeline({
           }}
           className="h-1 flex-1 accent-accent-600"
         />
-        <span className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
+        <span className="whitespace-nowrap text-xs text-fg-subtle">
           {scrubbing ? formatAt(at) : "Live"}
         </span>
         {scrubbing && (

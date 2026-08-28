@@ -69,15 +69,15 @@ export function FlowPairPanel({ edge, onClose }: FlowPairPanelProps) {
         </button>
       </div>
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs">
-        <dt className="text-slate-500 dark:text-slate-400">Source</dt>
+        <dt className="text-fg-subtle">Source</dt>
         <dd className="truncate font-mono" title={edge.from}>{edge.from}</dd>
-        <dt className="text-slate-500 dark:text-slate-400">Destination</dt>
+        <dt className="text-fg-subtle">Destination</dt>
         <dd className="truncate font-mono" title={edge.to}>{edge.to}</dd>
-        <dt className="text-slate-500 dark:text-slate-400">Bytes (window)</dt>
+        <dt className="text-fg-subtle">Bytes (window)</dt>
         <dd>{formatBytes(edge.bytes)}</dd>
-        <dt className="text-slate-500 dark:text-slate-400">Packets</dt>
+        <dt className="text-fg-subtle">Packets</dt>
         <dd>{edge.packets.toLocaleString()}</dd>
-        <dt className="text-slate-500 dark:text-slate-400">Records</dt>
+        <dt className="text-fg-subtle">Records</dt>
         <dd>{edge.recordCount.toLocaleString()}</dd>
       </dl>
       <div className="mt-3 flex flex-col gap-1">

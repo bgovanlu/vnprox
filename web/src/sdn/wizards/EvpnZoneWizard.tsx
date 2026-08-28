@@ -206,7 +206,7 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
         <div className="space-y-2 text-slate-600 dark:text-slate-300">
           <div>
             <h4 className="mb-1 text-xs font-medium text-slate-600 dark:text-slate-300">{S.evpn.sessionGraphHeading}</h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{S.evpn.sessionGraphExplain}</p>
+            <p className="text-xs text-fg-subtle">{S.evpn.sessionGraphExplain}</p>
           </div>
           <p>This will draft:</p>
           <ul className="list-inside list-disc space-y-1">

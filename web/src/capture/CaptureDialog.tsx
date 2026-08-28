@@ -58,7 +58,7 @@ function SessionStatusLine({ session }: { session: CaptureSession }) {
       ? Math.max(0, session.caps.maxDurationSec - elapsedSec)
       : undefined;
   return (
-    <p className="text-xs text-slate-500 dark:text-slate-400" data-testid={`session-status-${session.id}`}>
+    <p className="text-xs text-fg-subtle" data-testid={`session-status-${session.id}`}>
       {session.node || "(cluster)"} · {session.status} · {String(session.packets)} packets · {formatBytes(session.fileBytes)}
       {remainingSec !== undefined && <> · {String(remainingSec)}s remaining</>}
     </p>

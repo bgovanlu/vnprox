@@ -91,7 +91,7 @@ export function TopBar({ onOpenHelp, onOpenPageHelp }: TopBarProps) {
         // so is lighter — re-measured, dark:text-slate-400 against it
         // is still 6.28:1, comfortably above the 4.5:1 floor this comment
         // is about.
-        className="flex h-9 w-full max-w-sm items-center gap-2 rounded-full border border-slate-300 px-3.5 text-left text-sm text-slate-500 hover:border-slate-400 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600"
+        className="flex h-9 w-full max-w-sm items-center gap-2 rounded-full border border-border-strong px-3.5 text-left text-sm text-fg-subtle hover:border-slate-400 dark:hover:border-slate-600"
       >
         <Search aria-hidden className="h-4 w-4 shrink-0" />
         <span className="truncate">Search VMs, MACs, IPs…</span>
@@ -138,7 +138,7 @@ export function TopBar({ onOpenHelp, onOpenPageHelp }: TopBarProps) {
                 {chipInitial}
               </span>
               <span className="max-w-[8rem] truncate">{chipLabel}</span>
-              <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400" />
+              <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
             </Button>
           </RadixDropdown.Trigger>
           <RadixDropdown.Portal>
@@ -149,7 +149,7 @@ export function TopBar({ onOpenHelp, onOpenPageHelp }: TopBarProps) {
               className="z-50 min-w-[10rem] rounded-lg border border-slate-200 bg-surface-overlay p-1 shadow-lg dark:border-slate-700"
             >
               {demoSession ? (
-                <div className="px-2 py-1.5 text-xs text-slate-500 dark:text-slate-400">demo mode</div>
+                <div className="px-2 py-1.5 text-xs text-fg-subtle">demo mode</div>
               ) : null}
               <RadixDropdown.Item
                 onSelect={() => {

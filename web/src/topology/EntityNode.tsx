@@ -394,7 +394,7 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
         </div>
       )}
       {isPill && (
-        <span className="text-[10px] text-slate-500 dark:text-slate-400">click to expand</span>
+        <span className="text-[10px] text-fg-subtle">click to expand</span>
       )}
     </div>
   );

@@ -43,7 +43,7 @@ export function DriftStatusTile() {
         {nodes.length > 0 ? ` across ${String(nodes.length)} ${nodes.length === 1 ? "node" : "nodes"}` : ""}
       </p>
       {nodes.length > 0 ? (
-        <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{nodes.join(", ")}</p>
+        <p className="mt-1 truncate text-xs text-fg-subtle">{nodes.join(", ")}</p>
       ) : null}
     </DashboardTile>
   );

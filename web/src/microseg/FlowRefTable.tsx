@@ -58,7 +58,7 @@ export function FlowRefTable({ flows, showReason = false, label }: FlowRefTableP
             <TableCell className="font-mono text-xs">{protoName(flow.proto)}</TableCell>
             <TableCell className="font-mono text-xs">{flow.port > 0 ? flow.port : "—"}</TableCell>
             <TableCell>{formatBytes(flow.bytes)}</TableCell>
-            {showReason && <TableCell className="text-xs text-slate-500 dark:text-slate-400">{flow.reason ?? "—"}</TableCell>}
+            {showReason && <TableCell className="text-xs text-fg-subtle">{flow.reason ?? "—"}</TableCell>}
           </TableRow>
         ))}
       </TableBody>

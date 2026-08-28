@@ -52,7 +52,7 @@ function k8sNodeForSelection(selection: K8sSelection, overlay: K8sOverlay): stri
 function UnderlayChain({ paths }: { paths: UnderlayPath[] }) {
   if (paths.length === 0) {
     return (
-      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+      <p className="mt-2 text-xs text-fg-subtle">
         No rendered guest-NIC path for this guest — it may be filtered out or not yet collected.
       </p>
     );
@@ -101,7 +101,7 @@ export function PodDrilldown({ selection, overlay, topologyNodes, topologyEdges,
       </div>
 
       {!overlay ? (
-        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Loading…</p>
+        <p className="mt-2 text-xs text-fg-subtle">Loading…</p>
       ) : (
         <PodDrilldownBody selection={selection} overlay={overlay} topologyNodes={topologyNodes} topologyEdges={topologyEdges} />
       )}
@@ -123,7 +123,7 @@ function PodDrilldownBody({
   if (selection.kind === "service") {
     const svc = findService(overlay, selection.namespace, selection.name);
     if (!svc) {
-      return <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Service no longer present on this poll.</p>;
+      return <p className="mt-2 text-xs text-fg-subtle">Service no longer present on this poll.</p>;
     }
     const finding = overlay.nodePortFindings?.find(
       (f) => f.namespace === selection.namespace && f.service === selection.name,
@@ -131,15 +131,15 @@ function PodDrilldownBody({
     return (
       <>
         <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs">
-          <dt className="text-slate-500 dark:text-slate-400">Name</dt>
+          <dt className="text-fg-subtle">Name</dt>
           <dd className="font-mono">
             {svc.namespace}/{svc.name}
           </dd>
-          <dt className="text-slate-500 dark:text-slate-400">Type</dt>
+          <dt className="text-fg-subtle">Type</dt>
           <dd>{svc.type}</dd>
-          <dt className="text-slate-500 dark:text-slate-400">ClusterIP</dt>
+          <dt className="text-fg-subtle">ClusterIP</dt>
           <dd className="font-mono">{svc.clusterIp ?? "(headless)"}</dd>
-          <dt className="text-slate-500 dark:text-slate-400">Ports</dt>
+          <dt className="text-fg-subtle">Ports</dt>
           <dd>
             {(svc.ports ?? [])
               .map((p) => `${String(p.port)}${p.nodePort ? `:${String(p.nodePort)}` : ""}/${p.protocol}`)
@@ -151,7 +151,7 @@ function PodDrilldownBody({
             {finding.detail}
           </p>
         )}
-        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+        <p className="mt-2 text-xs text-fg-subtle">
           A service isn&rsquo;t pinned to one node — select a pod on this service&rsquo;s pod network to see its
           underlay path.
         </p>
@@ -169,23 +169,23 @@ function PodDrilldownBody({
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs">
         {pod && (
           <>
-            <dt className="text-slate-500 dark:text-slate-400">Pod</dt>
+            <dt className="text-fg-subtle">Pod</dt>
             <dd className="font-mono">
               {pod.namespace}/{pod.name}
             </dd>
-            <dt className="text-slate-500 dark:text-slate-400">Pod IP</dt>
+            <dt className="text-fg-subtle">Pod IP</dt>
             <dd className="font-mono">{pod.podIp ?? "—"}</dd>
-            <dt className="text-slate-500 dark:text-slate-400">Phase</dt>
+            <dt className="text-fg-subtle">Phase</dt>
             <dd>{pod.phase ?? "unknown"}</dd>
           </>
         )}
-        <dt className="text-slate-500 dark:text-slate-400">k8s node</dt>
+        <dt className="text-fg-subtle">k8s node</dt>
         <dd className="font-mono">{k8sNode ?? "—"}</dd>
-        <dt className="text-slate-500 dark:text-slate-400">Correlated guest</dt>
+        <dt className="text-fg-subtle">Correlated guest</dt>
         <dd className="font-mono">{correlation?.matched ? (correlation.guestRef ?? "—") : "unmatched"}</dd>
         {selection.kind === "pod-cidr" && (
           <>
-            <dt className="text-slate-500 dark:text-slate-400">Pods on this node</dt>
+            <dt className="text-fg-subtle">Pods on this node</dt>
             <dd>{pods.length}</dd>
           </>
         )}
@@ -195,7 +195,7 @@ function PodDrilldownBody({
       {correlation?.matched && correlation.guestRef ? (
         <UnderlayChain paths={computePodUnderlayChain(topologyNodes, topologyEdges, correlation.guestRef)} />
       ) : (
-        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+        <p className="mt-2 text-xs text-fg-subtle">
           This k8s node has no correlated PVE guest (unmatched) — the underlay path can&rsquo;t be shown.
         </p>
       )}

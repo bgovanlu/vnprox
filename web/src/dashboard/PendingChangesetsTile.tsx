@@ -91,7 +91,7 @@ export function PendingChangesetsTile() {
               >
                 {cs.title}
               </button>
-              <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">{STATUS_LABELS[cs.status]}</span>
+              <span className="shrink-0 text-xs text-fg-subtle">{STATUS_LABELS[cs.status]}</span>
             </li>
           ))}
         </ul>

@@ -16,7 +16,7 @@ import type { PortBodyKind } from "./portMedia";
 // same red family its LED uses, but the shape carries the signal too (see
 // StatusLed's glyphs) so nothing here is colour-only.
 const BODY_CLASS: Record<EntityStatus, string> = {
-  ok: "text-slate-500 dark:text-slate-400",
+  ok: "text-fg-subtle",
   down: "text-red-500 dark:text-red-400",
   degraded: "text-amber-600 dark:text-amber-400",
   unknown: "text-slate-400 dark:text-slate-500",

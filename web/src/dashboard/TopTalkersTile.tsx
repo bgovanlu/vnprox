@@ -54,14 +54,14 @@ export function TopTalkersTile() {
     >
       {result ? (
         <div className="flex flex-col gap-1.5">
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-fg-subtle">
             Busiest bridge: <span className="font-medium text-slate-700 dark:text-slate-200">{result.bridgeLabel}</span>
           </p>
           <ul className="flex flex-col gap-1">
             {result.talkers.map((t) => (
               <li key={t.ref} className="flex items-center justify-between gap-2 text-sm">
                 <span className="truncate text-slate-700 dark:text-slate-200">{t.label}</span>
-                <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
+                <span className="shrink-0 tabular-nums text-fg-subtle">
                   {formatBps(t.rxBps + t.txBps)}
                 </span>
               </li>

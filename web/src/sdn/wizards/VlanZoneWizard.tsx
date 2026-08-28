@@ -128,11 +128,11 @@ export function VlanZoneWizard({ open, onOpenChange }: VlanZoneWizardProps) {
 
           <div>
             <h4 className="mb-1 text-xs font-medium text-slate-600 dark:text-slate-300">{S.vlan.trunkCheckHeading}</h4>
-            <p className="mb-1.5 text-xs text-slate-500 dark:text-slate-400">{S.vlan.trunkCheckExplain}</p>
+            <p className="mb-1.5 text-xs text-fg-subtle">{S.vlan.trunkCheckExplain}</p>
             {vid <= 0 && <p className="text-xs text-slate-600 dark:text-slate-400">Enter a VLAN ID above to run the check.</p>}
             {vid > 0 && !trunkCheck.ready && <p className="text-xs text-slate-600 dark:text-slate-400">{S.common.previewLoading}</p>}
             {vid > 0 && trunkCheck.ready && !trunkCheck.hasData && (
-              <p className="text-xs text-slate-500 dark:text-slate-400">{S.vlan.trunkCheckNoData}</p>
+              <p className="text-xs text-fg-subtle">{S.vlan.trunkCheckNoData}</p>
             )}
             {vid > 0 && trunkCheck.ready && trunkCheck.hasData && trunkCheck.warnings.length === 0 && (
               <p role="status" className="text-xs text-emerald-600 dark:text-emerald-400">

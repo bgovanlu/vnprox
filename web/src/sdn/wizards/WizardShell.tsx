@@ -88,7 +88,7 @@ export function WizardShell({
         </div>
         <DialogDescription id="wizard-shell-description">{intro}</DialogDescription>
 
-        <div className="mt-3 flex flex-wrap items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+        <div className="mt-3 flex flex-wrap items-center gap-1 text-xs text-fg-subtle">
           {steps.map((s, i) => (
             <span key={s.id} className="flex items-center gap-1">
               {i > 0 && <span aria-hidden="true">→</span>}
@@ -129,7 +129,7 @@ export function WizardShell({
           </div>
         </div>
 
-        <p className="mt-4 text-[11px] text-slate-500 dark:text-slate-400">{wizardStrings.common.draftNotice}</p>
+        <p className="mt-4 text-[11px] text-fg-subtle">{wizardStrings.common.draftNotice}</p>
 
         <div className="mt-3 flex items-center justify-between gap-2">
           <Button

@@ -21,7 +21,7 @@ import { useDhcpViewQuery, useSdnQuery } from "./queries";
 
 function GuestCell({ guestRef }: { guestRef?: string }) {
   if (!guestRef) {
-    return <span className="text-slate-500 dark:text-slate-400">unmatched</span>;
+    return <span className="text-fg-subtle">unmatched</span>;
   }
   return <span className="text-emerald-600 dark:text-emerald-400">{guestRef}</span>;
 }

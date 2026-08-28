@@ -64,7 +64,7 @@ export function ServiceClassTile() {
               <span className="truncate text-slate-700 dark:text-slate-200">
                 {SERVICE_CLASS_LABELS[e.serviceClass]}
               </span>
-              <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
+              <span className="shrink-0 tabular-nums text-fg-subtle">
                 {formatBps(e.bytesPerSec * 8)}
               </span>
             </li>

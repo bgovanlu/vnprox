@@ -235,7 +235,7 @@ function FabricRow({
       <TableCell>{fabric.pending ?? "—"}</TableCell>
       <TableCell>
         {fabric.nodeStatus.length === 0 ? (
-          <span className="text-slate-400 dark:text-slate-600">no member nodes reported</span>
+          <span className="text-fg-subtle">no member nodes reported</span>
         ) : (
           <div className="flex flex-wrap gap-2">
             {fabric.nodeStatus.map((ns) => (

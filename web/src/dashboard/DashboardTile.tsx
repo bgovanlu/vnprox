@@ -66,7 +66,7 @@ export function DashboardTile({
             {title}
             {helpTopic !== undefined && <HelpAnchor topic={helpTopic} />}
           </h2>
-          {description ? <p className="text-xs text-slate-500 dark:text-slate-400">{description}</p> : null}
+          {description ? <p className="text-xs text-fg-subtle">{description}</p> : null}
         </div>
         {onOpen && openLabel ? (
           <button
@@ -80,14 +80,14 @@ export function DashboardTile({
       </div>
       <div className="min-h-[3rem]">
         {isLoading ? (
-          <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
+          <p className="text-sm text-fg-subtle">Loading…</p>
         ) : error ? (
           <p className="text-sm text-status-critical">{error}</p>
         ) : empty ? (
           <div className="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 py-4 text-center dark:border-slate-700">
             <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{empty.title}</span>
             {empty.description ? (
-              <span className="max-w-xs text-xs text-slate-500 dark:text-slate-400">{empty.description}</span>
+              <span className="max-w-xs text-xs text-fg-subtle">{empty.description}</span>
             ) : null}
           </div>
         ) : (

@@ -242,7 +242,7 @@ export function ChangesetDrawer() {
                     <li key={`${op.op}-${op.target ?? "none"}-${String(i)}`} className="rounded border border-slate-200 p-2 dark:border-slate-700">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <span className="mr-1 shrink-0 rounded bg-slate-200/70 px-1 py-0.5 text-[10px] uppercase text-slate-500 dark:bg-slate-700/70 dark:text-slate-300">
+                          <span className="mr-1 shrink-0 rounded bg-slate-200/70 px-1 py-0.5 text-[10px] uppercase text-fg-muted dark:bg-slate-700/70 dark:text-slate-300">
                             {opKindLabel(op)}
                           </span>
                           <span className="text-xs text-slate-700 dark:text-slate-200">{summarizeOp(op)}</span>
@@ -291,7 +291,7 @@ export function ChangesetDrawer() {
                               <span className={clsx("rounded px-1 py-0.5 text-[10px] font-medium", severityBadgeClass(f.severity))}>
                                 {f.severity}
                               </span>{" "}
-                              <span className="text-[11px] text-slate-500 dark:text-slate-400">{f.message}</span>
+                              <span className="text-[11px] text-fg-subtle">{f.message}</span>
                               {f.fix && editUiEnabled && <FixButton changeset={changeset} fix={f.fix} />}
                             </li>
                           ))}

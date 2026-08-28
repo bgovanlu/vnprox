@@ -79,7 +79,7 @@ export function EntityHistoryTab({ entityRef, enabled = true }: EntityHistoryTab
               <span className={clsx("rounded px-1 py-0.5 text-[10px] uppercase tracking-wide", KIND_CLASSES[e.kind])}>
                 {KIND_LABEL[e.kind]}
               </span>
-              <span className="text-slate-500 dark:text-slate-400">
+              <span className="text-fg-subtle">
                 {new Date(e.at * 1000).toLocaleString()}
               </span>
               {e.actor && <span className="text-slate-600 dark:text-slate-300">{e.actor}</span>}

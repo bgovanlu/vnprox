@@ -92,7 +92,7 @@ export function MetricsTab({ entityRef, kind, wsClient }: MetricsTabProps) {
 
       {kind === "bond" && metric?.slaves && metric.slaves.length > 0 && (
         <div>
-          <h3 className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+          <h3 className="mb-1 text-xs font-medium text-fg-subtle">
             Slave balance ({metric.slaves.length})
           </h3>
           <ul className="space-y-1">
@@ -111,7 +111,7 @@ export function MetricsTab({ entityRef, kind, wsClient }: MetricsTabProps) {
                   />
                   <span className="truncate text-slate-700 dark:text-slate-200">{s.ref}</span>
                 </span>
-                <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                <span className="shrink-0 text-fg-subtle">
                   {formatBps(s.rates.rxBps)} rx / {formatBps(s.rates.txBps)} tx
                 </span>
               </li>

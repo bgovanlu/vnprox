@@ -213,7 +213,7 @@ export function MgmtRedundancyWizard({ node, open, onOpenChange }: MgmtRedundanc
                 />
                 <span>
                   <span className="font-medium text-slate-800 dark:text-slate-100">{flowLabel[f].card}</span>
-                  <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">{flowLabel[f].blurb}</span>
+                  <span className="mt-0.5 block text-xs text-fg-subtle">{flowLabel[f].blurb}</span>
                 </span>
               </label>
             ))}
@@ -329,7 +329,7 @@ export function MgmtRedundancyWizard({ node, open, onOpenChange }: MgmtRedundanc
             aria-label={S.flowC.vidLabel}
           />
         </Field>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
+        <p className="text-xs text-fg-subtle">
           {S.flowC.carriesAddress}: <span className="font-mono">{dedicatedAddresses.join(", ") || "(unknown)"}</span>
           {carrierGateway ? ` · gateway ${carrierGateway}` : ""} — {S.flowC.fromCarrier} {situation.carrierRef}
         </p>

@@ -60,7 +60,7 @@ function TopicBody({ topic }: { topic: HelpTopic }) {
 
       {topic.seeAlso && topic.seeAlso.length > 0 && (
         <section>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
             See also
           </h3>
           <ul className="mt-2 flex flex-wrap gap-2">
@@ -87,7 +87,7 @@ function TopicBody({ topic }: { topic: HelpTopic }) {
         </section>
       )}
 
-      <p className="border-t border-slate-200 pt-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+      <p className="border-t border-border pt-3 text-xs text-fg-subtle">
         Written from <code className="font-mono">{topic.docRef}</code> in the vnprox repository.
       </p>
     </div>
@@ -100,7 +100,7 @@ function SearchResults({ query }: { query: string }) {
 
   if (hits.length === 0) {
     return (
-      <p className="mt-6 text-sm text-slate-500 dark:text-slate-400">
+      <p className="mt-6 text-sm text-fg-subtle">
         Nothing matches “{query}”. Try a single word — an interface name, a screen, or what you're trying to
         do.
       </p>
@@ -121,11 +121,11 @@ function SearchResults({ query }: { query: string }) {
             <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">
               {hit.topic.title}
             </span>
-            <span className="mt-0.5 block text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            <span className="mt-0.5 block text-xs leading-relaxed text-fg-subtle">
               {hit.topic.summary}
             </span>
             {hit.matchedIn !== undefined && (
-              <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+              <span className="mt-1 block text-xs text-fg-subtle">
                 matched in “{hit.matchedIn}”
               </span>
             )}
@@ -157,7 +157,7 @@ function BrowseIndex() {
         }
         return (
           <section key={surface}>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
               {SURFACE_LABEL[surface]}
             </h3>
             <ul className="mt-2 space-y-0.5">
@@ -246,7 +246,7 @@ export function HelpPanel() {
             </div>
             <DrawerDescription
               id="help-panel-summary"
-              className="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400"
+              className="mt-1 text-sm leading-relaxed text-fg-subtle"
             >
               {searching
                 ? `Results for “${query}”.`
@@ -286,7 +286,7 @@ export function HelpPanel() {
             <button
               type="button"
               onClick={browseIndex}
-              className="text-xs font-semibold uppercase tracking-wide text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              className="text-xs font-semibold uppercase tracking-wide text-fg-subtle hover:text-fg-body"
             >
               Browse all help topics →
             </button>

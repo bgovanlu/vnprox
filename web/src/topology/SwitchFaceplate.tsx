@@ -130,7 +130,7 @@ export interface SwitchFaceplateProps {
 function NeighborTag({ neighbor }: { neighbor: SwitchPortNic["neighbor"] }) {
   if (!neighbor) return null;
   return (
-    <span className="flex max-w-full items-center justify-center gap-0.5 text-[9px] leading-tight text-slate-500 dark:text-slate-400">
+    <span className="flex max-w-full items-center justify-center gap-0.5 text-[9px] leading-tight text-fg-subtle">
       <span aria-hidden>↔</span>
       <span className="truncate">{neighbor.label}</span>
       {/* T-2004: text-slate-400 dark:text-slate-400 (identical in both

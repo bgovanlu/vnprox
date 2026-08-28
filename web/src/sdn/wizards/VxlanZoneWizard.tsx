@@ -124,14 +124,14 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
           />
           {memberNodes.length > 0 && (
             <div>
-              <p className="mb-1 text-xs text-slate-500 dark:text-slate-400">{S.vxlan.peersStepHelp}</p>
+              <p className="mb-1 text-xs text-fg-subtle">{S.vxlan.peersStepHelp}</p>
               <p className="mb-1.5 text-[11px] text-slate-600 dark:text-slate-400">{S.vxlan.peersAutoSuggestNote}</p>
               <div className="space-y-1.5">
                 {memberNodes.map((node) => {
                   const peerErr = ipError(peers[node] ?? "");
                   return (
                     <div key={node} className="flex items-start gap-2">
-                      <span className="mt-1.5 w-16 shrink-0 text-xs text-slate-500 dark:text-slate-400">{node}</span>
+                      <span className="mt-1.5 w-16 shrink-0 text-xs text-fg-subtle">{node}</span>
                       <div className="flex-1">
                         <input
                           className={inputClass}
@@ -166,7 +166,7 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
 
           <div>
             <h4 className="mb-1 text-xs font-medium text-slate-600 dark:text-slate-300">{S.vxlan.mtuHeading}</h4>
-            <p className="mb-1.5 text-xs text-slate-500 dark:text-slate-400">{S.vxlan.mtuExplain}</p>
+            <p className="mb-1.5 text-xs text-fg-subtle">{S.vxlan.mtuExplain}</p>
             <Field label="Zone MTU (leave blank for PVE's default)">
               <input type="number" className={inputClass} value={mtu || ""} onChange={(e) => { setMtu(Number(e.target.value)); }} />
             </Field>

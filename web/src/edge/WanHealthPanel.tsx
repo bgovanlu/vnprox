@@ -71,7 +71,7 @@ export function WanHealthPanel() {
         WAN &amp; upstream health
         <HelpAnchor topic="wan-health" />
       </h3>
-      <p className="text-xs text-slate-500 dark:text-slate-400">
+      <p className="text-xs text-fg-subtle">
         Continuous reachability, latency and loss against reference hosts you name, per uplink. This node probes its own
         targets only — the cluster-wide picture is the union of each node&apos;s own view. Nothing here fails over or
         switches an uplink; it is a diagnosis, not an actuator.
@@ -214,7 +214,7 @@ function TargetsEditor({ node, targets }: { node: string | undefined; targets: W
 
   return (
     <div>
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
         Reference targets{node ? ` on ${node}` : ""}
       </h4>
       {targets.length === 0 ? (
@@ -314,7 +314,7 @@ function TargetsEditor({ node, targets }: { node: string | undefined; targets: W
           {refusal}
         </p>
       )}
-      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+      <p className="mt-1 text-[11px] text-fg-subtle">
         A target is dialed by a root-owned prober, so it must be an IP address or a DNS name — nothing option-shaped or
         shell-hostile is accepted, and a refusal names the value it rejected.
       </p>

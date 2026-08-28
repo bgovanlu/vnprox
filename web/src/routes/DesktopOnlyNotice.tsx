@@ -35,7 +35,7 @@ export function DesktopOnlyNotice({ pageLabel, detail }: DesktopOnlyNoticeProps)
           <Link to="/tools" className="font-medium text-accent-700 underline dark:text-accent-400">
             Go to Findings
           </Link>
-          <span className="text-slate-500 dark:text-slate-400">
+          <span className="text-fg-subtle">
             A pending changeset&apos;s confirm/roll back controls still work from here.
           </span>
         </div>

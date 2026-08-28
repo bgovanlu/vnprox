@@ -333,7 +333,7 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
             <ul className="space-y-2 text-sm">
               {changeset.ops.map((op, i) => (
                 <li key={i} className="rounded border border-slate-200 p-2 dark:border-slate-700">
-                  <span className="mr-1.5 rounded bg-slate-200/70 px-1 py-0.5 text-[10px] uppercase text-slate-500 dark:bg-slate-700/70 dark:text-slate-300">
+                  <span className="mr-1.5 rounded bg-slate-200/70 px-1 py-0.5 text-[10px] uppercase text-fg-muted dark:bg-slate-700/70 dark:text-slate-300">
                     {opKindLabel(op)}
                   </span>
                   {summarizeOp(op)}
@@ -373,7 +373,7 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
               <div className="space-y-3">
                 {diff.files.map((f) => (
                   <section key={`${f.node}:${f.path}`}>
-                    <h3 className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    <h3 className="mb-1 text-xs font-medium text-fg-subtle">
                       {/* T-2003: SDN config diffs are cluster-scoped (no
                        * single owning node — apply_snapshot.go's
                        * sdn*SnapshotPath convention), unlike every
@@ -569,7 +569,7 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
         />
 
         <div className="mt-4 flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          <label className="flex items-center gap-1.5 text-xs text-fg-subtle">
             Confirm window (s)
             <input
               type="number"

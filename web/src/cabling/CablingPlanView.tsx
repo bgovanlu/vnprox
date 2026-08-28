@@ -45,7 +45,7 @@ import {
   type CablingRow,
 } from "../topology/cablingPlan";
 
-const th = "px-2 py-1.5 text-left font-medium text-slate-500 dark:text-slate-400";
+const th = "px-2 py-1.5 text-left font-medium text-fg-subtle";
 const td = "px-2 py-1.5 align-top";
 
 function speedLabel(row: CablingRow): string {

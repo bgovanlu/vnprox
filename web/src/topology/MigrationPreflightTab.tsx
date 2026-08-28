@@ -52,12 +52,12 @@ function AssessmentResult({ result }: { result: MigrationAssessment }) {
         </p>
       </div>
       {result.bestEffort && (
-        <p className="text-xs text-slate-500 dark:text-slate-400">
+        <p className="text-xs text-fg-subtle">
           Best-effort estimate: no live guest instrumentation backs this arc's dirty-page-rate figure.
         </p>
       )}
       {result.caveats.length > 0 && (
-        <ul className="flex flex-col gap-1 text-xs text-slate-500 dark:text-slate-400" data-testid="migration-preflight-caveats">
+        <ul className="flex flex-col gap-1 text-xs text-fg-subtle" data-testid="migration-preflight-caveats">
           {result.caveats.map((c, i) => (
             <li key={i}>· {c}</li>
           ))}
@@ -73,14 +73,14 @@ export function MigrationPreflightTab({ entityRef }: MigrationPreflightTabProps)
 
   return (
     <div className="flex flex-col gap-3 text-sm">
-      <p className="text-xs text-slate-500 dark:text-slate-400">
+      <p className="text-xs text-fg-subtle">
         Advisory only: checks bandwidth headroom on the migration network against this guest&apos;s configured RAM
         size before you trigger a live migration or evacuation in PVE. Nothing here starts, stops, or manages a
         migration — vnprox never does that.
       </p>
 
       <div className="flex items-center gap-2">
-        <label htmlFor="migration-preflight-target" className="text-xs text-slate-500 dark:text-slate-400">
+        <label htmlFor="migration-preflight-target" className="text-xs text-fg-subtle">
           Target node
         </label>
         <input

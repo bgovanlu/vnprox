@@ -63,11 +63,11 @@ function AdoptionLink({ findingId }: { findingId: string }) {
   const { data, isLoading, error } = useAdoptionQuery(findingId);
 
   if (isLoading) {
-    return <p className="text-xs text-slate-500 dark:text-slate-400">Checking for an existing proposal…</p>;
+    return <p className="text-xs text-fg-subtle">Checking for an existing proposal…</p>;
   }
   if (error) {
     return (
-      <p className="text-xs text-slate-500 dark:text-slate-400">
+      <p className="text-xs text-fg-subtle">
         Could not check whether this finding was already adopted.
       </p>
     );
@@ -136,7 +136,7 @@ export function ReconciliationCard({
           {finding.severity}
         </span>
         {finding.nodes.length > 0 && (
-          <span className="text-xs text-slate-500 dark:text-slate-400">on {finding.nodes.join(", ")}</span>
+          <span className="text-xs text-fg-subtle">on {finding.nodes.join(", ")}</span>
         )}
       </div>
       <p className="mt-1 text-sm text-slate-800 dark:text-slate-100">{finding.detail}</p>
@@ -158,7 +158,7 @@ export function ReconciliationCard({
           <table className="w-full table-auto text-left">
             <caption className="sr-only">Field values at each position</caption>
             <thead>
-              <tr className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <tr className="text-xs uppercase tracking-wide text-fg-subtle">
                 <th className="pb-1 pr-4 font-semibold">Field</th>
                 {POSITIONS.map((p) => (
                   <th key={p} className="pb-1 pr-4 font-semibold" title={POSITION_MEANING[p]}>
@@ -179,7 +179,7 @@ export function ReconciliationCard({
                         className={
                           cell.known
                             ? "py-1 pr-4 font-mono text-xs text-slate-900 dark:text-slate-100"
-                            : "py-1 pr-4 text-xs italic text-slate-500 dark:text-slate-400"
+                            : "py-1 pr-4 text-xs italic text-fg-subtle"
                         }
                       >
                         {cell.text}
@@ -217,13 +217,13 @@ export function ReconciliationCard({
               Restore intent…
             </Button>
           ) : (
-            <span className="text-xs text-slate-500 dark:text-slate-400">
+            <span className="text-xs text-fg-subtle">
               Restoring intent is not offered: the document declares nothing this cluster would have to change.
             </span>
           )}
 
           {adoptAvailability === "unavailable" ? (
-            <span className="text-xs text-slate-500 dark:text-slate-400">
+            <span className="text-xs text-fg-subtle">
               Adopting reality is unavailable: with no <code className="font-mono">[gitsync]</code> repository
               there is nowhere to commit a document to.
             </span>
@@ -238,13 +238,13 @@ export function ReconciliationCard({
               Adopt reality…
             </Button>
           ) : (
-            <span className="text-xs text-slate-500 dark:text-slate-400">
+            <span className="text-xs text-fg-subtle">
               Adopting reality is not offered: the document already describes this entity as the cluster has it.
             </span>
           )}
         </div>
         {!offersRestore && !offersAdopt && adoptAvailability !== "unavailable" && (
-          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-2 text-xs text-fg-subtle">
             Neither action is offered. That is a real answer: this divergence exists between the file and the
             kernel, and no spec commit resolves it — a reload or an ordinary changeset does.
           </p>

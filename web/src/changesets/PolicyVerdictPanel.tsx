@@ -89,12 +89,12 @@ export function PolicyVerdictPanel({ verdict, findings }: PolicyVerdictPanelProp
       data-testid="policy-verdict-panel"
     >
       <div className="flex items-center gap-1.5">
-        <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400">Policy</h3>
+        <h3 className="text-xs font-medium text-fg-subtle">Policy</h3>
         <HelpAnchor topic="policy-verdict" />
       </div>
 
       {verdict.kind === "loading" && (
-        <p className="mt-1 text-slate-500 dark:text-slate-400">Asking the cluster's policy set about this change…</p>
+        <p className="mt-1 text-fg-subtle">Asking the cluster's policy set about this change…</p>
       )}
 
       {verdict.kind === "unreadable" && (
@@ -105,21 +105,21 @@ export function PolicyVerdictPanel({ verdict, findings }: PolicyVerdictPanelProp
       )}
 
       {verdict.kind === "not-configured" && (
-        <p className="mt-1 text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-fg-subtle">
           This daemon has no policy store wired, so there is no rule set to administer. Changesets are still validated
           against an empty set, which produces no policy findings. The daemon said: {verdict.message}
         </p>
       )}
 
       {verdict.kind === "none-installed" && (
-        <p className="mt-1 text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-fg-subtle">
           A policy store is wired and no rules are installed, so nothing in this changeset is guarded by
           policy-as-code.
         </p>
       )}
 
       {verdict.kind === "clean" && (
-        <p className="mt-1 text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-fg-subtle">
           All {verdict.ruleCount} installed rule{verdict.ruleCount === 1 ? "" : "s"} were evaluated against this
           changeset and none of them objects to it.
         </p>

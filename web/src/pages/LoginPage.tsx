@@ -78,7 +78,7 @@ export function LoginPage() {
       <div className="flex min-h-0 flex-1 items-center justify-center">
       <div className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Sign in to vnprox</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-sm text-fg-subtle">
           Use your Proxmox VE credentials — vnprox has no separate accounts.
         </p>
 
@@ -136,7 +136,7 @@ export function LoginPage() {
 
         {AUTH_STUB_ENABLED ? (
           <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
-            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+            <p className="mb-2 text-xs text-fg-subtle">
               Demo mode: explore the UI without a backend (client-side only).
             </p>
             <Button

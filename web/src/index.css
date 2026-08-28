@@ -333,6 +333,60 @@
   --color-surface-raised: #ffffff;
   --color-surface-overlay: #ffffff;
 
+  /* T-4215 · Foreground and border roles.
+   *
+   * These should have arrived with T-4203. They did not, and the cost was
+   * invisible for the whole phase because I was counting the wrong thing:
+   * 148 status-coloured `dark:` pairs and 21 accent pairs were tracked as
+   * "the remaining sweep", while `text-slate-N dark:text-slate-M` sat at
+   * **999** occurrences and `border-slate-N dark:border-slate-M` at 44.
+   * The slate pairs were not lagging the sweep — they were unsweepable,
+   * because there was no token to point them at.
+   *
+   * The four foreground roles were already in the codebase, written
+   * longhand: slate-900/100 headings (77 sites), slate-700/200 body (106),
+   * slate-600/400 secondary (616), slate-500/400 labels (172). Declaring
+   * them changes no visual design; it just stops the app saying the same
+   * thing 999 times, and settles one disagreement it could not settle
+   * itself — slate-600 is paired with dark:slate-400 at 468 sites and
+   * dark:slate-300 at 148. Both clear AA (5.53 and 9.55 worst-case), so
+   * neither was wrong; nothing stated the intent, so both grew.
+   *
+   * Worst case across all four surfaces, per theme:
+   *
+   *     role         light             dark
+   *     fg           16.48  (900)      12.94  (100)
+   *     fg-body       9.56  (700)      11.50  (200)
+   *     fg-muted      6.99  (600)       5.53  (400)
+   *     fg-subtle     4.64  (below)     5.53  (400)
+   *
+   * `fg-subtle` light is NOT slate-500. slate-500 measures 4.39:1 on
+   * `--color-surface-sunken` — under the 4.5 floor, at 172 live call
+   * sites. `slateContrast.test.ts` exists to catch this exact class and
+   * could not see it: its table is measured against `bg-white` and
+   * `dark:bg-slate-900`, where slate-500 scores 4.76 and passes. That
+   * table was correct when written and T-4203 invalidated it, because
+   * introducing a surface LADDER changed the denominator of every contrast
+   * measurement in the codebase while the guard kept the old denominator.
+   * #617087 is slate-500 with its hue and chroma held and OKLCH lightness
+   * lowered by 0.012 — 4.64 on sunken, ~5 RGB units from the old value, and
+   * still 1.51x lighter than fg-muted so the two roles stay distinct.
+   *
+   * Borders are not held to AA: they are boundaries, not text. They are
+   * held to being *visible* against the surfaces they separate, which the
+   * test asserts as a floor on their contrast against raised and page.
+   *
+   * `html.demo` deliberately does NOT re-point these. Demo mode changes the
+   * accent so the app reads as "not your cluster"; retinting body text
+   * would make it read as broken instead. Stated here so the next reader
+   * does not have to wonder whether it was forgotten. */
+  --color-fg: #0f172a;
+  --color-fg-body: #334155;
+  --color-fg-muted: #475569;
+  --color-fg-subtle: #617087;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+
   /* T-4206 · Motion.
    *
    * Three durations and three curves, so animation across the app is a
@@ -399,6 +453,33 @@ html.dark {
   --color-surface-page: #0f172b;
   --color-surface-raised: #182133;
   --color-surface-overlay: #222b3d;
+
+  /* T-4215 · The dark half of the foreground and border roles. The key set
+   * here must equal @theme's, the same equality the status scale is held
+   * to — a role defined above and missing here leaks a light-mode text
+   * colour onto a dark surface, and the failure is invisible in review
+   * because the other five look right. index.css.test.ts enforces it.
+   *
+   * `fg-muted` resolves the 468-vs-148 split in favour of slate-400: the
+   * majority pairing, and the one that moves fewest pixels.
+   *
+   * `fg-muted` and `fg-subtle` are the SAME value here, and that is forced
+   * rather than lazy. Dim text in dark mode has a floor: slate-400 measures
+   * 5.53:1 worst-case, and the next step down, slate-500, measures
+   * 2.98-4.02:1 — below AA on all four surfaces. There is no room under
+   * slate-400 for a second, quieter grey. The codebase had already collapsed
+   * the two roles in dark mode for this reason (all 172 subtle sites and
+   * 468 of the muted ones both used dark:slate-400); the token records it
+   * instead of leaving it to be rediscovered. The roles stay separate
+   * because they ARE separate in light mode, and because a later dark-mode
+   * distinction drawn some other way — opacity, or a dimmer surface behind
+   * it — then costs one line here rather than 172 edits. */
+  --color-fg: #f1f5f9;
+  --color-fg-body: #e2e8f0;
+  --color-fg-muted: #94a3b8;
+  --color-fg-subtle: #94a3b8;
+  --color-border: #1e293b;
+  --color-border-strong: #334155;
 }
 
 /* T-2801: demo mode's distinct accent colour.

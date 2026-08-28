@@ -63,7 +63,7 @@ export function DryRunReport({ report, heldOut = false }: DryRunReportProps) {
         <h3 className="text-sm font-semibold">
           Dry-run{heldOut ? " (held-out window)" : " (training window)"} — monitor only, nothing is enforced
         </h3>
-        <span className="text-xs text-slate-500 dark:text-slate-400">
+        <span className="text-xs text-fg-subtle">
           Coverage {formatCoveragePct(report.coveragePct)}
         </span>
       </div>

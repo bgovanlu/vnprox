@@ -95,7 +95,7 @@ function StepRow({ step }: { step: DiagnoseStep }) {
             {statusIcon(step.status)}
           </span>
           <span className="font-medium">{STEP_LABELS[step.name] ?? step.name}</span>
-          <span className="text-xs text-slate-500 dark:text-slate-400">{STATUS_LABEL[step.status]}</span>
+          <span className="text-xs text-fg-subtle">{STATUS_LABEL[step.status]}</span>
         </span>
         {hasDetail && (
           <span className="text-xs text-slate-600 dark:text-slate-400">{expanded ? "Hide detail" : "Show detail"}</span>
@@ -212,7 +212,7 @@ export function DiagnosisPage({ targetRef: targetRefProp }: DiagnosisPageProps =
           Escalate to packet capture
         </label>
       </div>
-      <p className="text-xs text-slate-500 dark:text-slate-400">
+      <p className="text-xs text-fg-subtle">
         Packet capture requires the dedicated capture capability and reaches into the network — if this session
         doesn&apos;t hold it, the capture step is skipped with a stated reason rather than failing the whole run.
       </p>

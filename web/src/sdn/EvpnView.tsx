@@ -32,7 +32,7 @@ function toFindingItem(f: EvpnFinding): FindingItem {
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-4 border-b border-slate-100 py-1 text-sm last:border-0 dark:border-slate-800">
-      <dt className="text-slate-500 dark:text-slate-400">{label}</dt>
+      <dt className="text-fg-subtle">{label}</dt>
       <dd className="text-right text-slate-800 dark:text-slate-100">{value || "—"}</dd>
     </div>
   );
@@ -80,8 +80,15 @@ function PeeringMatrix({
             <TableRow key={node}>
               <TableCell className="font-medium">
                 {node}
+                {/* T-4215: only the TEXT moved to a role token below. The
+                    chip's own `bg-slate-100 dark:bg-slate-800` is deliberately
+                    left alone — it sits *below* the page in light mode and
+                    *above* it in dark, which is the ordinary subtle-chip
+                    idiom, and `bg-surface-sunken` would have made it darker
+                    than the page in both: a visible change to fix a contrast
+                    failure that was never in the background. */}
                 {ns && !ns.frrInstalled && (
-                  <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                  <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-fg-subtle dark:bg-slate-800">
                     no EVPN
                   </span>
                 )}
@@ -112,7 +119,7 @@ function PeeringMatrix({
                         <span className="text-xs text-slate-600 dark:text-slate-300">{peer.state}</span>
                       </button>
                     ) : (
-                      <span className="text-slate-300 dark:text-slate-700">—</span>
+                      <span className="text-fg-subtle">—</span>
                     )}
                   </TableCell>
                 );
@@ -137,7 +144,7 @@ function SessionDetail({ status, selection }: { status: EvpnStatus; selection: E
         <h3 className="text-base font-semibold">
           {node.node} ↔ {peer.peerAddr}
         </h3>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-fg-subtle">
           {peer.peerNode ? `Peer node: ${peer.peerNode}` : "Peer node unresolved"}
           {peer.addressFamily ? ` · ${peer.addressFamily}` : ""}
         </p>
@@ -145,7 +152,7 @@ function SessionDetail({ status, selection }: { status: EvpnStatus; selection: E
       <div className="flex items-center gap-2">
         <StatusDot status={evpnStateEntityStatus(peer.state)} />
         <span className="text-sm font-medium">{peer.state}</span>
-        {peer.stateReason && <span className="text-sm text-slate-500 dark:text-slate-400">({peer.stateReason})</span>}
+        {peer.stateReason && <span className="text-sm text-fg-subtle">({peer.stateReason})</span>}
       </div>
       <dl>
         <Field label="Remote AS" value={peer.remoteAs ? String(peer.remoteAs) : ""} />
@@ -207,7 +214,7 @@ function ExitNodeHealth({ status }: { status: EvpnStatus }) {
         <li key={`${en.zone}-${en.node}`} className="flex items-center gap-2 text-sm">
           <StatusDot status={en.healthy ? "ok" : "down"} />
           <span className="font-medium">{en.node}</span>
-          <span className="text-slate-500 dark:text-slate-400">zone {en.zone}</span>
+          <span className="text-fg-subtle">zone {en.zone}</span>
           <span className={en.healthy ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
             {en.healthy ? "healthy" : "unhealthy"}
           </span>

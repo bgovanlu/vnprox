@@ -95,7 +95,7 @@ export function ParamForm({
             {def.label ?? def.name}
             {def.required ? <span aria-hidden className="text-red-600"> *</span> : null}
           </label>
-          {def.description ? <p className="text-xs text-slate-500 dark:text-slate-400">{def.description}</p> : null}
+          {def.description ? <p className="text-xs text-fg-subtle">{def.description}</p> : null}
           <div className="mt-1 flex gap-2">
             <input
               id={`bp-param-${def.name}`}

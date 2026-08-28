@@ -99,7 +99,7 @@ function BackendSettings({
           }}
           className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900"
         />
-        <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
+        <span className="mt-1 block text-[11px] text-fg-subtle">
           Kept in memory for this tab only — never written to storage and never sent to vnprox.
         </span>
       </label>
@@ -123,7 +123,7 @@ function ToolEvidence({ result }: { result: AssistantResult }) {
   }
   return (
     <section className="mt-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
         Tools run
       </h3>
       <ul className="mt-1 space-y-0.5 text-xs text-slate-600 dark:text-slate-300">
@@ -160,7 +160,7 @@ function Proposals({
           <li key={`${proposal.kind}:${proposal.targetRef}`}>{proposalSummary(proposal)}</li>
         ))}
       </ul>
-      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+      <p className="mt-2 text-xs text-fg-subtle">
         Staging opens a normal draft changeset tagged as the assistant&apos;s. Nothing is applied — you review
         and apply it in the change engine exactly like any other draft.
       </p>
@@ -178,7 +178,7 @@ function Answer({ result }: { result: AssistantResult }) {
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800 dark:text-slate-100">
           {result.answer}
         </p>
-        <h3 className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        <h3 className="mt-3 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
           Citations
         </h3>
         <ul className="mt-1 space-y-1">
@@ -187,7 +187,7 @@ function Answer({ result }: { result: AssistantResult }) {
               <a className="text-sky-700 underline dark:text-sky-400" href={citation.href}>
                 {citation.label}
               </a>
-              <span className="ml-1 text-xs text-slate-500 dark:text-slate-400">
+              <span className="ml-1 text-xs text-fg-subtle">
                 (<code className="font-mono">{citation.tool}</code> · {citation.ref})
               </span>
             </li>
@@ -310,7 +310,7 @@ export function AssistantPanel() {
         </DrawerTitle>
         <DrawerDescription
           id="assistant-panel-summary"
-          className="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400"
+          className="mt-1 text-sm leading-relaxed text-fg-subtle"
         >
           Asks the same read-only tools vnprox exposes over MCP, with your session and your permissions. It
           can draft a change for review; it can never apply one.
@@ -357,7 +357,7 @@ export function AssistantPanel() {
         )}
 
         <label className="mt-4 block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          <span className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
             Question
           </span>
           <textarea
@@ -383,7 +383,7 @@ export function AssistantPanel() {
         </Button>
 
         {unavailable.length > 0 && (
-          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-3 text-xs text-fg-subtle">
             Your account cannot reach {unavailable.map((t) => t.name).join(", ")}, so the assistant does not
             either. It runs {String(permitted.length)} of {String(ASSISTANT_TOOLS.length)} tools for you.
           </p>

@@ -77,7 +77,7 @@ export function ZoneWizardPicker({ open, onOpenChange, initialActive }: ZoneWiza
                 }}
               >
                 <div className="font-medium text-slate-800 dark:text-slate-100">{card.title}</div>
-                <div className="mt-0.5 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{card.blurb}</div>
+                <div className="mt-0.5 line-clamp-2 text-xs text-fg-subtle">{card.blurb}</div>
               </button>
             ))}
           </div>

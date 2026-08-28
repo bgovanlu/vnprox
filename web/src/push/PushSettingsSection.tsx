@@ -135,7 +135,7 @@ export function PushSettingsSection() {
 
   if (!supported) {
     return (
-      <p className="text-sm text-slate-500 dark:text-slate-400">
+      <p className="text-sm text-fg-subtle">
         This browser does not support push notifications.
       </p>
     );
@@ -161,7 +161,7 @@ export function PushSettingsSection() {
             />
             <span>
               <span className="font-medium text-slate-700 dark:text-slate-200">{CATEGORY_LABELS[cat].title}</span>
-              <span className="block text-xs text-slate-500 dark:text-slate-400">{CATEGORY_LABELS[cat].detail}</span>
+              <span className="block text-xs text-fg-subtle">{CATEGORY_LABELS[cat].detail}</span>
             </span>
           </label>
         ))}
@@ -189,7 +189,7 @@ export function PushSettingsSection() {
               <li key={sub.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
                 <div>
                   <span className="font-medium text-slate-700 dark:text-slate-200">{sub.deviceLabel ?? "Unlabeled device"}</span>
-                  <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
+                  <span className="ml-2 text-xs text-fg-subtle">
                     {sub.categories.join(", ")} · added {formatTimestamp(sub.createdAt)}
                   </span>
                 </div>

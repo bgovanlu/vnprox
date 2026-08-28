@@ -39,7 +39,7 @@ export function PluginTile({ tile }: PluginTileProps) {
         {dot ? <span aria-hidden className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} /> : null}
         <div className="flex flex-col gap-0.5">
           <p className="text-2xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">{tile.value}</p>
-          {tile.detail ? <p className="text-xs text-slate-500 dark:text-slate-400">{tile.detail}</p> : null}
+          {tile.detail ? <p className="text-xs text-fg-subtle">{tile.detail}</p> : null}
         </div>
       </div>
     </DashboardTile>

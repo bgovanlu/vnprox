@@ -32,7 +32,7 @@ function RuleCell({ rule }: { rule: FwLogRuleRef }) {
   return (
     <Link to={ruleDeepLinkPath(rule)} className="flex items-center gap-1.5 hover:underline">
       <OriginBadge origin={rule.origin} groupName={rule.groupName} />
-      <span className="font-mono text-xs text-slate-500 dark:text-slate-400">pos {rule.pos}</span>
+      <span className="font-mono text-xs text-fg-subtle">pos {rule.pos}</span>
     </Link>
   );
 }
@@ -161,12 +161,12 @@ export function AnalyticsTab() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-fg-subtle">
           Per-rule hit counts, top blocked sources/destinations, and rules that haven&apos;t matched anything — aggregated
           over the same log buffer above.
         </p>
         <label className="flex items-center gap-2 text-sm">
-          <span className="text-slate-500 dark:text-slate-400">Window</span>
+          <span className="text-fg-subtle">Window</span>
           <select
             aria-label="Analytics window"
             value={windowHours}

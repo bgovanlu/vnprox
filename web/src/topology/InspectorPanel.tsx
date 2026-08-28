@@ -117,7 +117,7 @@ function ManagementPathSection({ node }: { node: string }) {
           <div className="font-medium text-slate-700 dark:text-slate-200">
             {p.ref} <span className="font-normal text-slate-600 dark:text-slate-400">({p.roles.join(", ")})</span>
           </div>
-          <div className="mt-1 text-slate-500 dark:text-slate-400">
+          <div className="mt-1 text-fg-subtle">
             Path: {p.path.length > 0 ? p.path.join(" → ") : "(no physical interface resolved)"}
           </div>
           <div className="mt-1 text-slate-600 dark:text-slate-300">
@@ -256,7 +256,7 @@ export function InspectorPanel({
               {data?.label ?? "Inspector"}
               <HelpAnchor topic="topology-inspector" />
             </h2>
-            <p id="inspector-description" className="text-sm text-slate-500 dark:text-slate-400">
+            <p id="inspector-description" className="text-sm text-fg-subtle">
               {data ? `${data.kind} on ${data.node || "cluster"}` : "Entity detail"}
             </p>
           </div>
@@ -505,7 +505,7 @@ export function InspectorPanel({
                 <div className="space-y-3">
                   {rawSourceEntries.map(([source, text]) => (
                     <section key={source}>
-                      <h3 className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">{source}</h3>
+                      <h3 className="mb-1 text-xs font-medium text-fg-subtle">{source}</h3>
                       {/* T-4203: an inset code block — `surface-sunken`. */}
                       <pre className="overflow-x-auto rounded border border-slate-200 bg-surface-sunken p-2 font-mono text-[11px] leading-snug text-slate-700 dark:border-slate-700 dark:text-slate-200">
                         {text}
@@ -602,7 +602,7 @@ export function InspectorPanel({
                             select(r.ownerRef);
                             void navigate("/topology");
                           }}
-                          className="shrink-0 text-slate-500 hover:underline dark:text-slate-400"
+                          className="shrink-0 text-fg-subtle hover:underline"
                         >
                           {r.owner}
                           {r.ownerLabel ? ` (${r.ownerLabel})` : ""}

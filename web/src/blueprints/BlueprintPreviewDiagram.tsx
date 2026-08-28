@@ -35,7 +35,7 @@ export function BlueprintPreviewDiagram({ blueprint }: { blueprint: Blueprint })
   const layerIndices = [...layers.keys()].sort((a, b) => a - b);
 
   if (preview.nodes.length === 0) {
-    return <p className="text-sm text-slate-500 dark:text-slate-400">No entities to preview.</p>;
+    return <p className="text-sm text-fg-subtle">No entities to preview.</p>;
   }
 
   return (
@@ -55,7 +55,7 @@ export function BlueprintPreviewDiagram({ blueprint }: { blueprint: Blueprint })
           </div>
         ))}
       </div>
-      <ul className="text-xs text-slate-500 dark:text-slate-400">
+      <ul className="text-xs text-fg-subtle">
         {preview.edges.map((e) => (
           <li key={`${e.from}->${e.to}`}>
             {e.from} → {e.to}

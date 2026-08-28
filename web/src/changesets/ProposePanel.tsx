@@ -89,7 +89,7 @@ export function ProposePanel({ changesetId }: ProposePanelProps) {
       </p>
 
       {unavailable && (
-        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+        <p className="mt-2 text-xs text-fg-subtle">
           Unavailable on this deployment: with no <code className="font-mono">[gitsync]</code> repository
           configured, there is nowhere to open a pull request.
         </p>
@@ -120,10 +120,10 @@ export function ProposePanel({ changesetId }: ProposePanelProps) {
       )}
 
       {proposalQuery.isLoading && (
-        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Checking for an existing proposal…</p>
+        <p className="mt-2 text-xs text-fg-subtle">Checking for an existing proposal…</p>
       )}
       {proposalQuery.error !== null && (
-        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+        <p className="mt-2 text-xs text-fg-subtle">
           Could not check whether this changeset was already proposed.
         </p>
       )}

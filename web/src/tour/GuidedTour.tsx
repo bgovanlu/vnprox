@@ -106,7 +106,7 @@ export function GuidedTour() {
         </div>
         <div className="flex flex-col gap-3 p-3 text-sm">
           <p className="text-slate-600 dark:text-slate-300">{step.body}</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-fg-subtle">
             <span className="font-semibold">Look for:</span> {step.lookFor}
           </p>
           <div className="flex flex-wrap gap-2">

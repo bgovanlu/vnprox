@@ -151,7 +151,7 @@ export function DualStackWizard({ vnets, onInstantiated }: DualStackWizardProps)
         <label htmlFor="dualstack-vnet" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
           VLAN / VNet
         </label>
-        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-fg-subtle">
           <span>Adds an IPv6 subnet to a VNet that has only IPv4 today.</span>
           <HelpAnchor topic="ipv6-dual-stack" />
         </p>
@@ -256,7 +256,7 @@ function ObservedIPv6({
     <div data-testid="dualstack-observed" className="rounded-md border border-slate-200 p-2 text-xs dark:border-slate-700">
       <h4 className="font-medium text-slate-700 dark:text-slate-200">IPv6 observed on {vnetId} today</h4>
       {segments.length === 0 ? (
-        <p className="mt-1 text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-fg-subtle">
           No router advertisement observed on this VNet — the ordinary starting point for a dual-stack rollout.
         </p>
       ) : (

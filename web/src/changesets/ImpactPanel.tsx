@@ -69,13 +69,13 @@ export function ImpactPanel({ impact, loading, error }: ImpactPanelProps) {
 
       {impact.guests.length > 0 && (
         <section>
-          <h3 className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">Guests affected</h3>
+          <h3 className="mb-1 text-xs font-medium text-fg-subtle">Guests affected</h3>
           <ul className="space-y-1 text-xs">
             {impact.guests.map((g) => (
               <li key={`${g.ref}:${g.nic}`} className="rounded border border-slate-200 px-2 py-1 dark:border-slate-700">
                 <span className="font-medium">{g.name || g.ref}</span>
-                {g.vmid > 0 && <span className="text-slate-500 dark:text-slate-400"> ({g.vmid})</span>}
-                <span className="text-slate-500 dark:text-slate-400">
+                {g.vmid > 0 && <span className="text-fg-subtle"> ({g.vmid})</span>}
+                <span className="text-fg-subtle">
                   {" "}
                   on {g.node} — {g.nic} via {g.carrier}
                 </span>
@@ -86,7 +86,7 @@ export function ImpactPanel({ impact, loading, error }: ImpactPanelProps) {
       )}
 
       <section>
-        <h3 className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">Per operation</h3>
+        <h3 className="mb-1 text-xs font-medium text-fg-subtle">Per operation</h3>
         <ul className="space-y-1 text-xs">
           {impact.ops.map((o, i) => (
             <li key={o.opId ?? `${o.op}:${String(i)}`} className="rounded border border-slate-200 px-2 py-1 dark:border-slate-700">
@@ -99,7 +99,7 @@ export function ImpactPanel({ impact, loading, error }: ImpactPanelProps) {
                 {o.disruption}
               </span>
               <span className="font-mono">{o.op}</span>
-              {o.target && <span className="text-slate-500 dark:text-slate-400"> {o.target}</span>}
+              {o.target && <span className="text-fg-subtle"> {o.target}</span>}
               {/* The server's own reason, verbatim. */}
               <span className="block text-slate-600 dark:text-slate-300">{o.reason}</span>
             </li>

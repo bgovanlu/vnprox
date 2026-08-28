@@ -135,7 +135,7 @@ export function BlueprintImportDialog({ open, onOpenChange, bundle, onImported }
             <p className="text-sm text-amber-700 dark:text-amber-400">
               This blueprint is signed by a key vnprox does not yet trust.
             </p>
-            <p className="break-all text-xs text-slate-500 dark:text-slate-400">
+            <p className="break-all text-xs text-fg-subtle">
               Signer fingerprint: <code>{probeResult?.signer?.fingerprint}</code>
             </p>
             <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">

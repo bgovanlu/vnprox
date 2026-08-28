@@ -85,7 +85,7 @@ export function UnrefFindingsBanner({ findings, remediationCtx, pendingId, resul
             </span>
             <span className="text-slate-600 dark:text-slate-300">{f.detail || f.check}</span>
             {f.nodes.length > 0 && (
-              <span className="text-slate-500 dark:text-slate-400">
+              <span className="text-fg-subtle">
                 (on {f.nodes.join(", ")})
               </span>
             )}

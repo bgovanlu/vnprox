@@ -115,7 +115,7 @@ export function DashboardGrid() {
       {resolved.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 py-8 text-center dark:border-slate-700">
           <span className="text-sm font-medium text-slate-700 dark:text-slate-200">No tiles on your dashboard</span>
-          <span className="max-w-xs text-xs text-slate-500 dark:text-slate-400">
+          <span className="max-w-xs text-xs text-fg-subtle">
             Use "Add tile" above to bring one back.
           </span>
         </div>

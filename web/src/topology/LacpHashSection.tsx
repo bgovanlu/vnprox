@@ -183,14 +183,14 @@ function PredictionTable({
   return (
     <div className="space-y-2">
       {prediction.unclassified > 0 && (
-        <p className="text-slate-500 dark:text-slate-400">
+        <p className="text-fg-subtle">
           {prediction.unclassified} of {prediction.classified + prediction.unclassified} recent flow(s) could not be
           classified{prediction.unclassifiedReason ? ` (${prediction.unclassifiedReason})` : ""}.
         </p>
       )}
       <table className="w-full border-collapse">
         <thead>
-          <tr className="text-left text-slate-500 dark:text-slate-400">
+          <tr className="text-left text-fg-subtle">
             <th className="pb-1 font-normal">Slave</th>
             <th className="pb-1 font-normal">Predicted</th>
             <th className="pb-1 font-normal">Actual</th>

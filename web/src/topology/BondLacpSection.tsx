@@ -56,7 +56,7 @@ function StateDot({ label, ok }: { label: string; ok: boolean }) {
         aria-hidden="true"
         className={clsx("inline-block h-1.5 w-1.5 rounded-full", ok ? "bg-status-ok" : "bg-status-critical")}
       />
-      <span className={ok ? "text-slate-500 dark:text-slate-400" : "text-status-critical"}>{label}</span>
+      <span className={ok ? "text-fg-subtle" : "text-status-critical"}>{label}</span>
     </span>
   );
 }
@@ -130,7 +130,7 @@ export function BondLacpSection({ fields }: { fields: Record<string, unknown> })
                   {ok ? "negotiated" : "not negotiated"}
                 </span>
               </div>
-              <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-slate-500 dark:text-slate-400">
+              <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-fg-subtle">
                 <dt>Actor system</dt>
                 <dd className="text-slate-700 dark:text-slate-200">
                   {s.ActorSystemID} (priority {s.ActorSystemPriority}, key {s.ActorKey})

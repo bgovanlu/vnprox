@@ -69,7 +69,7 @@ function ProposedRulesTable({ rules }: { rules: RuleView[] }) {
             <TableCell className="font-mono text-xs">{rule.proto ?? "—"}</TableCell>
             <TableCell className="font-mono text-xs">{rule.dport ?? "—"}</TableCell>
             <TableCell className="font-mono text-xs">{ruleScopeLabel(rule)}</TableCell>
-            <TableCell className="text-xs text-slate-500 dark:text-slate-400">{rule.comment ?? ""}</TableCell>
+            <TableCell className="text-xs text-fg-subtle">{rule.comment ?? ""}</TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -144,7 +144,7 @@ export function MicrosegPlanner({ guestRef }: MicrosegPlannerProps) {
             Microsegmentation planner
             <HelpAnchor topic="microseg-planner" />
           </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-fg-subtle">
             Proposes the minimal firewall policy that preserves this guest&apos;s observed-good traffic, then dry-runs it
             before you enforce. Read-only until you stage it as a changeset.
           </p>
@@ -179,7 +179,7 @@ export function MicrosegPlanner({ guestRef }: MicrosegPlannerProps) {
               flows fall in the deliberately-uncovered long tail (not covered by any proposed rule).
             </p>
             {(proposal.excludedAnomalyFlows > 0 || proposal.alreadyCoveredGroups > 0) && (
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              <p className="mt-1 text-xs text-fg-subtle">
                 {proposal.excludedAnomalyFlows > 0 && (
                   <>
                     {proposal.excludedAnomalyFlows.toLocaleString()} flow(s) excluded as anomalous (never legitimized into an
@@ -231,7 +231,7 @@ export function MicrosegPlanner({ guestRef }: MicrosegPlannerProps) {
               Stage as changeset
             </button>
             {dryRun === undefined && (
-              <span className="text-xs text-slate-500 dark:text-slate-400">
+              <span className="text-xs text-fg-subtle">
                 Run a dry-run first — staging is disabled until this proposal has been dry-run at least once.
               </span>
             )}

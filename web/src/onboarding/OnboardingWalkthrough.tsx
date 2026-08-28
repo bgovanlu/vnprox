@@ -108,7 +108,7 @@ function FoundSummaryStep({ onComplete }: StepProps) {
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
             {ALL_LAYERS.map((layer) => (
               <div className="contents" key={layer}>
-                <dt className="text-slate-500 dark:text-slate-400">{layerLabel(t, layer)}</dt>
+                <dt className="text-fg-subtle">{layerLabel(t, layer)}</dt>
                 <dd className="text-right font-medium">{summary.byLayer[layer]}</dd>
               </div>
             ))}
@@ -184,7 +184,7 @@ function ProtectedStep({ onComplete, onSkip }: StepProps) {
         <ul className="max-h-48 space-y-2 overflow-y-auto">
           {nodes.map((node) => (
             <li key={node}>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{node}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">{node}</p>
               <ul className="ml-1">
                 {(candidates[node] ?? []).map((ref) => (
                   <li key={ref}>

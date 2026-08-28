@@ -94,7 +94,7 @@ export function AppShell() {
             fallback={
               <div className="mx-auto max-w-md py-16 text-center">
                 <h2 className="text-lg font-semibold">This page hit an error</h2>
-                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                <p className="mt-2 text-sm text-fg-subtle">
                   Something went wrong rendering this view. Other pages in the nav still work; reload to try again.
                 </p>
                 <button

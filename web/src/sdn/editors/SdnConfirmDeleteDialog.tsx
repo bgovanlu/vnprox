@@ -50,7 +50,7 @@ export function SdnConfirmDeleteDialog({ open, onOpenChange, title, description,
       submitLabel="Delete"
       disabledReason={!hasAnyCap(session, "sdnWrite") ? disabledReason : undefined}
     >
-      <p className="text-sm text-slate-500 dark:text-slate-400">This adds a delete op to the current changeset draft — nothing is removed until the changeset applies.</p>
+      <p className="text-sm text-fg-subtle">This adds a delete op to the current changeset draft — nothing is removed until the changeset applies.</p>
     </EditorDialog>
   );
 }

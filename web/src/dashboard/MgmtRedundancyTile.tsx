@@ -52,7 +52,7 @@ export function MgmtRedundancyTile() {
         {totalNodes === 1 ? "node has" : "nodes have"} a single-path management uplink
       </p>
       {nonRedundantNodes.length > 0 ? (
-        <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{nonRedundantNodes.join(", ")}</p>
+        <p className="mt-1 truncate text-xs text-fg-subtle">{nonRedundantNodes.join(", ")}</p>
       ) : null}
     </DashboardTile>
   );

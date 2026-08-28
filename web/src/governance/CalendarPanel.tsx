@@ -39,7 +39,7 @@ function FreezeWindowRow({ w }: { w: FreezeWindowView }) {
       {summary !== undefined ? (
         <p className="mt-1 font-mono text-xs text-slate-700 dark:text-slate-200">{summary}</p>
       ) : (
-        <p className="mt-1 text-xs italic text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-xs italic text-fg-subtle">
           This window's time conditions are too irregular for the calendar to summarize — see the rule's own match
           conditions on the Policies tab.
         </p>

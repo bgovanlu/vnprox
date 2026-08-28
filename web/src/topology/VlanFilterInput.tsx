@@ -44,7 +44,7 @@ export const VlanFilterInput = forwardRef<HTMLInputElement, VlanFilterInputProps
 
   return (
     <form onSubmit={submit} className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-white/90 px-2 py-1 shadow-sm dark:border-slate-700 dark:bg-slate-900/90">
-      <label htmlFor="vlan-filter-input" className="text-xs text-slate-500 dark:text-slate-400">
+      <label htmlFor="vlan-filter-input" className="text-xs text-fg-subtle">
         VLAN
       </label>
       <input

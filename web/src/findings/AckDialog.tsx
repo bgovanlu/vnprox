@@ -49,7 +49,7 @@ export function AckDialog({ finding, onCancel, onConfirm, pending }: AckDialogPr
       <DialogContent aria-label="Acknowledge finding">
         <h2 className="text-base font-semibold">Acknowledge this finding</h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{finding?.detail}</p>
-        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+        <p className="mt-3 text-xs text-fg-subtle">
           Acknowledging does not hide the finding or stop the check running. It records that this
           state is deliberate, so the stream can be triaged.
         </p>

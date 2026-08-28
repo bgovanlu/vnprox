@@ -99,7 +99,7 @@ export function DialogDescription({
 }: ComponentPropsWithoutRef<typeof RadixDialog.Description>) {
   return (
     <RadixDialog.Description
-      className={clsx("mt-1 text-sm text-slate-500 dark:text-slate-400", className)}
+      className={clsx("mt-1 text-sm text-fg-subtle", className)}
       {...props}
     />
   );

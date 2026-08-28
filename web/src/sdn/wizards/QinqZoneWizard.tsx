@@ -118,7 +118,7 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
       content: (
         <div className="space-y-3">
           <h4 className="text-xs font-medium text-slate-600 dark:text-slate-300">{S.qinq.illustrationHeading}</h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400">{S.qinq.illustrationExplain}</p>
+          <p className="text-xs text-fg-subtle">{S.qinq.illustrationExplain}</p>
           <Field label="Service (outer) VLAN tag" help={S.qinq.serviceTagHelp}>
             <input
               type="number"

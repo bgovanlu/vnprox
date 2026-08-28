@@ -72,7 +72,7 @@ export function PacketList({ packets, paneLabel }: PacketListProps) {
               <p className="font-semibold text-slate-700 dark:text-slate-200">{layer.name}</p>
               <ul className="ml-2 space-y-0.5">
                 {Object.entries(layer.fields).map(([k, v]) => (
-                  <li key={k} className="font-mono text-slate-500 dark:text-slate-400">
+                  <li key={k} className="font-mono text-fg-subtle">
                     {k}: {v}
                   </li>
                 ))}

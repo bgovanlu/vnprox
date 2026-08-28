@@ -144,7 +144,7 @@ export function CommentsPanel({ changeset }: CommentsPanelProps) {
   return (
     <div className="space-y-4 text-sm">
       <section>
-        <h3 className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+        <h3 className="flex items-center gap-1.5 text-xs font-medium text-fg-subtle">
           Changeset comments
           <HelpAnchor topic="changeset-comments" />
         </h3>
@@ -158,12 +158,12 @@ export function CommentsPanel({ changeset }: CommentsPanelProps) {
 
       {opSections.length > 0 && (
         <section>
-          <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400">Per-operation comments</h3>
+          <h3 className="text-xs font-medium text-fg-subtle">Per-operation comments</h3>
           <ul className="mt-1.5 space-y-3">
             {opSections.map(({ op, comments: opComments }, i) => (
               <li key={op.id ?? i} className="rounded border border-slate-200 p-2 dark:border-slate-700">
                 <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  <span className="mr-1 rounded bg-slate-200/70 px-1 py-0.5 text-[10px] uppercase text-slate-500 dark:bg-slate-700/70 dark:text-slate-300">
+                  <span className="mr-1 rounded bg-slate-200/70 px-1 py-0.5 text-[10px] uppercase text-fg-muted dark:bg-slate-700/70 dark:text-slate-300">
                     {opKindLabel(op)}
                   </span>
                   {summarizeOp(op)}

@@ -23,7 +23,7 @@ export interface InteriorTabProps {
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h3 className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">{children}</h3>;
+  return <h3 className="mb-1 text-xs font-medium text-fg-subtle">{children}</h3>;
 }
 
 function ipamBadge(addr: GuestInteriorAddress, ipamDiff: { ip: string; matches: boolean }[]) {

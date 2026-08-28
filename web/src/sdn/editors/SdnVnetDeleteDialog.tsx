@@ -91,7 +91,7 @@ export function SdnVnetDeleteDialog({
                 guests this delete will move, so a keyboard user unable to
                 scroll past the first few is a real loss. */}
             <ul
-              className="max-h-28 space-y-0.5 overflow-y-auto text-xs text-slate-500 dark:text-slate-400"
+              className="max-h-28 space-y-0.5 overflow-y-auto text-xs text-fg-subtle"
               tabIndex={0}
               aria-label="Attached guest NICs"
             >
