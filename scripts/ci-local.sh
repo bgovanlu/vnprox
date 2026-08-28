@@ -50,7 +50,7 @@ cd "$REPO_ROOT"
 FUZZTIME="${FUZZTIME:-60s}"
 LOG_DIR="${LOG_DIR:-$REPO_ROOT/.ci-local}"
 
-ALL_JOBS=(check e2e cross-arm64 fuzz package packaging-matrix cluster-ssh dco reproducible)
+ALL_JOBS=(check e2e cross-arm64 fuzz package packaging-matrix cluster-ssh dco reproducible openapi-client)
 
 # --- job selection ---------------------------------------------------------
 
@@ -275,6 +275,20 @@ job_reproducible() {
     scripts/verify-reproducible.sh
 }
 
+# job_openapi_client (T-3809) is the generated-client drift tripwire on top
+# of cmd/vnproxd's TestOpenAPI_EveryRouteIsDescribed (T-2405): it generates a
+# TypeScript client from the committed docs/openapi.json (dev-only
+# `openapi-typescript`, web/tools/openapi-drift/check.mjs), type-checks it,
+# and cross-checks every web/src/api/*.ts `apiFetch` call site's method+path
+# shape against the spec's own paths. It catches a route whose shape changed
+# in the spec without every frontend caller following — it does NOT catch
+# request/response BODY drift (docs/openapi.json carries no body schemas;
+# see the script's own header comment for the full catches/misses list).
+job_openapi_client() {
+    ( cd web && npm ci ) || return 1
+    ( cd web && npm run check:openapi-drift )
+}
+
 # --- dispatch --------------------------------------------------------------
 
 for j in "${JOBS[@]}"; do
@@ -288,6 +302,7 @@ for j in "${JOBS[@]}"; do
         cluster-ssh)      run_job cluster-ssh      job_cluster_ssh ;;
         dco)              run_job dco              job_dco ;;
         reproducible)     run_job reproducible     job_reproducible ;;
+        openapi-client)   run_job openapi-client   job_openapi_client ;;
     esac
 done
 

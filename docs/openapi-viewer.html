@@ -1,0 +1,51 @@
+<!-- vnprox OpenAPI reference viewer (T-3809). Renders docs/openapi.json with
+     Redoc's standalone bundle, pulled from its public CDN at view time by
+     the visitor's browser — same posture as docs/index.html's docsify
+     loader: nothing is fetched or built at publish time, no new language
+     toolchain, nothing added to go.mod or package.json. This page is a
+     plain static file served alongside the docsify site, not routed
+     through docsify's markdown pipeline (Redoc wants the whole page, and
+     docsify strips embedded <script> tags from rendered Markdown anyway) —
+     see docs/openapi-reference.md, which is the docsify-routed page that
+     links here.
+
+     Reachability: whatever URL serves this repository's `docs/` directory
+     as GitHub Pages, plus "/openapi-viewer.html". docs.vnprox.com does not
+     resolve (no DNS configured — a deferred owner decision); until that
+     changes, this page is only reachable at the GitHub Pages default URL
+     (https://<owner>.github.io/<repo>/openapi-viewer.html). See
+     docs/openapi-reference.md for the current, honest answer. -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>vnprox API reference</title>
+  <meta name="description" content="Interactive reference for vnprox's OpenAPI document (docs/openapi.json): every route, method, path parameter, security scheme and error response." />
+  <style>
+    body { margin: 0; padding: 0; }
+    #redoc-fallback {
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      max-width: 40rem;
+      margin: 3rem auto;
+      padding: 0 1rem;
+    }
+  </style>
+</head>
+<body>
+  <!-- Shown until Redoc's CDN script loads and replaces this element's
+       content; also what a reader sees if the CDN is unreachable. -->
+  <div id="redoc-fallback">
+    <p>Loading the vnprox API reference…</p>
+    <p>If this does not load, the document itself is always readable
+      directly at <a href="./openapi.json">openapi.json</a>, or see
+      <a href="./#/openapi-reference">the API reference page</a> for
+      what it does and does not cover.</p>
+  </div>
+  <redoc spec-url="./openapi.json" required-props-first="true"></redoc>
+  <script
+    src="https://cdn.jsdelivr.net/npm/redoc@2/bundles/redoc.standalone.js"
+    onload="document.getElementById('redoc-fallback').style.display = 'none';"
+  ></script>
+</body>
+</html>
