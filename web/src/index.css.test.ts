@@ -464,6 +464,35 @@ describe("foreground and border roles (T-4215)", () => {
     }
   });
 
+  it("holds `outline` to the 3:1 non-text floor on every surface, unlike `border`", () => {
+    // T-4301. These two roles look interchangeable and are not. `border`
+    // separates a row from the next row and is deliberately faint; `outline`
+    // delineates an object a user has to perceive — a node on the topology
+    // map, the edge between two of them — and WCAG 1.4.11 asks 3:1 of it.
+    //
+    // Asserted against ALL FOUR surfaces. The first solve for this token
+    // used only the two the canvas happens to draw on and produced a value
+    // measuring 2.89 on `sunken` and 2.65 on `overlay` — which is T-4215's
+    // whole finding (a contrast number that is correct against a denominator
+    // someone picked rather than against the one the app uses) repeated one
+    // commit after fixing it.
+    for (const [themeName, tokens, outlines, surfaces] of [
+      ["light", lightBorder, tokensIn(theme, "color-outline"), tokensIn(theme, "color-surface")],
+      ["dark", nightBorder, tokensIn(dark, "color-outline"), tokensIn(dark, "color-surface")],
+    ] as const) {
+      for (const level of SURFACE_LEVELS) {
+        const outline = contrast(token(outlines, ""), token(surfaces, level));
+        expect(outline, `${themeName}: --color-outline on surface-${level}`).toBeGreaterThanOrEqual(3);
+      }
+      // And the decorative one must stay decorative: an outline-strength
+      // rule between every table row is the failure in the other direction.
+      const worstBorder = Math.min(
+        ...SURFACE_LEVELS.map((l) => contrast(token(tokens, ""), token(surfaces, l))),
+      );
+      expect(worstBorder, `${themeName}: --color-border should stay a hairline`).toBeLessThan(2);
+    }
+  });
+
   it("leaves neutrals alone in demo mode", () => {
     // Demo mode re-points the accent so the app reads as "not your
     // cluster". Retinting body text would make it read as broken instead.

@@ -387,6 +387,38 @@
   --color-border: #e2e8f0;
   --color-border-strong: #cbd5e1;
 
+  /* T-4301 · The outline role — a boundary you are required to SEE.
+   *
+   * `--color-border` above is decorative: it separates a row from the next
+   * row and measures ~1.1-1.2:1 on purpose, because a hairline strong
+   * enough to meet a contrast floor would fight the content it is
+   * organising. That is the right answer for a table rule and the wrong
+   * one for the outline of an object.
+   *
+   * WCAG 1.4.11 asks 3:1 of non-text content "required to understand" the
+   * page. On the topology map that is not a hypothetical: the node outline
+   * measures 1.48:1 in light mode and the default EDGE STROKE — the links
+   * of a network topology tool — measures 2.45 light / 2.36 dark. Nothing
+   * caught it because every contrast gate in this repo scans Tailwind class
+   * names and a <canvas> has none.
+   *
+   * Solved against all four surfaces, not just the two the canvas happens
+   * to use. Solving against the canvas pair alone gave #8293ab/#5c6c82,
+   * which clears 3:1 on the node fill and the page and then measures 2.89
+   * on `sunken` and 2.65 on `overlay` — the same "correct against the
+   * denominator I happened to pick" mistake T-4215 was filed for, one
+   * commit later. Worst case is now 3.00 light / 3.02 dark.
+   *
+   *     surface   light (#7f90a8)   dark (#65758c)
+   *     sunken         3.00              4.08
+   *     page           3.14              3.80
+   *     raised         3.25              3.43
+   *     overlay        3.25              3.02
+   *
+   * Hue and chroma are slate-500's, so an outline still reads as neutral
+   * structure rather than as a coloured affordance. */
+  --color-outline: #7f90a8;
+
   /* T-4206 · Motion.
    *
    * Three durations and three curves, so animation across the app is a
@@ -480,6 +512,7 @@ html.dark {
   --color-fg-subtle: #94a3b8;
   --color-border: #1e293b;
   --color-border-strong: #334155;
+  --color-outline: #65758c;
 }
 
 /* T-2801: demo mode's distinct accent colour.

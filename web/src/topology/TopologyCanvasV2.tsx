@@ -23,9 +23,11 @@
 //    gets a focusable, labeled DOM proxy kept in sync with the canvas
 //    (buildA11yProxies + TopologyA11yLayer). Canvas v2 is never a pixel blob
 //    with no DOM a11y surface. This is the seam T-905/T-903 build on.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useThemeStore, type Theme } from "../store/theme";
 import { useReducedMotion } from "../lib/useReducedMotion";
+import { resolveSceneTheme, documentTokenReader } from "./canvasPalette";
+import { useIsDemo } from "../demo/useDemoMode";
 import type { FlowElements } from "./toFlowElements";
 import type { XYPosition } from "./layout";
 import {
@@ -183,51 +185,29 @@ interface PointerGesture {
   moved: boolean;
 }
 
-// T-4204: the canvas v2 renderer's own literal copy of index.css's semantic
-// status scale — `-soft`/bare pairing for the "finding:" badge chip, per
-// theme (see canvasDraw.ts's findingSeverityFill/findingSeverityText doc
-// comment for why a <canvas> needs these as literal hex rather than
-// `text-status-*`/`dark:` Tailwind classes). Kept in sync by hand with
-// index.css's `--color-status-critical/-degraded/-info` (bare) and
-// `-soft` values, same as this file already hand-syncs mgmtBadgeBg/Text.
-function themeColors(theme: Theme): SceneTheme {
-  return theme === "dark"
-    ? {
-        background: "#0f172a",
-        nodeFill: "#1e293b",
-        nodeText: "#e2e8f0",
-        kindText: "#64748b",
-        nodeBorderOk: "#475569",
-        badgeBg: "#334155",
-        badgeText: "#cbd5e1",
-        mgmtBadgeBg: "#78350f",
-        mgmtBadgeText: "#fde68a",
-        edgeDefault: "#475569",
-        findingErrorFill: "#3a2837",
-        findingErrorText: "#ffa098",
-        findingWarningFill: "#2f3023",
-        findingWarningText: "#dcbc33",
-        findingInfoFill: "#16334b",
-        findingInfoText: "#57cef7",
-      }
-    : {
-        background: "#f8fafc",
-        nodeFill: "#ffffff",
-        nodeText: "#1e293b",
-        kindText: "#94a3b8",
-        nodeBorderOk: "#cbd5e1",
-        badgeBg: "#e2e8f0",
-        badgeText: "#475569",
-        mgmtBadgeBg: "#fde68a",
-        mgmtBadgeText: "#92400e",
-        edgeDefault: "#94a3b8",
-        findingErrorFill: "#f7e7e7",
-        findingErrorText: "#b12c2e",
-        findingWarningFill: "#f0ede1",
-        findingWarningText: "#776300",
-        findingInfoFill: "#e0eff2",
-        findingInfoText: "#036f8c",
-      };
+// T-4301: this was a 16-field `dark ? {...} : {...}` literal, six of whose
+// values carried a comment saying they were "kept in sync by hand" with
+// index.css. Three of those twelve values still matched. See canvasPalette.ts
+// for the measurement and for which roles moved.
+//
+// Resolution happens in a memo keyed on the theme, NOT inside the draw
+// callbacks. The old literal was cheap enough to rebuild three times a frame;
+// reading custom properties is not, and T-4107's 50-node envelope is the
+// budget it must not spend.
+function useSceneTheme(effectiveTheme: Theme, containerRef: RefObject<HTMLDivElement | null>): SceneTheme {
+  // `demoMode` participates because `html.demo` re-points the accent ramp,
+  // and reading off documentElement is what makes html.demo.dark resolve
+  // without this file knowing that combination exists.
+  const demoMode = useIsDemo();
+  return useMemo(() => {
+    const root = containerRef.current?.ownerDocument.documentElement ?? document.documentElement;
+    return resolveSceneTheme(documentTokenReader(root), effectiveTheme === "dark");
+    // `demoMode` is in the list for its VALUE alone, never read in the body:
+    // `html.demo` re-points the accent ramp on <html>, and getComputedStyle
+    // has no way to tell us a class changed. The rule cannot see that, and it
+    // is right that it cannot — an unreferenced dependency is normally a bug.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
+  }, [effectiveTheme, demoMode, containerRef]);
 }
 
 export function TopologyCanvasV2({
@@ -258,6 +238,7 @@ export function TopologyCanvasV2({
   const reducedMotion = useReducedMotion();
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const sceneTheme = useSceneTheme(effectiveTheme, containerRef);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [viewport, setViewport] = useState<Viewport>(() => initialViewport ?? { x: 48, y: 48, zoom: 1 });
@@ -498,7 +479,7 @@ export function TopologyCanvasV2({
       edges: lodElements.edges,
       viewport,
       view: size,
-      theme: themeColors(effectiveTheme),
+      theme: sceneTheme,
       dragTopLeft,
       nodeSize: DEFAULT_NODE_SIZE,
       // Static (1, the plain look) unless motion is allowed AND something
@@ -545,7 +526,7 @@ export function TopologyCanvasV2({
         badges: mtuBadges,
         viewport,
         nodeSize: DEFAULT_NODE_SIZE,
-        theme: themeColors(effectiveTheme),
+        theme: sceneTheme,
         dragTopLeft,
       });
     }
@@ -592,7 +573,7 @@ export function TopologyCanvasV2({
         roles: blastRadiusFocus.roles,
         viewport,
         view: size,
-        theme: themeColors(effectiveTheme),
+        theme: sceneTheme,
         nodeSize: DEFAULT_NODE_SIZE,
         dragTopLeft,
       });
@@ -602,7 +583,7 @@ export function TopologyCanvasV2({
     lodElements.edges,
     viewport,
     size,
-    effectiveTheme,
+    sceneTheme,
     dragTopLeft,
     pulsePhase,
     reducedMotion,
