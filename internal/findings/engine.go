@@ -148,11 +148,18 @@ type Config struct {
 	// gitsync_* checks (source "gitsync"). Nil — which is every deployment
 	// that has not configured [gitsync] — skips them entirely, the same
 	// degradation every other optional Config field uses.
-	GitSync  GitSyncProvider
-	Notifier Notifier
-	Graph    *inventory.Graph
-	Logger   *slog.Logger
-	OnChange func(count int)
+	GitSync GitSyncProvider
+	// NeighborFlap is T-3905's persisted binding-flap seam (cmd/vnproxd's
+	// neighborFlapAdapter over internal/neighbor.HistoryRecorder.Flaps),
+	// backing neighbor_binding_flap (source "health"). Nil skips that
+	// check entirely, same degradation as every other optional Config
+	// field. See health_neighborflap.go's doc comment for how this relates
+	// to arp_spoof_suspected.
+	NeighborFlap NeighborFlapProvider
+	Notifier     Notifier
+	Graph        *inventory.Graph
+	Logger       *slog.Logger
+	OnChange     func(count int)
 	// OnCycle (T-2603) receives the WHOLE stream at the end of every cycle,
 	// changed or not — unlike OnChange, which fires only on a transition and
 	// carries just a count. It is the seam the change engine's
@@ -216,6 +223,7 @@ type Engine struct {
 	storeCapacitySvc StoreCapacityProvider
 	storeCapacityDB  *debouncer
 	gitSyncSvc       GitSyncProvider
+	neighborFlapSvc  NeighborFlapProvider
 	bondDB           *debouncer
 	wgStaleDB        *debouncer
 	arpChurnDB       *arpChurnTracker
@@ -329,6 +337,7 @@ func New(cfg Config) *Engine {
 		storeCapacitySvc: cfg.StoreCapacity,
 		storeCapacityDB:  newDebouncer(),
 		gitSyncSvc:       cfg.GitSync,
+		neighborFlapSvc:  cfg.NeighborFlap,
 	}
 }
 
@@ -364,6 +373,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, storeCapacityFindings(e.storeCapacitySvc, e.thresholds.StoreCapacityWarnBytes, e.storeCapacityDB)...)
 	out = append(out, checkCertificates(e.certSvc)...)
 	out = append(out, gitSyncFindings(e.gitSyncSvc)...)
+	out = append(out, neighborFlapFindings(e.neighborFlapSvc)...)
 	out = append(out, e.healthFindings()...)
 	out = append(out, e.rogueFindings()...)
 	sortFindings(out)

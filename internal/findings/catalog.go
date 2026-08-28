@@ -80,6 +80,7 @@ var allCheckNames = []string{
 	CheckLACPPartnerMismatch,
 	CheckMgmtSinglePath,
 	"mtu_consistency", // internal/drift
+	CheckNeighborBindingFlap,
 	CheckNewPort,
 	CheckNewSubnet,
 	CheckOrphanVnet,
