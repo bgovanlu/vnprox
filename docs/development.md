@@ -392,6 +392,36 @@ node) that stopped being true on 2026-08-18 and wasn't checked for five days.
 - No global state except the wired-in-main dependency graph. Interfaces defined where consumed.
 - Concurrency: collectors and timers use a supervised run-group; every goroutine has an owner and a shutdown path. Rollback timers must survive daemon restart (persisted deadline in `changesets.confirm_deadline`, re-armed on startup — test this).
 
+### Two lint rules that cost this project real time, and how to satisfy them
+
+**Never run `fieldalignment -fix`.** It rewrites struct declarations without
+preserving the comments attached to their fields, and it does not understand
+`//nolint:govet` annotations — it silently drops both. This has damaged the tree
+three separate times (2026-08-28: sixteen substantive field doc comments in
+`internal/change`, and two separate collateral runs across `internal/api` files
+the running agent did not own). Every occurrence was recoverable only because a
+backup was taken first and comment loss was measured numerically
+(`git diff -- <paths> | grep -cE '^-\s*//'` before and after). **Reorder fields
+by hand.** The rule govet applies: it counts bytes up to the *final pointer*, so
+order densest-pointer-first — `error`/interfaces (two pointer words), then bare
+pointers, maps and funcs (one word), then strings (16 bytes), then slices (24),
+then structs with pointer-free tails, then ints and bools. A `string`-based named
+type still counts as a string. Where the resulting order is non-obvious, leave a
+one-line comment saying why, so the next reader does not "tidy" it back.
+
+**govet's `shadow` flags idiomatic Go.** `if err := f(); err != nil { ... }` is
+correct, conventional, and reported whenever an outer `err` exists in the same
+function. Do **not** rewrite the inner blocks — rename the *outer* variable to
+something specific (`setupErr`, `listErr`, `signErr`, `declErr`). One rename
+usually clears several reports at once, and it keeps the common form in the
+common position.
+
+**A file-level comment directly above `package` is read by revive as the package
+doc**, and fails `package-comments` unless it starts "Package <name> …". Since
+every source file now opens with the `SPDX-License-Identifier` header (T-3801),
+a new file whose second block is a file comment lands in exactly this shape.
+Leave a blank line between that comment and the `package` clause.
+
 ## TypeScript standards
 
 - `strict: true`, `noUncheckedIndexedAccess: true`; no `any`, no non-null assertions without a comment.

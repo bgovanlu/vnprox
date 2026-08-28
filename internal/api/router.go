@@ -205,7 +205,11 @@ type Options struct {
 	TenantStore    TenantAdminStore
 	DocExport      DocExportService
 	Capacity       CapacityService
-	Posture        PostureService
+	// WhatIf (T-4103) backs POST /capacity/what-if: the "add N guests of
+	// profile X" combined verdict over capacity/IPAM/failure-impact. Nil
+	// leaves the route unmounted, the standard degraded-mode convention.
+	WhatIf  WhatIfService
+	Posture PostureService
 	// Compliance (T-2706) backs the read-only compliance profile/report surface
 	Compliance ComplianceService
 	Plugins    PluginService
@@ -459,6 +463,7 @@ func NewRouter(opts Options) http.Handler {
 		mountTenantRoutes(r, opts.TenantStore, opts.Tenant, opts.Changesets, opts.TenantNotifier, opts.Auth)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountCapacityRoutes(r, opts.Capacity, opts.Auth)
+		mountWhatIfRoutes(r, opts.WhatIf, opts.Auth)
 		mountPostureRoutes(r, opts.Posture, opts.Auth)
 		mountComplianceRoutes(r, opts.Compliance, opts.Auth)
 		mountPluginRoutes(r, opts.Plugins, opts.Auth)
