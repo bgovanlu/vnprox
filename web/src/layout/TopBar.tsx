@@ -86,8 +86,9 @@ export function TopBar({ onOpenHelp, onOpenPageHelp }: TopBarProps) {
         // byte-for-byte — only the shape (rounded-md -> rounded-full) and
         // the glyph (a plain-text "⌕" -> a lucide Search icon) changed, so
         // this reasoning still applies unmodified. T-4203: the header's
-        // background moved from dark:bg-slate-950 to dark:bg-surface-raised
-        // (#182133, lighter) — re-measured, dark:text-slate-400 against it
+        // dark-mode background moved from `dark:bg-slate-950` to the
+        // unprefixed `bg-surface-raised`, whose dark value is #182133 and
+        // so is lighter — re-measured, dark:text-slate-400 against it
         // is still 6.28:1, comfortably above the 4.5:1 floor this comment
         // is about.
         className="flex h-9 w-full max-w-sm items-center gap-2 rounded-full border border-slate-300 px-3.5 text-left text-sm text-slate-500 hover:border-slate-400 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600"

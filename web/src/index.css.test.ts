@@ -52,8 +52,8 @@ function blockBody(selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const rule = new RegExp(`^${escaped}\\s*\\{`, "m");
   const found = rule.exec(css);
-  expect(found, `${selector} rule not found in index.css`).not.toBeNull();
-  const open = css.indexOf("{", (found as RegExpExecArray).index);
+  if (found === null) throw new Error(`${selector} rule not found in index.css`);
+  const open = css.indexOf("{", found.index);
   const close = css.indexOf("}", open);
   expect(close, `${selector} block is not closed`).toBeGreaterThan(open);
   return css.slice(open + 1, close);
@@ -75,6 +75,18 @@ function tokensIn(block: string, prefix: string): Map<string, string> {
 }
 
 const HEX = /^#[0-9a-f]{6}$/;
+
+/** Reads a token that is required to exist.
+ *
+ * Returns a plain `string`, so no call site needs a non-null assertion —
+ * and, more usefully, a missing token fails HERE, naming itself, instead
+ * of surfacing later as an "expected undefined to be a hex colour" that
+ * says nothing about which of the thirty-odd tokens went missing. */
+function token(tokens: Map<string, string>, name: string): string {
+  const value = tokens.get(name);
+  if (value === undefined) throw new Error(`token --...-${name} is not defined`);
+  return value;
+}
 
 /** WCAG 2.x relative luminance from an `#rrggbb` string. */
 function luminance(hex: string): number {
@@ -173,11 +185,7 @@ describe("accent tokens (T-3401, T-4201)", () => {
     // real cluster at a glance. Now that both blocks are literal, this can
     // assert the actual colours rather than merely that two Tailwind scale
     // names differ (which said nothing about how they looked).
-    const b = base.get("600");
-    const d = demoAccent.get("600");
-    expect(b).toBeDefined();
-    expect(d).toBeDefined();
-    const separation = Math.abs(hue(b as string) - hue(d as string));
+    const separation = Math.abs(hue(token(base, "600")) - hue(token(demoAccent, "600")));
     expect(Math.min(separation, 360 - separation)).toBeGreaterThan(90);
   });
 
@@ -185,11 +193,7 @@ describe("accent tokens (T-3401, T-4201)", () => {
     // These are the pairings that decide whether a component call site has
     // to move. index.css's T-4201 comment records each number; this
     // recomputes it, so the comment cannot drift from the tokens.
-    const a = (step: string): string => {
-      const v = base.get(step);
-      expect(v, `accent-${step} missing`).toBeDefined();
-      return v as string;
-    };
+    const a = (step: string): string => token(base, step);
     // Button's primary variant: bg-accent-600 text-white, ~10 solid controls.
     expect(contrast(WHITE, a("600"))).toBeGreaterThanOrEqual(AA);
     // The selected-row/tab pattern: text-accent-700 on bg-accent-600/10.
@@ -205,7 +209,7 @@ describe("accent tokens (T-3401, T-4201)", () => {
     // T-3406 found that the base accent passing says nothing about demo
     // mode — amber failed at its own step numbers where indigo passed,
     // which is why the 600/700 steps are remapped. Asserted, not assumed.
-    const d = (step: string): string => demoAccent.get(step) as string;
+    const d = (step: string): string => token(demoAccent, step);
     expect(contrast(WHITE, d("600"))).toBeGreaterThanOrEqual(AA);
     expect(contrast(d("700"), WHITE)).toBeGreaterThanOrEqual(AA);
     expect(contrast(d("700"), over(d("600"), WHITE, 0.1))).toBeGreaterThanOrEqual(AA);
@@ -247,22 +251,22 @@ describe("semantic status scale (T-4204)", () => {
 
   it("clears AA for every state, in both themes, on all three roles", () => {
     for (const state of STATUS_STATES) {
-      const lf = light.get(state) as string;
-      const ls = light.get(`${state}-solid`) as string;
-      const lw = light.get(`${state}-soft`) as string;
+      const lf = token(light, state);
+      const ls = token(light, `${state}-solid`);
+      const lw = token(light, `${state}-soft`);
       expect(contrast(lf, WHITE), `light ${state} fg on white`).toBeGreaterThanOrEqual(AA);
       expect(contrast(lf, lw), `light ${state} fg on its soft wash`).toBeGreaterThanOrEqual(AA);
       expect(contrast(WHITE, ls), `light ${state} white on solid`).toBeGreaterThanOrEqual(AA);
 
-      const df = night.get(state) as string;
-      const dw = night.get(`${state}-soft`) as string;
-      const ds = night.get(`${state}-solid`) as string;
+      const df = token(night, state);
+      const dw = token(night, `${state}-soft`);
+      const ds = token(night, `${state}-solid`);
       expect(contrast(df, SLATE_900), `dark ${state} fg on slate-900`).toBeGreaterThanOrEqual(AA);
       expect(contrast(df, dw), `dark ${state} fg on its soft wash`).toBeGreaterThanOrEqual(AA);
       expect(contrast(SLATE_900, ds), `dark ${state} surface on solid`).toBeGreaterThanOrEqual(AA);
     }
-    expect(contrast(light.get("stale") as string, WHITE)).toBeGreaterThanOrEqual(AA);
-    expect(contrast(night.get("stale") as string, SLATE_900)).toBeGreaterThanOrEqual(AA);
+    expect(contrast(token(light, "stale"), WHITE)).toBeGreaterThanOrEqual(AA);
+    expect(contrast(token(night, "stale"), SLATE_900)).toBeGreaterThanOrEqual(AA);
   });
 
   it("keeps the health states mutually distinguishable by hue, in both themes", () => {
@@ -281,13 +285,14 @@ describe("semantic status scale (T-4204)", () => {
       ["dark", night, "300"],
     ] as const) {
       const hues = new Map<string, number>();
-      for (const state of ["ok", "degraded", "critical"]) hues.set(state, hue(tokens.get(state) as string));
-      hues.set("accent", hue(accent.get(accentStep) as string));
+      for (const state of ["ok", "degraded", "critical"]) hues.set(state, hue(token(tokens, state)));
+      hues.set("accent", hue(token(accent, accentStep)));
       const names = [...hues.keys()];
       for (let i = 0; i < names.length; i++) {
         for (let j = i + 1; j < names.length; j++) {
-          const [x, y] = [names[i] as string, names[j] as string];
-          const raw = Math.abs((hues.get(x) as number) - (hues.get(y) as number));
+          const x = names[i] ?? "";
+          const y = names[j] ?? "";
+          const raw = Math.abs((hues.get(x) ?? 0) - (hues.get(y) ?? 0));
           expect(Math.min(raw, 360 - raw), `${themeName}: ${x} vs ${y} hue separation`).toBeGreaterThan(40);
         }
       }
@@ -300,8 +305,8 @@ describe("semantic status scale (T-4204)", () => {
     // and if a later change pushed `info` off the brand hue the product
     // would carry two different "this is a neutral notice" colours with
     // nothing to say which is correct.
-    const accent600 = tokensIn(theme, "color-accent").get("600") as string;
-    const raw = Math.abs(hue(light.get("info") as string) - hue(accent600));
+    const accent600 = token(tokensIn(theme, "color-accent"), "600");
+    const raw = Math.abs(hue(token(light, "info")) - hue(accent600));
     expect(Math.min(raw, 360 - raw), "info vs accent hue").toBeLessThan(10);
   });
 });
@@ -323,18 +328,18 @@ describe("surface ladder (T-4203)", () => {
     // depth, so each level up must actually be a lighter surface. If two
     // levels ever collapse to the same luminance the ladder conveys
     // nothing, and a dialog stops reading as being above the page.
-    const ladder = SURFACE_LEVELS.map((l) => luminance(night.get(l) as string));
+    const ladder = SURFACE_LEVELS.map((l) => luminance(token(night, l)));
     for (let i = 1; i < ladder.length; i++) {
-      expect(ladder[i], `dark surface-${SURFACE_LEVELS[i]} vs ${SURFACE_LEVELS[i - 1]}`).toBeGreaterThan(
-        ladder[i - 1] as number,
-      );
+      const level = SURFACE_LEVELS[i] ?? "";
+      const below = SURFACE_LEVELS[i - 1] ?? "";
+      expect(ladder[i], `dark surface-${level} vs ${below}`).toBeGreaterThan(ladder[i - 1] ?? 0);
     }
   });
 
   it("keeps body text legible on every dark level", () => {
     // slate-200, the app's dark-mode body text.
     for (const level of SURFACE_LEVELS) {
-      expect(contrast("#e2e8f0", night.get(level) as string), `text on dark ${level}`).toBeGreaterThanOrEqual(7);
+      expect(contrast("#e2e8f0", token(night, level)), `text on dark ${level}`).toBeGreaterThanOrEqual(7);
     }
   });
 });
