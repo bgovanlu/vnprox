@@ -128,6 +128,7 @@ func TestRunApplyPlan_PendingChangesExitsPendingCode(t *testing.T) {
 	if len(decoded.NotInSpec) != 1 || decoded.NotInSpec[0] != "bridge:pve1:vmbr0" {
 		t.Errorf("decoded.NotInSpec = %+v, want [bridge:pve1:vmbr0]", decoded.NotInSpec)
 	}
+	assertDocumentedJSON(t, "apply --plan", stdout.Bytes())
 }
 
 func TestRunApplyApply_EndToEndSuccess(t *testing.T) {
@@ -178,6 +179,52 @@ func TestRunApplyApply_EndToEndSuccess(t *testing.T) {
 	if !strings.Contains(stdout.String(), "committed") {
 		t.Errorf("stdout = %q, want the final committed status", stdout.String())
 	}
+}
+
+// TestRunApplyApply_OJSON pins the -o json shape against docs/cli-json.md
+// (`{"changeset": ..., "timedOut": false}`).
+func TestRunApplyApply_OJSON(t *testing.T) {
+	confirmed := false
+	srv := newFakeVnproxd(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/spec/import":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"cs1","title":"Spec import","author":"a","status":"validated","ops":[{"kind":"bridge.create"}],"findings":[],"createdAt":1,"updatedAt":1,"touchesMgmtPath":false,"notInSpec":[]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/changesets/cs1/apply":
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"id":"cs1","title":"t","author":"a","status":"applying","ops":[],"findings":[],"createdAt":1,"updatedAt":1,"touchesMgmtPath":false}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/changesets/cs1":
+			status := "awaiting_confirm"
+			if confirmed {
+				status = "committed"
+			}
+			_, _ = w.Write([]byte(`{"id":"cs1","title":"t","author":"a","status":"` + status + `","ops":[],"findings":[],"createdAt":1,"updatedAt":1,"touchesMgmtPath":false}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/changesets/cs1/confirm":
+			confirmed = true
+			_, _ = w.Write([]byte(`{"id":"cs1","title":"t","author":"a","status":"committed","ops":[],"findings":[],"createdAt":1,"updatedAt":1,"touchesMgmtPath":false}`))
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	})
+
+	specPath := writeSpecFile(t, "specVersion: 1\n")
+	var stdout, stderr bytes.Buffer
+	code := runApplyWithClock([]string{"--url", srv.URL, "--token", "tok", "--apply", "-o", "json", specPath}, &stdout, &stderr, fakeApplyClock())
+	if code != ExitSuccess {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+	}
+	var decoded struct {
+		Changeset changesetWire `json:"changeset"`
+		TimedOut  bool          `json:"timedOut"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
+		t.Fatalf("stdout not valid JSON: %v (%s)", err, stdout.String())
+	}
+	if decoded.TimedOut || decoded.Changeset.Status != "committed" {
+		t.Errorf("decoded = %+v, want timedOut=false, status=committed", decoded)
+	}
+	assertDocumentedJSON(t, "apply --apply", stdout.Bytes())
 }
 
 func TestRunApplyApply_StuckPastTimeoutExitsApplyTimeout(t *testing.T) {

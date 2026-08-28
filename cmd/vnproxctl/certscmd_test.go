@@ -176,6 +176,21 @@ func TestCertsCommandJSONIsWellFormed(t *testing.T) {
 	if len(got.Inventory.Certificates) < 2 {
 		t.Errorf("expected the CA and at least one leaf, got %d", len(got.Inventory.Certificates))
 	}
+	assertDocumentedJSON(t, "certs", stdout.Bytes())
+}
+
+// TestCertsCommand_OJSONFlagAlsoWorks pins T-4011's `-o json` retrofit
+// alongside the pre-existing `--json` (docs/api.md: either selects JSON).
+func TestCertsCommand_OJSONFlagAlsoWorks(t *testing.T) {
+	root := writeCertFixture(t, time.Now().Add(365*24*time.Hour), []string{"pve1"})
+	var stdout, stderr bytes.Buffer
+	if code := runCerts([]string{"--root", root, "-o", "json"}, &stdout, &stderr); code != ExitSuccess {
+		t.Fatalf("exit = %d (stderr: %s)", code, stderr.String())
+	}
+	if !json.Valid(stdout.Bytes()) {
+		t.Fatalf("`-o json` output is not valid JSON:\n%s", stdout.String())
+	}
+	assertDocumentedJSON(t, "certs", stdout.Bytes())
 }
 
 func TestCertsCommandRejectsBadFlags(t *testing.T) {

@@ -102,6 +102,7 @@ func TestRunPluginScaffold_JSONOutput(t *testing.T) {
 	if got["manifestId"] != "com.example.jsontest" {
 		t.Errorf("json manifestId = %v, want com.example.jsontest", got["manifestId"])
 	}
+	assertDocumentedJSON(t, "plugin scaffold", stdout.Bytes())
 }
 
 func TestSanitizePluginToken(t *testing.T) {

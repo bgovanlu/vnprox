@@ -86,6 +86,20 @@ func runPolicy(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
+// policyLintRuleWire is one rule in `policy lint -o json`'s payload — the
+// same three fields the table output already renders, just structured.
+type policyLintRuleWire struct {
+	ID          string `json:"id"`
+	Severity    string `json:"severity"`
+	Description string `json:"description"`
+}
+
+// policyLintResultWire is `policy lint -o json`'s payload.
+type policyLintResultWire struct {
+	Path  string               `json:"path"`
+	Rules []policyLintRuleWire `json:"rules"`
+}
+
 // runPolicyLint parses and validates a policy file locally. It is the
 // fastest possible loop for the "did I write this rule correctly" question,
 // and it fails with exactly the message the daemon would refuse to start
@@ -94,7 +108,13 @@ func runPolicyLint(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("vnproxctl policy lint", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	policyPath := fs.String("policy", "", "path to the policy YAML document to validate")
+	output := fs.String("o", defaultOutputFormat, outputFlagUsage)
 	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	jsonOut, ofErr := parseOutputFormat(*output)
+	if ofErr != nil {
+		_, _ = fmt.Fprintf(stderr, "vnproxctl policy lint: %v\n", ofErr)
 		return ExitUsage
 	}
 	if *policyPath == "" {
@@ -105,6 +125,18 @@ func runPolicyLint(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "vnproxctl policy lint: %v\n", err)
 		return ExitUsage
+	}
+
+	if jsonOut {
+		out := policyLintResultWire{Path: *policyPath, Rules: make([]policyLintRuleWire, 0, len(set.Rules))}
+		for _, r := range set.Rules {
+			out.Rules = append(out.Rules, policyLintRuleWire{ID: r.ID, Severity: string(r.Severity), Description: r.Description})
+		}
+		if err := writeJSONOut(stdout, out); err != nil {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl policy lint: %v\n", err)
+			return ExitError
+		}
+		return ExitSuccess
 	}
 	_, _ = fmt.Fprintf(stdout, "ok: %s — %d rule(s)\n", *policyPath, len(set.Rules))
 	for _, r := range set.Rules {

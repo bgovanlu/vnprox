@@ -55,6 +55,7 @@ func TestDoctorJSONIsWellFormed(t *testing.T) {
 			t.Errorf("check %q is %s in JSON with no remediation", res.Check, res.Status)
 		}
 	}
+	assertDocumentedJSON(t, "doctor", stdout.Bytes())
 }
 
 // TestDoctorRejectsBadOutputFormat keeps the usage contract shared with every

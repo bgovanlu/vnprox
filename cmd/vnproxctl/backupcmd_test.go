@@ -237,6 +237,7 @@ func TestBackupCommand_JSONOutput(t *testing.T) {
 	if got.IncludesKeyMaterial || len(got.SecretClasses) != 0 {
 		t.Errorf("a default backup reports key material in JSON: %+v", got)
 	}
+	assertDocumentedJSON(t, "backup", stdout.Bytes())
 
 	stdout.Reset()
 	if code := run([]string{"restore", "--config", configPath, "--dry-run", "-o", "json", got.Path}, &stdout, &stderr); code != ExitSuccess {
@@ -252,6 +253,7 @@ func TestBackupCommand_JSONOutput(t *testing.T) {
 	if len(plan.Notes) == 0 {
 		t.Error("the JSON plan carries no notes")
 	}
+	assertDocumentedJSON(t, "restore", stdout.Bytes())
 }
 
 // TestBackupRestoreCommands_UsageErrors pins the ExitUsage boundary, so a

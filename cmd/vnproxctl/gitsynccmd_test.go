@@ -84,6 +84,7 @@ func TestRunGitSyncStatus_TableAndJSON(t *testing.T) {
 	if decoded.LastFetchedSHA != want.LastFetchedSHA || decoded.OpenChangesetID != want.OpenChangesetID {
 		t.Errorf("decoded = %+v, want the daemon's status verbatim", decoded)
 	}
+	assertDocumentedJSON(t, "gitsync status", stdout.Bytes())
 }
 
 // TestRunGitSyncStatus_DisabledSaysSo: an operator who has not configured

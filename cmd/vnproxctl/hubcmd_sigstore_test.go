@@ -110,6 +110,7 @@ func TestHubCLI_VerifySigstoreKeyBundle(t *testing.T) {
 		if len(resp.IndexSigners) != 1 || resp.IndexSigners[0].Fingerprint != strings.Repeat("ab", 32) {
 			t.Fatalf("indexSigners = %+v, want the one attested fingerprint", resp.IndexSigners)
 		}
+		assertDocumentedJSON(t, "hub verify (sigstore)", []byte(out))
 	})
 
 	t.Run("wrong identity refused", func(t *testing.T) {

@@ -4,6 +4,8 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +47,15 @@ rules:
 	if !strings.Contains(stdout.String(), "no-vmbr9") {
 		t.Errorf("stdout = %q, want it to list the rule", stdout.String())
 	}
+
+	stdout.Reset()
+	if code := runPolicyLint([]string{"--policy=" + path, "-o", "json"}, &stdout, &stderr); code != ExitSuccess {
+		t.Fatalf("-o json exit = %d, want success; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "no-vmbr9") {
+		t.Errorf("-o json stdout = %q, want it to list the rule", stdout.String())
+	}
+	assertDocumentedJSON(t, "policy lint", stdout.Bytes())
 }
 
 // TestRunPolicyLint_MalformedNamesFileRuleAndField is acceptance criterion 5
@@ -113,6 +124,32 @@ func TestRunPolicyTest_MalformedPolicyFailsBeforeAnyDaemonCall(t *testing.T) {
 	if !strings.Contains(stderr.String(), path) {
 		t.Errorf("stderr = %q, want it to name the policy file", stderr.String())
 	}
+}
+
+// TestRunPolicyTest_OJSON drives `policy test` end to end against a fake
+// daemon and pins the -o json shape against docs/cli-json.md.
+func TestRunPolicyTest_OJSON(t *testing.T) {
+	srv := newFakeVnproxd(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/policies/test" {
+			t.Errorf("method/path = %s %s, want POST /policies/test", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"findings": []map[string]any{
+				{"severity": "error", "code": "policy.violation", "message": "vmbr9 is managed out of band", "ref": "bridge:pve1:vmbr9"},
+			},
+			"rules": []map[string]any{
+				{"ruleId": "no-vmbr9", "description": "vmbr9 is managed out of band", "severity": "deny", "tags": []string{"mgmt"}, "matchedOps": []int{0}, "violatingOps": []int{0}},
+			},
+		})
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"policy", "test", "--changeset", "cs1", "--url", srv.URL, "--token", "tok", "-o", "json"}, &stdout, &stderr)
+	if code != ExitPending {
+		t.Fatalf("exit code = %d, want ExitPending (a deny finding)", code)
+	}
+	assertDocumentedJSON(t, "policy test", stdout.Bytes())
 }
 
 func TestPolicyTestExitCode(t *testing.T) {

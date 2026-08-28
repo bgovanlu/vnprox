@@ -143,6 +143,20 @@ func TestSnapshotsRestore_DaemonDown(t *testing.T) {
 	assertCLIAudit(t, configPath, "snapshot.restore.cli", "success")
 }
 
+// TestSnapshotsRestore_OJSON pins the -o json shape against docs/cli-json.md.
+func TestSnapshotsRestore_OJSON(t *testing.T) {
+	configPath, ifacesPath, snapshotID, _ := seedDisasterFixture(t, "committed")
+	reloads := 0
+	env := testEnv(ifacesPath, &reloads)
+
+	var stdout, stderr bytes.Buffer
+	code := runSnapshotsEnv(env, []string{"restore", "--config", configPath, "-o", "json", snapshotID}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+	}
+	assertDocumentedJSON(t, "snapshots restore", stdout.Bytes())
+}
+
 func TestSnapshotsRestore_RefusesNonRoot(t *testing.T) {
 	configPath, ifacesPath, snapshotID, _ := seedDisasterFixture(t, "committed")
 	reloads := 0

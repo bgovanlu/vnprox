@@ -184,12 +184,24 @@ func runTelemetryStatus(args []string, stdout, stderr io.Writer) int {
 
 // --- send ------------------------------------------------------------------
 
+// telemetrySendResult is `telemetry send -o json`'s payload.
+type telemetrySendResult struct {
+	Endpoint  string `json:"endpoint"`
+	BytesSent int    `json:"bytesSent"`
+}
+
 func runTelemetrySend(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("vnproxctl telemetry send", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", defaultConfigPath, "path to vnprox.toml")
 	reportPath := fs.String("report", "", "a report written by `vnproxctl verify --out` or `verify -o json`")
+	output := fs.String("o", defaultOutputFormat, outputFlagUsage)
 	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	asJSON, ofErr := parseOutputFormat(*output)
+	if ofErr != nil {
+		_, _ = fmt.Fprintf(stderr, "vnproxctl telemetry send: %v\n", ofErr)
 		return ExitUsage
 	}
 	if *reportPath == "" {
@@ -233,6 +245,14 @@ func runTelemetrySend(args []string, stdout, stderr io.Writer) int {
 		}
 		return ExitError
 	}
+	if asJSON {
+		result := telemetrySendResult{BytesSent: len(snap.Bytes()), Endpoint: cfg.Endpoint}
+		if err := writeJSONOut(stdout, result); err != nil {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl telemetry send: %v\n", err)
+			return ExitError
+		}
+		return ExitSuccess
+	}
 	_, _ = fmt.Fprintf(stdout, "sent %d bytes to %s\n", len(snap.Bytes()), cfg.Endpoint)
 	return ExitSuccess
 }
@@ -252,11 +272,23 @@ func isTelemetryNetworkError(err error) bool {
 
 // --- reset-id --------------------------------------------------------------
 
+// telemetryResetResult is `telemetry reset-id -o json`'s payload. The
+// previous id is deliberately absent — see runTelemetryResetID's comment.
+type telemetryResetResult struct {
+	InstallID string `json:"installId"`
+}
+
 func runTelemetryResetID(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("vnproxctl telemetry reset-id", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", defaultConfigPath, "path to vnprox.toml (for storage.db_path)")
+	output := fs.String("o", defaultOutputFormat, outputFlagUsage)
 	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	asJSON, ofErr := parseOutputFormat(*output)
+	if ofErr != nil {
+		_, _ = fmt.Fprintf(stderr, "vnproxctl telemetry reset-id: %v\n", ofErr)
 		return ExitUsage
 	}
 
@@ -275,6 +307,13 @@ func runTelemetryResetID(args []string, stdout, stderr io.Writer) int {
 	}
 	// The previous id is deliberately not printed, logged or audited: an
 	// operator resetting their correlator is asking for it to be gone.
+	if asJSON {
+		if err := writeJSONOut(stdout, telemetryResetResult{InstallID: id}); err != nil {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl telemetry reset-id: %v\n", err)
+			return ExitError
+		}
+		return ExitSuccess
+	}
 	_, _ = fmt.Fprintf(stdout, "install-id is now %s\nThe previous id was deleted and recorded nowhere.\n", id)
 	return ExitSuccess
 }

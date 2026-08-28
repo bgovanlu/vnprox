@@ -27,6 +27,7 @@ func TestSnapshotsList_JSONOutput(t *testing.T) {
 	if len(out) != 1 || out[0]["id"] != snapshotID || out[0]["changesetId"] != changesetID {
 		t.Errorf("decoded = %+v, want one snapshot %s/%s", out, snapshotID, changesetID)
 	}
+	assertDocumentedJSON(t, "snapshots list", stdout.Bytes())
 }
 
 // TestRollbackNow_JSONOutput pins `vnproxctl rollback-now -o json`.
@@ -48,4 +49,5 @@ func TestRollbackNow_JSONOutput(t *testing.T) {
 	if out["changesetId"] != changesetID || out["status"] != "rolled_back" {
 		t.Errorf("decoded = %+v, want changesetId %s status rolled_back", out, changesetID)
 	}
+	assertDocumentedJSON(t, "rollback-now", stdout.Bytes())
 }

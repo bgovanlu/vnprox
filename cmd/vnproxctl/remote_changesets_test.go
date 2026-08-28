@@ -37,6 +37,7 @@ func TestRunRemoteChangesetsList_JSONMatchesAPIShape(t *testing.T) {
 	if len(out) != 1 || out[0].ID != "cs1" || out[0].Status != "draft" {
 		t.Errorf("decoded = %+v, want one draft changeset cs1", out)
 	}
+	assertDocumentedJSON(t, "remote changesets list", stdout.Bytes())
 }
 
 func TestRunRemoteChangesetsGet_NotFound(t *testing.T) {
@@ -75,6 +76,13 @@ func TestRunRemoteChangesetsDiff_RendersOpsAndFiles(t *testing.T) {
 	if !strings.Contains(stdout.String(), "--- a") {
 		t.Errorf("stdout = %q, want the unified file diff", stdout.String())
 	}
+
+	stdout.Reset()
+	code = run([]string{"remote", "changesets", "diff", "--url", srv.URL, "--token", "tok", "-o", "json", "cs1"}, &stdout, &stderr)
+	if code != ExitSuccess {
+		t.Fatalf("-o json exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+	}
+	assertDocumentedJSON(t, "remote changesets diff", stdout.Bytes())
 }
 
 func TestRunRemoteChangesetsCreate_FromFile(t *testing.T) {
@@ -101,7 +109,7 @@ func TestRunRemoteChangesetsCreate_FromFile(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"remote", "changesets", "create", "--url", srv.URL, "--token", "tok", "-f", specFile}, &stdout, &stderr)
+	code := run([]string{"remote", "changesets", "create", "--url", srv.URL, "--token", "tok", "-f", specFile, "-o", "json"}, &stdout, &stderr)
 	if code != ExitSuccess {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, stderr.String())
 	}
@@ -111,6 +119,7 @@ func TestRunRemoteChangesetsCreate_FromFile(t *testing.T) {
 	if !strings.Contains(stdout.String(), "cs2") {
 		t.Errorf("stdout = %q, want the created changeset id", stdout.String())
 	}
+	assertDocumentedJSON(t, "changeset", stdout.Bytes())
 }
 
 func TestRunRemoteChangesetsCreate_InvalidJSONIsUsageError(t *testing.T) {
@@ -147,7 +156,7 @@ func TestRunRemoteChangesetsApply_SendsConfirmTimeoutAndMgmtAck(t *testing.T) {
 		"remote", "changesets", "apply",
 		"--url", srv.URL, "--token", "tok",
 		"--confirm-timeout-sec", "180", "--mgmt-ack-node", "pve1",
-		"cs1",
+		"-o", "json", "cs1",
 	}, &stdout, &stderr)
 	if code != ExitSuccess {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, stderr.String())
@@ -158,6 +167,10 @@ func TestRunRemoteChangesetsApply_SendsConfirmTimeoutAndMgmtAck(t *testing.T) {
 	if gotBody.MgmtAck == nil || gotBody.MgmtAck.Node != "pve1" {
 		t.Errorf("MgmtAck = %+v, want node pve1", gotBody.MgmtAck)
 	}
+	// `apply`/`get`/`validate`/`confirm`/`rollback` all return the same
+	// changeset shape (docs/api.md), documented once in docs/cli-json.md
+	// under "changeset" rather than five times over.
+	assertDocumentedJSON(t, "changeset", stdout.Bytes())
 }
 
 func TestRunRemoteChangesetsDiscard_Success(t *testing.T) {
@@ -176,6 +189,12 @@ func TestRunRemoteChangesetsDiscard_Success(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Discarded changeset cs1") {
 		t.Errorf("stdout = %q, want a discard confirmation", stdout.String())
 	}
+
+	stdout.Reset()
+	if code := run([]string{"remote", "changesets", "discard", "--url", srv.URL, "--token", "tok", "-o", "json", "cs1"}, &stdout, &stderr); code != ExitSuccess {
+		t.Fatalf("-o json exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+	}
+	assertDocumentedJSON(t, "remote changesets discard", stdout.Bytes())
 }
 
 func TestRunRemoteChangesetsValidate_BlockingFindingsIsExitPending(t *testing.T) {

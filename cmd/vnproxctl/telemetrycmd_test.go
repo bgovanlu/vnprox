@@ -327,6 +327,7 @@ func installIDFromStatus(t *testing.T, configPath string) string {
 	if err := json.Unmarshal(stdout.Bytes(), &st); err != nil {
 		t.Fatalf("decoding status: %v\n%s", err, stdout.String())
 	}
+	assertDocumentedJSON(t, "telemetry status", stdout.Bytes())
 	return st.InstallID
 }
 
@@ -508,4 +509,53 @@ func TestTelemetryPreviewReadsASignedArtifact(t *testing.T) {
 	if !strings.Contains(stdout.String(), "drift.config_vs_live") {
 		t.Errorf("the preview does not carry the report's check id:\n%s", stdout.String())
 	}
+}
+
+// TestTelemetrySend_OJSON pins T-4011's `-o json` retrofit on `telemetry
+// send`, matching TestTelemetrySendContactsNothingWhenOff's own "control"
+// leg's transport wiring.
+func TestTelemetrySend_OJSON(t *testing.T) {
+	configPath, reportPath := telemetryEnv(t, enabledTelemetry)
+	tr := &cliSpyTransport{}
+	installTransport(t, tr)
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"telemetry", "send", "--config", configPath, "--report", reportPath, "-o", "json"}, &stdout, &stderr)
+	if code != ExitSuccess {
+		t.Fatalf("telemetry send -o json exited %d:\n%s", code, stderr.String())
+	}
+	var got telemetrySendResult
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("decoding -o json output: %v\n%s", err, stdout.String())
+	}
+	if got.Endpoint != "https://collector.example/vnprox" || got.BytesSent == 0 {
+		t.Errorf("decoded = %+v, want the configured endpoint and a non-zero byte count", got)
+	}
+	assertDocumentedJSON(t, "telemetry send", stdout.Bytes())
+}
+
+// TestTelemetryResetID_OJSON pins T-4011's `-o json` retrofit on `telemetry
+// reset-id`: the new id is reported, and (per this command's own long-
+// standing rule) the previous one appears nowhere in the output.
+func TestTelemetryResetID_OJSON(t *testing.T) {
+	configPath, reportPath := telemetryEnv(t, "")
+	before := installIDFromStatus(t, configPath) // "" — none generated yet
+	if before != "" {
+		t.Fatalf("install-id already exists before reset-id: %q", before)
+	}
+	_ = reportPath
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"telemetry", "reset-id", "--config", configPath, "-o", "json"}, &stdout, &stderr)
+	if code != ExitSuccess {
+		t.Fatalf("telemetry reset-id -o json exited %d:\n%s", code, stderr.String())
+	}
+	var got telemetryResetResult
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("decoding -o json output: %v\n%s", err, stdout.String())
+	}
+	if got.InstallID == "" {
+		t.Error("decoded installId is empty")
+	}
+	assertDocumentedJSON(t, "telemetry reset-id", stdout.Bytes())
 }

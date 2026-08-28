@@ -97,6 +97,7 @@ func TestVerifyRunsAgainstAMockWithTheFlagAndStampsTheReport(t *testing.T) {
 	if report.Summary.Passed != 0 {
 		t.Errorf("summary claims %d passed against a mock with no daemon", report.Summary.Passed)
 	}
+	assertDocumentedJSON(t, "verify", stdout.Bytes())
 	_ = stderr
 }
 
@@ -194,6 +195,7 @@ func TestVerifyListPrintsEveryCheckWithItsPrecondition(t *testing.T) {
 	if len(rows) != len(verify.Checks()) {
 		t.Errorf("--list -o json returned %d rows, want %d", len(rows), len(verify.Checks()))
 	}
+	assertDocumentedJSON(t, "verify --list", jsonOut.Bytes())
 	for _, r := range rows {
 		if r.MatrixRow <= 0 || r.Precondition == "" {
 			t.Errorf("--list -o json row %q is missing its matrix row or precondition", r.ID)

@@ -64,6 +64,7 @@ func keygen(t *testing.T, dir, name string) (string, string) {
 	if resp.Fingerprint == "" {
 		t.Fatal("keygen reported no fingerprint")
 	}
+	assertDocumentedJSON(t, "hub keygen", []byte(out))
 	// Refuses to clobber an existing identity.
 	if code, _, _ := hubRun(t, "hub", "keygen", "--key", path); code == ExitSuccess {
 		t.Fatal("keygen overwrote an existing key file")
@@ -91,6 +92,15 @@ func TestHubCLI_PublishReviewIndexFlow(t *testing.T) {
 	if code != ExitSuccess {
 		t.Fatalf("publish: code=%d stderr=%s", code, errOut)
 	}
+	// Same publish, -o json, to a throwaway --out: pins the JSON shape.
+	var jsonOut string
+	code, jsonOut, errOut = hubRun(t, "hub", "publish",
+		"--artifact", bundlePath, "--type", "blueprint", "--version", "1.0.0",
+		"--key", pubKey, "--publisher", "acme", "--out", submission+".json-probe", "-o", "json")
+	if code != ExitSuccess {
+		t.Fatalf("publish -o json: code=%d stderr=%s", code, errOut)
+	}
+	assertDocumentedJSON(t, "hub publish", []byte(jsonOut))
 	subRaw, err := os.ReadFile(submission) //nolint:gosec // test-local path
 	if err != nil {
 		t.Fatalf("read submission: %v", err)
@@ -150,6 +160,11 @@ func TestHubCLI_PublishReviewIndexFlow(t *testing.T) {
 	if !strings.Contains(out, "ceph-3node@1.0.0") {
 		t.Fatalf("verify output = %q", out)
 	}
+	code, jsonOut, errOut = hubRun(t, "hub", "verify", "--index", indexPath, "--signers", idxFP, "-o", "json")
+	if code != ExitSuccess {
+		t.Fatalf("verify -o json: code=%d stderr=%s", code, errOut)
+	}
+	assertDocumentedJSON(t, "hub verify (index)", []byte(jsonOut))
 	// A different pinned signer is refused.
 	if wrongSigner, _, _ := hubRun(t, "hub", "verify", "--index", indexPath, "--signers", pubFP); wrongSigner == ExitSuccess {
 		t.Fatal("verify accepted an index signed by a key that is not the pinned signer")
@@ -181,6 +196,13 @@ func TestHubCLI_PublishReviewIndexFlow(t *testing.T) {
 	if code != ExitSuccess || !strings.Contains(out, "Already revoked") {
 		t.Fatalf("re-revoke: code=%d out=%q", code, out)
 	}
+	code, jsonOut, errOut = hubRun(t, "hub", "revoke", "--root", root, "--key", idxKey,
+		"--type", "blueprint", "--id", "ceph-3node", "--version", "1.0.0",
+		"--reason", "ships an insecure default", "-o", "json")
+	if code != ExitSuccess {
+		t.Fatalf("re-revoke -o json: code=%d stderr=%s", code, errOut)
+	}
+	assertDocumentedJSON(t, "hub revoke", []byte(jsonOut))
 }
 
 // TestHubCLI_IndexRecordsAutomatedVetting is T-3709: `hub index` runs the
@@ -248,6 +270,7 @@ func TestHubCLI_IndexRecordsAutomatedVetting(t *testing.T) {
 	if len(jsonResp.VettingNotes) == 0 {
 		t.Fatal("json output carried no vettingNotes at all, want at least the reproducible-build residual note")
 	}
+	assertDocumentedJSON(t, "hub index", []byte(out))
 }
 
 // TestHubCLI_IndexRefusesConflict: a second, different artifact under an

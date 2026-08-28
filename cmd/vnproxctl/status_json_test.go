@@ -29,6 +29,7 @@ func TestRunStatus_JSONOutput(t *testing.T) {
 	if !out.Reachable || out.Daemon.Status != "ok" || out.Daemon.Version != "1.2.3" {
 		t.Errorf("decoded = %+v, want reachable ok/1.2.3", out)
 	}
+	assertDocumentedJSON(t, "status", stdout.Bytes())
 }
 
 func TestRunStatus_JSONOutput_UnhealthyDaemonExitsOne(t *testing.T) {

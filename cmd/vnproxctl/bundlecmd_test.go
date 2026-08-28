@@ -148,6 +148,7 @@ func TestSupportBundleCommand_JSONOutput(t *testing.T) {
 	if got.Plan.DryRun {
 		t.Error("a real run's plan says dryRun")
 	}
+	assertDocumentedJSON(t, "support-bundle", stdout.Bytes())
 }
 
 // TestSupportBundleCommand_HasNoIncludeKeysEquivalent is the CLI-level

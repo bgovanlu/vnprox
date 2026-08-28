@@ -66,6 +66,7 @@ func TestRunRemoteTopology_JSONAndTable(t *testing.T) {
 	if decoded["generatedAt"].(float64) != 1720512345 {
 		t.Errorf("decoded = %+v, want generatedAt 1720512345", decoded)
 	}
+	assertDocumentedJSON(t, "remote topology", stdout.Bytes())
 }
 
 func TestRunRemoteTopology_NoTokenFailsFastAuthExitCode(t *testing.T) {
@@ -124,6 +125,43 @@ func TestRunRemoteFindings_TableAndFilters(t *testing.T) {
 	}
 }
 
+// TestRunRemoteFindings_OJSON pins the -o json shape against docs/cli-json.md.
+func TestRunRemoteFindings_OJSON(t *testing.T) {
+	srv := newFakeVnproxd(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": []map[string]any{
+				{"id": "drift:bridge_divergence|vmbr0", "source": "drift", "check": "bridge_divergence", "severity": "error", "detail": "vlan mismatch", "nodes": []string{"pve1"}, "refs": []string{"bridge:pve1:vmbr0"}, "fixable": true},
+			},
+		})
+	})
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"remote", "findings", "--url", srv.URL, "--token", "tok", "-o", "json"}, &stdout, &stderr)
+	if code != ExitSuccess {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+	}
+	assertDocumentedJSON(t, "remote findings", stdout.Bytes())
+}
+
+// TestRunRemoteDrift_OJSON pins the -o json shape against docs/cli-json.md.
+// A non-empty sample is required: `remote drift` emits a bare array, and an
+// empty one carries no fields to check against the documented (required)
+// ones.
+func TestRunRemoteDrift_OJSON(t *testing.T) {
+	srv := newFakeVnproxd(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"id": "drift:bridge_divergence|vmbr0", "check": "bridge_divergence", "severity": "error", "detail": "vlan mismatch", "nodes": []string{"pve1"}, "refs": []string{"bridge:pve1:vmbr0"}, "fixable": true},
+		})
+	})
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"remote", "drift", "--url", srv.URL, "--token", "tok", "-o", "json"}, &stdout, &stderr)
+	if code != ExitSuccess {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+	}
+	assertDocumentedJSON(t, "remote drift", stdout.Bytes())
+}
+
 func TestRunRemoteDrift_EmptyIsCleanExit(t *testing.T) {
 	srv := newFakeVnproxd(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -165,6 +203,27 @@ func TestRunRemoteAudit_Pagination(t *testing.T) {
 	if !strings.Contains(stdout.String(), "opaque-cursor") {
 		t.Errorf("stdout = %q, want the nextCursor hint", stdout.String())
 	}
+}
+
+// TestRunRemoteAudit_OJSON pins the -o json shape against docs/cli-json.md.
+func TestRunRemoteAudit_OJSON(t *testing.T) {
+	srv := newFakeVnproxd(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": []map[string]any{
+				{"id": "a1", "at": 1720512345, "username": "root@pam", "action": "changeset.apply", "target": "bridge:pve1:vmbr0", "changesetId": "cs1", "result": "ok", "detail": map[string]any{"note": "x"}},
+			},
+			"nextCursor":  "opaque-cursor",
+			"partial":     true,
+			"failedNodes": []string{"pve2"},
+		})
+	})
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"remote", "audit", "--url", srv.URL, "--token", "tok", "-o", "json"}, &stdout, &stderr)
+	if code != ExitSuccess {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+	}
+	assertDocumentedJSON(t, "remote audit", stdout.Bytes())
 }
 
 func TestRunRemote_UnknownSubcommand(t *testing.T) {

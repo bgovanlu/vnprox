@@ -47,6 +47,43 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
+// commandSpec is one top-level vnproxctl subcommand. commandTable below is
+// the single source of truth both run's dispatch and `vnproxctl completion`
+// (completion.go, T-4011) read: a subcommand added to this table is
+// dispatchable AND completable in the same edit, so a new subcommand cannot
+// silently lack completion the way it could if completion were a
+// hand-maintained second list.
+type commandSpec struct {
+	run         func(args []string, stdout, stderr io.Writer) int
+	name        string
+	subcommands []string // leaf verbs a shell should offer after this command's name; nil for a flag-only command
+}
+
+// commandTable lists every top-level vnproxctl subcommand except the three
+// handled directly in run below (-h/--help/help, --version, completion
+// itself — none of these dispatches to a run* function the way every entry
+// here does).
+var commandTable = []commandSpec{
+	{name: "status", run: runStatus},
+	{name: "snapshots", subcommands: []string{"list", "restore"}, run: runSnapshots},
+	{name: "rollback-now", run: runRollbackNow},
+	{name: "backup", run: runBackup},
+	{name: "restore", run: runRestore},
+	{name: "certs", run: runCerts},
+	{name: "doctor", run: runDoctor},
+	{name: "upgrade-check", run: runUpgradeCheck},
+	{name: "verify", run: runVerify},
+	{name: "support-bundle", run: runSupportBundle},
+	{name: "telemetry", subcommands: []string{"preview", "status", "send", "reset-id"}, run: runTelemetry},
+	{name: "remote", subcommands: []string{"topology", "changesets", "findings", "drift", "audit"}, run: runRemote},
+	{name: "policy", subcommands: []string{"lint", "examples", "test"}, run: runPolicy},
+	{name: "gitsync", subcommands: []string{"status"}, run: runGitSync},
+	{name: "hub", subcommands: []string{"publish", "index", "revoke", "verify", "keygen"}, run: runHub},
+	{name: "plugin", subcommands: []string{"scaffold"}, run: runPlugin},
+	{name: "apply", run: runApply},
+	{name: "spec", subcommands: []string{"export", "import", "pin", "unpin"}, run: runSpec},
+}
+
 // run implements main's logic in a way that's testable without exec'ing a
 // subprocess: it returns an exit code instead of calling os.Exit and takes
 // explicit stdout/stderr writers, mirroring cmd/vnproxd's mainRun.
@@ -65,43 +102,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		return 0
-	case "status":
-		return runStatus(args[1:], stdout, stderr)
-	case "snapshots":
-		return runSnapshots(args[1:], stdout, stderr)
-	case "rollback-now":
-		return runRollbackNow(args[1:], stdout, stderr)
-	case "backup":
-		return runBackup(args[1:], stdout, stderr)
-	case "restore":
-		return runRestore(args[1:], stdout, stderr)
-	case "certs":
-		return runCerts(args[1:], stdout, stderr)
-	case "doctor":
-		return runDoctor(args[1:], stdout, stderr)
-	case "verify":
-		return runVerify(args[1:], stdout, stderr)
-	case "support-bundle":
-		return runSupportBundle(args[1:], stdout, stderr)
-	case "telemetry":
-		return runTelemetry(args[1:], stdout, stderr)
-	case "remote":
-		return runRemote(args[1:], stdout, stderr)
-	case "policy":
-		return runPolicy(args[1:], stdout, stderr)
-	case "gitsync":
-		return runGitSync(args[1:], stdout, stderr)
-	case "hub":
-		return runHub(args[1:], stdout, stderr)
-	case "plugin":
-		return runPlugin(args[1:], stdout, stderr)
-	case "apply":
-		return runApply(args[1:], stdout, stderr)
-	default:
-		_, _ = fmt.Fprintf(stderr, "vnproxctl: unknown command %q\n\n", args[0])
-		printUsage(stderr)
-		return 2
+	case "completion":
+		return runCompletion(args[1:], stdout, stderr)
 	}
+
+	for _, c := range commandTable {
+		if c.name == args[0] {
+			return c.run(args[1:], stdout, stderr)
+		}
+	}
+	_, _ = fmt.Fprintf(stderr, "vnproxctl: unknown command %q\n\n", args[0])
+	printUsage(stderr)
+	return 2
 }
 
 func printUsage(w io.Writer) {
@@ -127,6 +139,13 @@ Usage:
                                        agreement and clock skew. Every problem names what to do
                                        about it. Read-only; works before install and daemon-down.
                                        Exits non-zero if any check FAILS (warnings do not gate).
+  vnproxctl upgrade-check <version>    Preflight before upgrading a node's PVE version: checks a
+                                       sourced catalog of known network-affecting PVE breaks (the
+                                       T-3711 conntrack-procfs class, the nftables/iptables firewall
+                                       engine split) against this host's live, probed state and
+                                       reports which would fire on the way to <version> (e.g. "9.2").
+                                       Read-only; same report shape as vnproxctl doctor.
+                                       Exits non-zero only if a check FAILS (a warn does not gate).
   vnproxctl verify                     Run the hardware-validation suite against this cluster and
                                        print (and optionally sign, with --out) a report naming what
                                        was observed and the evidence each verdict rests on. Refuses
@@ -173,6 +192,19 @@ HTTP-backed commands (T-1105) — require the daemon up and --token/VNPROX_TOKEN
                                          commit, its last plan, and why its draft changeset is
                                          open. Read-only: there is no sync-now or apply verb,
                                          because a sync draft is applied like any other changeset
+
+  vnproxctl spec export [--out <path>]   GET /spec — write the live cluster's declarative spec
+                                         (config-as-code) as YAML to stdout or --out
+  vnproxctl spec import <file>           POST /spec/import — diff a spec against live, stage a
+                                         draft changeset, print its id and notInSpec. Never
+                                         applies; review and apply it like any other changeset
+  vnproxctl spec pin [<file>]            GET /spec/pin (bare) or POST /spec/pin <file> — the
+                                         GitOps reconciler's declared desired state
+  vnproxctl spec unpin                   DELETE /spec/pin
+
+  vnproxctl completion bash|zsh          Print a shell completion script for this binary's
+                                         subcommands and flags, generated from the same dispatch
+                                         table main.go uses — source it, don't hand-maintain it
 
   vnproxctl hub <subcommand>           Publish to, and audit, the signed blueprint/plugin
                                        registry the Hub browses (T-2803): publish | index |
@@ -261,6 +293,10 @@ remote/apply flags (every command in this family):
   --timeout <dur>          per-request timeout (default 10s)
   -o <table|json>          output format (default table)
   apply's own: --plan | --apply, --confirm-timeout-sec, --apply-timeout (--apply's commit-wait bound)
+
+spec flags (every subcommand): --config/--url/--token/--insecure/--timeout/-o, as for the remote
+family. spec export's own: --out <path> (write the YAML there instead of stdout; ignored with
+-o json).
 
 Exit codes (stable, documented in exitcodes.go): 0 success, 1 error,
 2 usage, 3 validation-failed/plan-pending, 4 auth, 5 network,

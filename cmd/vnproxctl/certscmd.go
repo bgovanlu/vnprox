@@ -27,13 +27,28 @@ func runCerts(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("certs", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (
-		root     = fs.String("root", certs.DefaultRoot, "pmxcfs mount to read certificates from")
-		asJSON   = fs.Bool("json", false, "emit the inventory and issues as JSON")
+		root   = fs.String("root", certs.DefaultRoot, "pmxcfs mount to read certificates from")
+		asJSON = fs.Bool("json", false, "DEPRECATED: use -o json. Emit the inventory and issues as JSON")
+		output = fs.String("o", defaultOutputFormat, outputFlagUsage)
+
 		warnDays = fs.Int("expiry-warn-days", 0, "how far ahead to warn about expiry (default 30)")
 	)
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
+	// --json predates T-4011's -o convention (docs/api.md still documents
+	// it) and stays working — this command's JSON output was never gated
+	// on the daemon being up, and breaking a scripted `vnproxctl certs
+	// --json` call on this specific command would be exactly the kind of
+	// "retrofit changed existing output" regression T-1105's -o rollout
+	// elsewhere in this binary was careful to avoid. Either flag, or both,
+	// selects JSON.
+	jsonOut, ofErr := parseOutputFormat(*output)
+	if ofErr != nil {
+		_, _ = fmt.Fprintf(stderr, "vnproxctl certs: %v\n", ofErr)
+		return ExitUsage
+	}
+	jsonOut = jsonOut || *asJSON
 
 	inv, err := certs.Scan(certs.Options{Root: *root, LocalNode: certs.LocalNodeFromRoot(*root)})
 	if err != nil {
@@ -53,7 +68,7 @@ func runCerts(args []string, stdout, stderr io.Writer) int {
 	// stay silent rather than guess — see certs.ClusterFacts.
 	issues := certs.Evaluate(inv, certs.ClusterFacts{}, now, warn, verify)
 
-	if *asJSON {
+	if jsonOut {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(certs.Report{Inventory: inv, Issues: issues}); err != nil {
