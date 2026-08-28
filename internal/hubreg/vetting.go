@@ -27,7 +27,26 @@ import (
 // reproducibleBuildResidualNote is ALWAYS appended to a VetResult's Notes,
 // pass or fail, so the one named check this package does not attempt is
 // never silently absent from anything that inspects a VetResult.
-const reproducibleBuildResidualNote = "reproducible-build check: NOT performed. vnprox has no source-to-artifact build pipeline; for a plugin, the registry never receives the executable the manifest's endpoint names at all (only a {manifest, signature} artifact — see cmd/vnproxd/hubinstall.go), so there is nothing here to rebuild and compare. See docs/hub-registry.md's 'Automated vetting' section."
+//
+// T-3806 closed the first half of what this note used to say ("vnprox has
+// no source-to-artifact build pipeline") — vnprox's OWN release build
+// (packaging/Makefile's `deb` target) is now reproducible: pinned Go/Node
+// toolchains, -trimpath, -buildvcs=false, SOURCE_DATE_EPOCH-clamped .deb
+// timestamps, verified by scripts/verify-reproducible.sh (also wired into
+// scripts/ci-local.sh as the `reproducible` job). See docs/development.md's
+// "Reproducible builds" section for the guarantee and its limits.
+//
+// That does NOT make this check performable, and the note says so: the
+// pipeline T-3806 made reproducible builds vnproxd, and this check is about
+// vetting a SUBMITTED artifact (a plugin or blueprint someone else built),
+// not vnprox itself. For a plugin specifically, the structural fact from
+// before still holds unchanged — the registry never receives the executable
+// the manifest's endpoint names at all (only a {manifest, signature}
+// artifact — see cmd/vnproxd/hubinstall.go), so there is nothing here to
+// rebuild and compare. That is a registry-format fact, not a build-pipeline
+// one, and T-3806's card is explicit that closing it is a different, larger
+// decision this note does not get to make unilaterally.
+const reproducibleBuildResidualNote = "reproducible-build check: NOT performed for this submission. vnprox's own release build is reproducible as of T-3806 (see scripts/verify-reproducible.sh, docs/development.md's 'Reproducible builds' section) — but that pipeline builds vnproxd, not this artifact. For a plugin, the registry never receives the executable the manifest's endpoint names at all (only a {manifest, signature} artifact — see cmd/vnproxd/hubinstall.go), so there is nothing here to rebuild and compare; that remains a registry-format fact, unchanged by T-3806. See docs/hub-registry.md's 'Automated vetting' section."
 
 // VetResult is AutomatedVetChecks' outcome: which checks passed, and a
 // human-readable reason for any that did not (plus the reproducible-build

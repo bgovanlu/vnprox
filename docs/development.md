@@ -485,7 +485,9 @@ and generous radii. Concretely, for any new UI:
 > workflows — `check`, `e2e`, `cross-arm64`, `fuzz`, `package`, the 10-leg `packaging-matrix`, and
 > `cluster-ssh` — pins Node to the major the workflows pin (via nvm; it *fails* rather than
 > silently using the system Node), refuses a dirty tree unless `ALLOW_DIRTY=1`, and prints one
-> line per job. `make ci` remains the fast container-free subset for a working tree.
+> line per job. `make ci` remains the fast container-free subset for a working tree. It also runs
+> two jobs with no hosted counterpart at all, `dco` and `reproducible` — see "Workflow definitions"
+> and "Reproducible builds" below.
 >
 > ```
 > scripts/ci-local.sh                # every job
@@ -519,7 +521,11 @@ and generous radii. Concretely, for any new UI:
 > `disabled_manually` on 2026-08-13 after GitHub Actions billing was exhausted on 2026-08-11.
 > The job definitions below are still accurate as *definitions*, and `scripts/ci-local.sh`
 > executes all seven of them sequentially on the dev host — that is the gate that actually runs.
-> Nothing runs on push.
+> Nothing runs on push. `scripts/ci-local.sh` also runs two jobs with no `ci.yml`/
+> `packaging-matrix.yml` counterpart today, ready to move into a hosted workflow job whenever
+> Actions is funded again: `dco` (T-3803), a local-only gate on the DCO sign-off requirement below,
+> and `reproducible` (T-3806), which builds the `.deb` twice and diffs it — see "Reproducible
+> builds" below.
 
 `ci.yml` defines five jobs, nominally on every PR and push to `main`:
 
@@ -546,12 +552,79 @@ make e2e     # when touching UI flows — Playwright, sharded; the gate decides 
 
 Every job pins the same versions so a CI run is reproducible and a local `make check` matches it exactly:
 
-- **Go**: `1.26.6` (`actions/setup-go`'s `go-version`, identical across `ci.yml`, `packaging-matrix.yml`, `release.yml`); `go.mod` floors at `go 1.25.0`. Bumped from `1.26.5` on 2026-08-14: `govulncheck` failed `make check` on five stdlib advisories (GO-2026-6218 `net/url`, GO-2026-6090 `crypto/tls`, GO-2026-6089 `net/http`, GO-2026-5972 `encoding/asn1`, GO-2026-5026 `net/http`/idna), every one of them reachable from vnprox code and every one fixed in `1.26.6`. Since the workflows are disabled, the version that actually matters is the one on the dev host that builds the `.deb` — check `go version` before cutting a release.
-- **Node**: `22` (`actions/setup-node`'s `node-version`, identical across all workflows); `web/package.json`'s `engines.node` floors at `>=20.19.0`.
+- **Go**: `1.26.6` (`scripts/lib/versions.sh`'s `GO_VERSION_EXPECTED` — the single source of truth `scripts/ci-local.sh` and `packaging/Makefile`'s release build path both read, rather than each pinning its own literal; also `actions/setup-go`'s `go-version`, identical across `ci.yml`, `packaging-matrix.yml`, `release.yml`); `go.mod` floors at `go 1.25.0`. Bumped from `1.26.5` on 2026-08-14: `govulncheck` failed `make check` on five stdlib advisories (GO-2026-6218 `net/url`, GO-2026-6090 `crypto/tls`, GO-2026-6089 `net/http`, GO-2026-5972 `encoding/asn1`, GO-2026-5026 `net/http`/idna), every one of them reachable from vnprox code and every one fixed in `1.26.6`. Since the workflows are disabled, the version that actually matters is the one on the dev host that builds the `.deb` — check `go version` before cutting a release. `packaging/Makefile`'s `deb` target warns (does not fail) when the `go` on `PATH` doesn't match this pin.
+- **Node**: `22` (`scripts/lib/versions.sh`'s `NODE_MAJOR`, same single-source-of-truth shape as Go above; also `actions/setup-node`'s `node-version`, identical across all workflows); `web/package.json`'s `engines.node` floors at `>=20.19.0`.
 - **golangci-lint**: `v2.12.2` (`Makefile`'s `GOLANGCI_LINT_VERSION`, invoked via `go run .../golangci-lint@$(GOLANGCI_LINT_VERSION)` when no local binary is on `PATH` — same version locally and in CI).
 - **govulncheck**: `v1.5.0` (`Makefile`'s `GOVULNCHECK_VERSION`, same `go run ...@version` pattern).
 
-To bump any of these: change the one place listed above (Makefile variable or the `go-version`/`node-version` fields — `grep` the repo for the old value to catch every workflow file) and re-run the acceptance check below.
+To bump any of these: change the one place listed above (`scripts/lib/versions.sh` for Go/Node, a Makefile variable for golangci-lint/govulncheck, or the `go-version`/`node-version` fields — `grep` the repo for the old value to catch every workflow file) and re-run the acceptance check below.
+
+### Reproducible builds (T-3806)
+
+**vnprox's own release build — the `.deb` produced by `packaging/Makefile`'s `deb` target — is
+byte-reproducible: two independent builds of the same commit produce an identical `sha256sum`.**
+Verify it yourself:
+
+```
+scripts/verify-reproducible.sh          # builds HEAD twice, in two throwaway git worktrees, and diffs
+scripts/verify-reproducible.sh v1.4.0   # verify a specific tag/commit instead
+```
+
+`scripts/ci-local.sh`'s `reproducible` job runs the same script; it has no hosted-workflow
+counterpart (see "Workflow definitions" above), same as `dco`.
+
+**What makes it reproducible, and where each piece lives:**
+
+- **Pinned toolchain.** `packaging/Makefile` reads `GO_VERSION_EXPECTED` from
+  `scripts/lib/versions.sh` (the "Toolchain pinning" section above) and warns — doesn't fail — on a
+  mismatch, the same non-fatal shape `scripts/ci-local.sh` already uses. `verify-reproducible.sh`
+  additionally pins Node via the same file before either build runs (the frontend is part of the
+  `.deb`, so a Node-version-dependent Vite/Rollup output would show up as a real mismatch).
+- **`-trimpath`.** Strips this build's absolute `GOPATH`/`GOROOT`/module-cache paths — embedded by
+  default for panic/stack-trace file names — from `vnproxd`/`vnproxctl`, so building the same
+  commit under two different checkout directories (or usernames, or CI vs. a dev host) still
+  matches.
+- **`-buildvcs=false`.** The version string is already injected via `-ldflags -X
+  main.version=...` (from `version.sh`'s `git describe`), so `go build`'s own VCS auto-stamping
+  (`vcs.revision`/`vcs.time`/`vcs.modified`, embedded via `runtime/debug.BuildInfo` when left on)
+  is redundant — and would make the binary depend on whether the build environment has a usable
+  `git` and full history (a shallow clone or an exported source tarball behaves differently), which
+  a reproducible build must not depend on.
+- **`CGO_ENABLED=0`.** vnprox's SQLite driver is `modernc.org/sqlite` (pure Go, no cgo — "Tech
+  stack" above); pinning `CGO_ENABLED=0` at the build invocation makes that guarantee explicit
+  rather than implicit in "nothing currently imports cgo," and removes the host C toolchain/libc as
+  a source of non-reproducibility if that ever stops being true unnoticed.
+- **`SOURCE_DATE_EPOCH`.** Defaults (in `packaging/Makefile`) to the checked-out commit's own
+  `git log -1 --format=%ct` — not wall-clock "now" — so two builds of the *same* commit, run
+  seconds or months apart, embed the same timestamp. `dpkg-deb` (>= 1.18.11) honours this natively
+  (`man dpkg-deb`): it stamps the `ar(5)` container with it and *clamps* every `tar(5)` member's
+  mtime down to it. "Clamp," not "set," is what makes this work without touching every installed
+  file's mtime by hand — a build's real install-time mtime is always later than the commit that
+  produced it, so the clamp always fires. Before this, byte 32 of the `.deb` (inside the `ar`
+  container's first member header) differed between any two builds — confirmed empirically, along
+  with an mtime-field difference at byte 144 of the decompressed `data.tar` — purely from wall-clock
+  drift between build runs; that class of diff is what `SOURCE_DATE_EPOCH` removes.
+- **The frontend.** `make build`'s `npm ci && npm run build` (Vite/Rollup) is deterministic given a
+  pinned Node major and an unchanged `package-lock.json`: content-hashed asset filenames, no
+  embedded build timestamps. `verify-reproducible.sh` builds it fresh in both worktrees rather than
+  reusing one `web/dist`, so this is verified, not assumed.
+
+**What is NOT covered, on purpose:** `GOARCH=arm64` cross-builds (only the `amd64` path this host
+can natively verify is checked; the same flags apply, untested here) and builds on a different Go
+patch version or OS/libc than the pinned one — a `go version` warning fires, but the script does
+not refuse to run, because the dev host's actual toolchain (not the CI pin) is docs/development.md's
+own stated source of truth for what ships. `scripts/verify-reproducible.sh` builds in its own
+`git worktree add --detach` checkouts specifically so it is safe to run while other work is in
+progress in this repo's ambient working tree — it never builds from (or is affected by) uncommitted
+changes.
+
+**Scope, stated because it's a common next question:** this closes the "vnprox has no
+source-to-artifact build pipeline" half of `internal/hubreg/vetting.go`'s
+`reproducibleBuildResidualNote`. It does **not** make third-party plugin/blueprint artifacts
+submitted to the hub registry reproducible-checkable — the registry never receives the executable a
+plugin manifest's `endpoint` names at all (only a `{manifest, signature}` artifact), so there is
+nothing to rebuild and compare there regardless of how reproducible vnprox's own build is. See
+`docs/hub-registry.md`'s "Automated vetting" section.
 
 ### The `fuzz` job's anchored `-fuzz` regexes
 

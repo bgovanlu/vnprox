@@ -521,7 +521,17 @@ forging the index signature, not a second, separately-trusted claim.
 **What "vetted" explicitly does not mean: a reproducible build.** The
 decision named a reproducible-build check; it is not implemented, and the
 gap is stated here rather than hidden behind a check that always passes.
-vnprox has no source-to-artifact build pipeline. For a plugin specifically,
+
+> **Narrowed 2026-08-27 (T-3806).** This paragraph used to open by saying
+> "vnprox has no source-to-artifact build pipeline." That half is no longer
+> true: vnprox's *own* release `.deb` is now byte-reproducible and
+> `scripts/verify-reproducible.sh` proves it on demand. It changes nothing
+> about *this* gap, which is the sentence below and was always the real
+> reason: the registry never receives a submitted plugin's executable, so
+> there is nothing for it to rebuild. Keeping the old wording would have let
+> a reader conclude the vetting gap had closed along with the build one.
+
+For a plugin specifically,
 the registry never receives the executable the manifest's `endpoint` names
 at all — only a `{manifest, signature}` artifact
 (`cmd/vnproxd/hubinstall.go`'s doc comment: delivering the actual binary to

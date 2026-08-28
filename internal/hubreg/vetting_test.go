@@ -13,7 +13,12 @@ import (
 // invariant this file exists to protect: the reproducible-build residual is
 // present in Notes regardless of whether the other checks passed, so a
 // caller inspecting a passing VetResult can never mistake it for a
-// full reproducible-build attestation.
+// full reproducible-build attestation. T-3806 made vnprox's OWN release
+// build reproducible (see docs/development.md's "Reproducible builds"
+// section) but left this residual in place, reworded rather than removed:
+// it is about vetting a submitted plugin/blueprint artifact, and the
+// registry structurally never receives the executable a plugin manifest
+// names, so there is still nothing here to rebuild and compare.
 func TestAutomatedVetChecks_ResultAlwaysCarriesResidualNote(t *testing.T) {
 	_, priv, _ := ed25519.GenerateKey(nil)
 
