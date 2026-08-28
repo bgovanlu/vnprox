@@ -21,7 +21,7 @@
   {
     "name": "shard-2",
     "slot": 1,
-    "why": "Owns the simulator and alert stacks, and the isolation witness \u2014 which must not be in shard-1, since proving it cannot see shard-1's canary is the point.",
+    "why": "Owns the simulator and alert stacks, and the isolation witness \u2014 which must not be in shard-1, since proving it cannot see shard-1's canary is the point. Also carries visual.spec.ts's placeholder entry (T-4210): that file's own tests skip immediately unless VNPROX_VISUAL_SNAPSHOTS=1 (only set by its dedicated playwright.visual.config.ts), so its presence here satisfies validateManifest()'s \"every spec belongs to exactly one shard\" invariant without this shard actually running it for real \u2014 see visual.spec.ts's and playwright.visual.config.ts's header comments for why it needs a config of its own instead.",
     "specs": [
       "alert-rules.spec.ts",
       "capture.spec.ts",
@@ -31,6 +31,7 @@
       "pwa.spec.ts",
       "responsive-triage.spec.ts",
       "simulator.spec.ts",
+      "visual.spec.ts",
       "wireguard-wizard.spec.ts",
       "zz-shard-witness.spec.ts"
     ]

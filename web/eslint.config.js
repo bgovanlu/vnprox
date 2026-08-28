@@ -24,7 +24,7 @@ export default tseslint.config(
     ],
   },
   {
-    files: ["src/**/*.{ts,tsx}", "perf/**/*.ts", "vite.config.ts", "e2e/**/*.ts", "playwright.config.ts"],
+    files: ["src/**/*.{ts,tsx}", "perf/**/*.ts", "vite.config.ts", "e2e/**/*.ts", "playwright.config.ts", "playwright.visual.config.ts"],
     extends: [
       js.configs.recommended,
       ...tseslint.configs.strictTypeChecked,

@@ -55,7 +55,7 @@ cd "$REPO_ROOT"
 FUZZTIME="${FUZZTIME:-60s}"
 LOG_DIR="${LOG_DIR:-$REPO_ROOT/.ci-local}"
 
-ALL_JOBS=(check e2e cross-arm64 fuzz package packaging-matrix cluster-ssh dco reproducible openapi-client license terraform-provider ansible-collection)
+ALL_JOBS=(check e2e visual cross-arm64 fuzz package packaging-matrix cluster-ssh dco reproducible openapi-client license terraform-provider ansible-collection)
 
 # --- job selection ---------------------------------------------------------
 
@@ -162,6 +162,30 @@ job_e2e() {
     ( cd web && npx playwright install --with-deps chromium ) || \
         ( cd web && npx playwright install chromium ) || return 1
     make e2e
+}
+
+# job_visual (T-4210) — the visual regression gate: one screenshot per routed
+# page x {light, dark, demo-accent} (web/e2e/visual.spec.ts), run through its
+# own config (web/playwright.visual.config.ts) rather than make e2e's shards —
+# see that config's header comment for why. Baselines are NOT committed
+# (docs/development.md's "Visual regression gate" section): they live under
+# web/test-results/, already gitignored, and persist across runs on this host
+# until deleted or regenerated. A host with no baselines yet is not a failure:
+# every test skips with a message naming the --update-snapshots command below,
+# so this job PASSES on a fresh checkout and starts actually gating only once
+# someone has generated a baseline to compare against.
+#
+#   npm run build first: vnproxd embeds web/dist at compile time, same
+#   footgun make e2e's own header comment calls out for its stack.
+#
+#   Generate/refresh baselines by hand:
+#     cd web && npx playwright test --config=playwright.visual.config.ts --update-snapshots
+job_visual() {
+    ( cd web && npm ci ) || return 1
+    ( cd web && npx playwright install --with-deps chromium ) || \
+        ( cd web && npx playwright install chromium ) || return 1
+    ( cd web && npm run build ) || return 1
+    ( cd web && npx playwright test --config=playwright.visual.config.ts )
 }
 
 job_cross_arm64() {
@@ -391,6 +415,7 @@ for j in "${JOBS[@]}"; do
     case "$j" in
         check)            run_job check            job_check ;;
         e2e)              run_job e2e              job_e2e ;;
+        visual)           run_job visual           job_visual ;;
         cross-arm64)      run_job cross-arm64      job_cross_arm64 ;;
         fuzz)             run_job fuzz             job_fuzz ;;
         package)          run_job package          job_package ;;

@@ -219,6 +219,60 @@ recovering from, and the check caught exactly that mistake while this manifest w
 setting; `ci.yml` runs **one shard per runner** across a four-leg matrix, with a required `e2e-gate`
 job that collects the reports. See `T-2505-input-02` for why that distinction is load-bearing.
 
+### The visual regression gate (`scripts/ci-local.sh visual`, T-4210)
+
+Phases 42-51 (`planning/roadmap-visual.md`) restyle the entire product. Before any of that lands,
+`web/e2e/visual.spec.ts` screenshots every routed page (`web/e2e/routeInventory.ts` derives the list
+from `App.tsx`'s own `<Route>` declarations, the same source-derived technique
+`web/src/help/coverage.test.ts` uses for the help-topic gate) in three modes — light theme, dark
+theme, and demo-accent mode — so a restyle card that regresses an *unrelated* page fails loudly
+instead of shipping unnoticed. This is deliberately the card that had to land first (T-4210's own
+task card: "this is the card that stops every other card on this roadmap from regressing silently").
+
+**Run it standalone, through its own config — not `make e2e`:**
+
+```
+scripts/ci-local.sh visual                                                       # the CI job
+cd web && npx playwright test --config=playwright.visual.config.ts               # by hand
+cd web && npx playwright test --config=playwright.visual.config.ts --update-snapshots  # (re)generate baselines
+```
+
+`web/playwright.visual.config.ts` is a separate config file from `web/playwright.config.ts` on
+purpose (see its own header comment for the full reasoning): it boots one dedicated copy of the
+default three-node-vlan stack (nothing else — no sim/scale/mgmt/alert/flow/k8s/demo daemons), fresh
+on every invocation, rather than sharing a `make e2e` shard's daemon and store with specs that mutate
+app state. `web/e2e/visual.spec.ts` has a placeholder entry in `web/e2e/shards.json` purely to satisfy
+`validateManifest()`'s "every spec belongs to exactly one shard" invariant — every test in the file
+skips immediately, before opening a browser, unless it detects it is running under
+`playwright.visual.config.ts` (`VNPROX_VISUAL_SNAPSHOTS=1`, which that config sets for itself), so
+`make e2e` and `job_e2e` are unaffected by this suite's presence.
+
+**Baselines are deliberately NOT committed.** Phases 42-51 would invalidate every one of them on the
+very first restyle card, so `--update-snapshots` writes them to `web/test-results/visual-baselines/`
+— already gitignored — instead of the default `<spec>-snapshots/` location next to the spec file
+(the committed convention `topology.spec.ts`'s own single baseline still uses; this suite is
+deliberately not that). Baselines persist on a given host across runs until deleted or regenerated,
+so the intended workflow is: generate a baseline before starting a restyle card, then run the gate
+repeatedly while iterating on that card, on that host. **A host with no baselines yet is not a
+failure** — every test skips with a message naming the `--update-snapshots` command above, so
+`job_visual` passes cleanly on a fresh checkout and starts actually gating only once a baseline
+exists to compare against.
+
+**Determinism.** A screenshot gate that flakes gets disabled within a week, so `visual.spec.ts`
+neutralizes every source of nondeterminism it could find a handle on: `prefers-reduced-motion` plus
+Playwright's own `animations: "disabled"`, a WebSocket route that closes immediately rather than
+letting `/api/ws` push live counters/findings mid-capture, a `GET /health` route interception to force
+demo-accent mode deterministically (rather than booting a second `vnproxd --demo` daemon), a
+one-time wait for the three-node-vlan fixture's cross-node staleness to reach its permanent state
+*before* the parameterised sweep starts (see `settleClusterStaleness`'s comment — otherwise which side
+of that one-way transition a given page lands on would depend on how far into the run it sits), a
+fixed 1400x900 viewport, hidden scrollbars, and a `document.fonts.ready` wait. `maxDiffPixelRatio` is
+`0.02`, not `0`: sub-pixel font antialiasing and a relative-timestamp label ("3s ago") ticking over
+between the baseline run and the verification run were both measured causes of flakiness at `0` in
+local testing, and neither is neutralizable from outside the app without a source change this task's
+scope excludes (see its own task report for what a future card should add — a stubbed clock or a
+`data-testid` on the relative-timestamp components).
+
 ### The vitest suite has the same flake visibility (`T-3708`)
 
 `cmd/e2egate` (above) gives the e2e suite a quarantine with hard expiries and a flake trend computed

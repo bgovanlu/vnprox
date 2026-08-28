@@ -18,6 +18,16 @@
 // `scripts/e2e-shards.sh` runs all four shards concurrently and hands their
 // reports to cmd/e2egate, which is what decides whether the run passed.
 //
+// NOT the visual regression suite (T-4210, web/e2e/visual.spec.ts): that
+// suite has its own config, playwright.visual.config.ts, and its own job
+// (`scripts/ci-local.sh visual`) — see that config's header comment for why
+// running it through this file would be both slow (it would boot every
+// stack every OTHER spec needs) and nondeterministic (it would share a
+// shard's daemon/store with specs that mutate app state). visual.spec.ts
+// has only a placeholder entry in shards.json to satisfy this file's own
+// validateManifest() below; every one of its tests skips immediately when
+// run through this config.
+//
 // workers stays at 1 INSIDE a shard. A second worker in one process would
 // share that shard's single vnproxd, store and collector — the arrangement
 // T-2409 exists to remove. Parallelism comes from running shards as separate

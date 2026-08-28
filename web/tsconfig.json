@@ -5,5 +5,5 @@
     "useDefineForClassFields": true,
     "allowJs": false
   },
-  "include": ["src", "perf", "vite.config.ts", "e2e", "playwright.config.ts"]
+  "include": ["src", "perf", "vite.config.ts", "e2e", "playwright.config.ts", "playwright.visual.config.ts"]
 }
