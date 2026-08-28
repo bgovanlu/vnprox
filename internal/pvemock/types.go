@@ -401,6 +401,8 @@ func (i NetIface) MarshalJSON() ([]byte, error) {
 }
 
 // LinkInfo is netlink-equivalent physical/virtual link state for one iface.
+//
+//nolint:govet // fieldalignment: fixture-declared config struct; grouped and documented by what each field models, not packed by size.
 type LinkInfo struct {
 	Mac    string `yaml:"mac" json:"mac"`
 	Driver string `yaml:"driver,omitempty" json:"driver,omitempty"`
@@ -417,10 +419,43 @@ type LinkInfo struct {
 	// VFs (T-1506) is this (physical-kind) link's fixture-declared SR-IOV
 	// virtual functions — nil for every non-physical link, same convention
 	// as FDB above (bridge-only).
-	VFs       []VFEntrySpec `yaml:"vfs,omitempty" json:"vfs,omitempty"`
-	SpeedMbps int           `yaml:"speed_mbps,omitempty" json:"speed_mbps,omitempty"`
-	MTU       int           `yaml:"mtu,omitempty" json:"mtu,omitempty"`
-	LinkUp    bool          `yaml:"link_up" json:"link_up"`
+	VFs []VFEntrySpec `yaml:"vfs,omitempty" json:"vfs,omitempty"`
+	// MDB (T-3902) is this (bridge-kind) link's fixture-declared multicast
+	// forwarding-database entries — nil for every non-bridge link, same
+	// convention as FDB above.
+	MDB []MDBEntrySpec `yaml:"mdb,omitempty" json:"mdb,omitempty"`
+	// STP (T-3901) is this (bridge-kind) link's fixture-declared live
+	// STP/RSTP protocol state — see BridgeSTPSpec's doc comment.
+	STP       *BridgeSTPSpec `yaml:"stp,omitempty" json:"stp,omitempty"`
+	SpeedMbps int            `yaml:"speed_mbps,omitempty" json:"speed_mbps,omitempty"`
+	MTU       int            `yaml:"mtu,omitempty" json:"mtu,omitempty"`
+	// MulticastSnooping/MulticastQuerier/MulticastRouter (T-3902) are this
+	// (bridge-kind) link's fixture-declared IGMP/MLD-snooping
+	// configuration — mirrors internal/host.BridgeDetail's same-named
+	// fields (see that type's doc comment for the sysfs/netlink fields
+	// these stand in for). Zero value ("not declared") for every
+	// non-bridge link.
+	MulticastSnooping bool `yaml:"multicast_snooping,omitempty" json:"multicast_snooping,omitempty"`
+	MulticastQuerier  bool `yaml:"multicast_querier,omitempty" json:"multicast_querier,omitempty"`
+	MulticastRouter   int  `yaml:"multicast_router,omitempty" json:"multicast_router,omitempty"`
+	LinkUp            bool `yaml:"link_up" json:"link_up"`
+}
+
+// MDBEntrySpec is one fixture-declared bridge multicast forwarding-database
+// entry (T-3902): a multicast group learned on a given port/VLAN via
+// IGMP/MLD snooping, mirroring FDBEntrySpec's convention. Group is an IPv4
+// (224.0.0.0/4) or IPv6 (ff00::/8) multicast address; State/Protocol mirror
+// `bridge -d -j mdb show`'s own vocabulary — evidence
+// (planning/reports/evidence/pve-9.2.4-bridge-mdb-2026-08-27.txt) observed
+// only State "temp" and Protocol "kernel" on a real PVE 9.2.4 host, so a
+// fixture wanting a "permanent"/other-protocol row is declaring something
+// unverified against real output, not a documented-but-untested case.
+type MDBEntrySpec struct {
+	Group    string `yaml:"group" json:"group"`
+	Port     string `yaml:"port,omitempty" json:"port,omitempty"`
+	State    string `yaml:"state,omitempty" json:"state,omitempty"`
+	Protocol string `yaml:"protocol,omitempty" json:"protocol,omitempty"`
+	Vlan     int    `yaml:"vlan,omitempty" json:"vlan,omitempty"`
 }
 
 // FDBEntrySpec is one fixture-declared bridge forwarding-database entry: a
@@ -434,6 +469,49 @@ type FDBEntrySpec struct {
 	Master    bool   `yaml:"master,omitempty" json:"master,omitempty"`
 	Permanent bool   `yaml:"permanent,omitempty" json:"permanent,omitempty"`
 	Stale     bool   `yaml:"stale,omitempty" json:"stale,omitempty"`
+}
+
+// BridgeSTPSpec is one bridge's fixture-declared live STP/RSTP protocol
+// state (T-3901), mirroring internal/host.BridgeSTP's field set — see that
+// type's doc comment for what each field means, and
+// planning/reports/evidence/pve-9.2.4-bridge-stp-2026-08-27.txt for the
+// real values it was modeled against.
+//
+// Fixture-declared directly, like FDBEntrySpec above, rather than derived
+// from the rendered interfaces(5) text (fixtureBridgeDetail's usual
+// declared-config-recovery path in internal/host/fixture.go): this is live
+// runtime protocol state with no declared-config counterpart at all —
+// `bridge-stp on/off` only toggles StpState, it says nothing about which
+// bridge in the L2 domain is currently root or which ports are blocking.
+// Per-port Role is deliberately not a fixture-declarable field: it's
+// derived by internal/host's own deriveBridgePortRole from
+// RootID/BridgeID/RootPort/State (the same function Real's sysfs read
+// uses), so a fixture only ever declares the raw kernel-observed fields —
+// one role-derivation implementation, not two that could drift.
+type BridgeSTPSpec struct {
+	RootID       string              `yaml:"root_id,omitempty" json:"root_id,omitempty"`
+	BridgeID     string              `yaml:"bridge_id,omitempty" json:"bridge_id,omitempty"`
+	Ports        []BridgePortSTPSpec `yaml:"ports,omitempty" json:"ports,omitempty"`
+	StpState     int                 `yaml:"stp_state,omitempty" json:"stp_state,omitempty"`
+	Priority     int                 `yaml:"priority,omitempty" json:"priority,omitempty"`
+	RootPort     int                 `yaml:"root_port,omitempty" json:"root_port,omitempty"`
+	RootPathCost int                 `yaml:"root_path_cost,omitempty" json:"root_path_cost,omitempty"`
+}
+
+// BridgePortSTPSpec is one fixture-declared bridge port's raw STP state
+// (T-3901): State is the kernel's own state name ("forwarding",
+// "blocking", "listening", "learning", "disabled" — internal/host.
+// BridgePortSTPState's vocabulary), not a raw sysfs int, since fixtures are
+// hand-authored YAML.
+type BridgePortSTPSpec struct {
+	Port             string `yaml:"port" json:"port"`
+	DesignatedRoot   string `yaml:"designated_root,omitempty" json:"designated_root,omitempty"`
+	DesignatedBridge string `yaml:"designated_bridge,omitempty" json:"designated_bridge,omitempty"`
+	State            string `yaml:"state,omitempty" json:"state,omitempty"`
+	PortNo           int    `yaml:"port_no,omitempty" json:"port_no,omitempty"`
+	PathCost         int    `yaml:"path_cost,omitempty" json:"path_cost,omitempty"`
+	Priority         int    `yaml:"priority,omitempty" json:"priority,omitempty"`
+	DesignatedCost   int    `yaml:"designated_cost,omitempty" json:"designated_cost,omitempty"`
 }
 
 // VFEntrySpec is one fixture-declared SR-IOV virtual function on a PF link

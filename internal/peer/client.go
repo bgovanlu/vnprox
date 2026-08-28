@@ -655,6 +655,75 @@ func (c *Client) DHCPLeases(ctx context.Context, p Peer, node string) ([]byte, e
 	})
 }
 
+// MDB fetches node's raw `bridge -d -j mdb show` output from peer p
+// (T-3902's multicast/MDB browser) — the remote-node counterpart of a
+// local host.Reader.MDB call, GET /mdb's cluster fan-out dependency. Like
+// DHCPLeases, there is no available/raw split: an empty result is itself a
+// clean "no MDB entries" answer, not a distinct absent condition (see
+// mdbResponse's doc comment).
+func (c *Client) MDB(ctx context.Context, p Peer, node string) ([]byte, error) {
+	path := "/api/peer/host/mdb?node=" + url.QueryEscape(node)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out mdbResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return []byte(out.Content), nil
+}
+
+// RouteTableV4/RouteTableV6 fetch node's raw kernel FIB (`ip -j route
+// show table all` / its `-6` counterpart) from peer p (T-3903's route
+// explorer) — the remote-node counterpart of a local internal/route.
+// Fetcher.RouteTableV4/V6 call, satisfying internal/route.PeerSource
+// directly. Like MDB/DHCPLeases, no available/raw split: `ip` is a hard
+// OS dependency, so a route table (even an apparently sparse one) is
+// always a clean answer, never a distinct absent condition.
+func (c *Client) RouteTableV4(ctx context.Context, p Peer, node string) ([]byte, error) {
+	return c.routeContentRequest(ctx, p, "/api/peer/host/route/fib-v4", node)
+}
+
+func (c *Client) RouteTableV6(ctx context.Context, p Peer, node string) ([]byte, error) {
+	return c.routeContentRequest(ctx, p, "/api/peer/host/route/fib-v6", node)
+}
+
+// RouteRulesV4/RouteRulesV6 fetch node's raw policy-routing rules
+// (`ip -j rule show` / its `-6` counterpart) from peer p.
+func (c *Client) RouteRulesV4(ctx context.Context, p Peer, node string) ([]byte, error) {
+	return c.routeContentRequest(ctx, p, "/api/peer/host/route/rules-v4", node)
+}
+
+func (c *Client) RouteRulesV6(ctx context.Context, p Peer, node string) ([]byte, error) {
+	return c.routeContentRequest(ctx, p, "/api/peer/host/route/rules-v6", node)
+}
+
+func (c *Client) routeContentRequest(ctx context.Context, p Peer, path, node string) ([]byte, error) {
+	resp, err := c.do(ctx, p, http.MethodGet, path+"?node="+url.QueryEscape(node), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out routeContentResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return []byte(out.Content), nil
+}
+
+// FRRRIBV4/FRRRIBV6 fetch node's raw FRR RIB JSON (`vtysh -c "show ip
+// route json"` / "show ipv6 route json") from peer p (T-3903), satisfying
+// internal/route.PeerSource directly. Same available/raw convention as
+// FRRBGPSummary/FRREVPNVNI above: available is false (raw is nil) when
+// node runs no FRR at all.
+func (c *Client) FRRRIBV4(ctx context.Context, p Peer, node string) (available bool, raw []byte, err error) {
+	return c.frrRequest(ctx, p, "/api/peer/host/route/frr-rib-v4", node)
+}
+
+func (c *Client) FRRRIBV6(ctx context.Context, p Peer, node string) (available bool, raw []byte, err error) {
+	return c.frrRequest(ctx, p, "/api/peer/host/route/frr-rib-v6", node)
+}
+
 // FirewallLog fetches new pve-firewall log lines for node from peer p,
 // either from the start (cursor == "") or appended since cursor (T-505:
 // internal/fwlog.Service.Tick calls this once per known peer, per poll

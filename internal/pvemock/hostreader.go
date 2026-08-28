@@ -87,6 +87,12 @@ type HostReader interface {
 	// IPv6RA returns node's fixture-declared per-interface IPv6 RA/DHCPv6
 	// observation (T-1404), verbatim — see ipv6ra.go's doc comment.
 	IPv6RA(ctx context.Context, node string) ([]IPv6RAObservation, error)
+
+	// MDB returns node's fixture-declared bridge multicast-forwarding-
+	// database state (T-3902), rendered into `bridge -d -j mdb show`'s own
+	// JSON shape — the same "fixture data rendered through the real
+	// parser" precedent FRRBGPSummary/marshalBGPSummary set.
+	MDB(ctx context.Context, node string) ([]byte, error)
 }
 
 // ContainerInteriorRaw is one lxc guest's raw host-side network-namespace
@@ -122,13 +128,27 @@ type LinkState struct {
 	// FDB is this (bridge-kind) link's fixture-declared forwarding
 	// database (T-306's MAC/FDB browser) — nil for every non-bridge Kind.
 	FDB []FDBEntry
+	// STP (T-3901) is this (bridge-kind) link's fixture-declared live
+	// STP/RSTP protocol state — nil for every non-bridge Kind, same
+	// convention as FDB above. See BridgeSTPSpec's doc comment (types.go)
+	// for why per-port Role is not carried here: it's derived by
+	// internal/host, not stored.
+	STP *BridgeSTP
 	// VFs (T-1506) is this (physical-kind) link's fixture-declared SR-IOV
 	// virtual functions — nil for every non-physical Kind, same convention
 	// as FDB above.
-	VFs       []VF
-	SpeedMbps int
-	MTU       int
-	LinkUp    bool
+	VFs []VF
+	// MulticastSnooping/MulticastQuerier/MulticastRouterMode (T-3902) are
+	// this (bridge-kind) link's fixture-declared IGMP/MLD-snooping
+	// configuration, mirroring internal/host.BridgeDetail's same-named
+	// fields — zero value ("not declared") for every non-bridge Kind, same
+	// convention as FDB above.
+	SpeedMbps           int
+	MTU                 int
+	MulticastRouterMode int
+	LinkUp              bool
+	MulticastSnooping   bool
+	MulticastQuerier    bool
 }
 
 // FDBEntry is one bridge forwarding-database entry, as internal/host would
@@ -143,6 +163,38 @@ type FDBEntry struct {
 	Master    bool
 	Permanent bool
 	Stale     bool
+}
+
+// BridgeSTP is one (bridge-kind) link's live STP/RSTP protocol state, as
+// internal/host would report it (T-3901; mirrors internal/host.BridgeSTP's
+// raw-observed field set — kept as this package's own type for the same
+// reason the rest of LinkState is, per HostReader's doc comment). IsRoot
+// and each port's Role are deliberately absent: both are derived (from
+// RootID/BridgeID/RootPort/State) by internal/host/fixture.go's conversion
+// using the exact same deriveBridgePortRole internal/host's real sysfs
+// read uses, rather than computed twice.
+type BridgeSTP struct {
+	RootID       string
+	BridgeID     string
+	Ports        []BridgePortSTP
+	StpState     int
+	Priority     int
+	RootPort     int
+	RootPathCost int
+}
+
+// BridgePortSTP is one bridge port's raw fixture-declared STP state, as
+// internal/host would report it before role derivation (mirrors
+// BridgePortSTPSpec's field set field-for-field).
+type BridgePortSTP struct {
+	Port             string
+	DesignatedRoot   string
+	DesignatedBridge string
+	State            string
+	PortNo           int
+	PathCost         int
+	Priority         int
+	DesignatedCost   int
 }
 
 // VF is one SR-IOV virtual function on a (physical-kind) link, as
@@ -226,6 +278,10 @@ func (h *FixtureHostReader) Links(_ context.Context, node string) ([]LinkState, 
 		if iface.Type == "bridge" || iface.Type == "OVSBridge" {
 			if link, ok := ns.links[iface.Iface]; ok {
 				ls.FDB = convertFDBSpecs(link.FDB)
+				ls.STP = convertSTPSpec(link.STP)
+				ls.MulticastSnooping = link.MulticastSnooping
+				ls.MulticastQuerier = link.MulticastQuerier
+				ls.MulticastRouterMode = link.MulticastRouter
 			}
 		}
 		if iface.Type == "eth" {
@@ -248,6 +304,36 @@ func convertFDBSpecs(specs []FDBEntrySpec) []FDBEntry {
 	out := make([]FDBEntry, len(specs))
 	for i, s := range specs {
 		out[i] = FDBEntry(s)
+	}
+	return out
+}
+
+// convertSTPSpec converts a fixture's declared STP state (LinkInfo.STP,
+// T-3901) to this file's plain LinkState.STP shape. nil in, nil out — a
+// bridge with no fixture-declared STP block simply carries no STP state,
+// the same "not declared" convention every other optional LinkState field
+// follows.
+func convertSTPSpec(spec *BridgeSTPSpec) *BridgeSTP {
+	if spec == nil {
+		return nil
+	}
+	out := &BridgeSTP{
+		RootID:       spec.RootID,
+		BridgeID:     spec.BridgeID,
+		StpState:     spec.StpState,
+		Priority:     spec.Priority,
+		RootPort:     spec.RootPort,
+		RootPathCost: spec.RootPathCost,
+	}
+	if len(spec.Ports) > 0 {
+		// BridgePortSTPSpec and BridgePortSTP are identically shaped
+		// (field-for-field, same order) by design — see BridgeSTPSpec's
+		// doc comment — so a direct conversion per element is equivalent
+		// to and preferred over a field-by-field literal.
+		out.Ports = make([]BridgePortSTP, len(spec.Ports))
+		for i, p := range spec.Ports {
+			out.Ports[i] = BridgePortSTP(p)
+		}
 	}
 	return out
 }
@@ -347,6 +433,34 @@ func (h *FixtureHostReader) DHCPLeases(_ context.Context, node string) ([]byte, 
 	ns.mu.RLock()
 	defer ns.mu.RUnlock()
 	return []byte(ns.dhcpLeases), nil
+}
+
+// MDB implements HostReader (T-3902): every bridge/OVSBridge iface on
+// node's fixture-declared MDB entries, rendered into `bridge -d -j mdb
+// show`'s own JSON shape (marshalMDB, mdb_render.go) — the same "render
+// fixture data through the real parser" precedent FRRBGPSummary sets. A
+// node with no bridges, or bridges with no fixture-declared MDB entries,
+// renders the same empty-but-well-formed document a real host with an
+// empty MDB table produces (see mdb.go's ParseMDB: "no rows" is not an
+// error).
+func (h *FixtureHostReader) MDB(_ context.Context, node string) ([]byte, error) {
+	ns, ok := h.state.node(node)
+	if !ok {
+		return nil, fmt.Errorf("pvemock: host reader: %w: node %q", ErrNotFound, node)
+	}
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+
+	bridges := map[string][]MDBEntrySpec{}
+	for _, iface := range ns.network {
+		if iface.Type != "bridge" && iface.Type != "OVSBridge" {
+			continue
+		}
+		if link, ok := ns.links[iface.Iface]; ok && len(link.MDB) > 0 {
+			bridges[iface.Iface] = link.MDB
+		}
+	}
+	return marshalMDB(bridges)
 }
 
 // watchedServiceNames is host.WatchedServices, duplicated here (as a plain

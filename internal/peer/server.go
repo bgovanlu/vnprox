@@ -141,6 +141,15 @@ type HostReader interface {
 	// host.Reader.IPv6RA call, GET /ipv6/segments' cluster fan-out
 	// dependency.
 	IPv6RA(ctx context.Context, node string) ([]host.IPv6RAObservation, error)
+
+	// MDB returns node's raw `bridge -d -j mdb show` output (T-3902's
+	// multicast/MDB browser) — the remote-node counterpart of a local
+	// host.Reader.MDB call, GET /mdb's cluster fan-out dependency. Unlike
+	// FDB (embedded in Links()), there is no netlink dump for MDB state
+	// (see host/mdb.go's doc comment), so this is its own interface method
+	// rather than a Links()-derived route, mirroring FRRBGPSummary/
+	// DHCPLeases' own exec-then-forward shape.
+	MDB(ctx context.Context, node string) ([]byte, error)
 }
 
 // FirewallLogReader is the peer-server-side dependency for
@@ -252,12 +261,43 @@ type ReplicationSink interface {
 	Replicate(ctx context.Context, payload []byte) ([]byte, error)
 }
 
+// RouteReader backs T-3903's route-explorer peer routes
+// (/api/peer/host/route/*): a node's kernel FIB (every table, v4/v6),
+// policy rules, and — when the node runs FRR — its RIB. Declared as its
+// own small interface (rather than folded into the large HostReader
+// interface above, the way MDB/conntrack/ipv6-ra were) and wired through
+// its own optional ServerOptions.Route field so this task adds no method
+// to HostReader — no ripple to HostReader's other implementers (test
+// doubles across internal/change, internal/collect, cmd/vnproxctl) that a
+// wider interface change would need. *host.Real satisfies this directly
+// once its six route-fetch methods exist (internal/host/route.go); so
+// does *pvemock.FixtureHostReader for tests — see internal/route/
+// service.go's Fetcher, the same six-method shape this mirrors on the
+// wire side.
+type RouteReader interface {
+	RouteTableV4(ctx context.Context, node string) ([]byte, error)
+	RouteTableV6(ctx context.Context, node string) ([]byte, error)
+	RouteRulesV4(ctx context.Context, node string) ([]byte, error)
+	RouteRulesV6(ctx context.Context, node string) ([]byte, error)
+	// FRRRIBV4/V6 return an error wrapping host.ErrFRRUnavailable when
+	// node runs no FRR at all — same convention as HostReader's own
+	// FRRBGPSummary/FRREVPNVNI.
+	FRRRIBV4(ctx context.Context, node string) ([]byte, error)
+	FRRRIBV6(ctx context.Context, node string) ([]byte, error)
+}
+
 // ServerOptions configures a Server.
 type ServerOptions struct {
 	Reader    HostReader
 	Writer    HostWriter
 	Audit     AuditReader
 	Snapshots SnapshotReader
+	// Route backs the /api/peer/host/route/* routes (T-3903's route
+	// explorer). Optional (nil-safe, the same 503-not-panic treatment as
+	// every other optional ServerOptions dependency): a daemon that
+	// hasn't wired internal/route yet simply can't serve its routing
+	// state to a peer.
+	Route RouteReader
 	// Flows backs GET /api/peer/flows (T-1002). Optional (nil-safe, the same
 	// 503-not-panic treatment as every other optional ServerOptions
 	// dependency): a daemon that hasn't wired flow ingestion at all simply
@@ -360,6 +400,13 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Get("/host/frr/bgp-summary", s.handleFRRBGPSummary)
 		r.Get("/host/frr/evpn-vni", s.handleFRREVPNVNI)
 		r.Get("/host/dhcp-leases", s.handleDHCPLeases)
+		r.Get("/host/mdb", s.handleMDB)
+		r.Get("/host/route/fib-v4", s.handleRouteTableV4)
+		r.Get("/host/route/fib-v6", s.handleRouteTableV6)
+		r.Get("/host/route/rules-v4", s.handleRouteRulesV4)
+		r.Get("/host/route/rules-v6", s.handleRouteRulesV6)
+		r.Get("/host/route/frr-rib-v4", s.handleFRRRIBV4)
+		r.Get("/host/route/frr-rib-v6", s.handleFRRRIBV6)
 		r.Post("/host/stage-interfaces", s.handleStageInterfaces)
 		r.Post("/host/ifreload", s.handleIfreload)
 		r.Post("/host/restore", s.handleRestore)
@@ -788,6 +835,117 @@ func (s *Server) handleDHCPLeases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, dhcpLeasesResponse{Content: string(data)})
+}
+
+// handleMDB implements GET /api/peer/host/mdb (T-3902): node's raw
+// `bridge -d -j mdb show` output, the peer-routed counterpart of a local
+// host.Reader.MDB call. Same {content: string}, no-{available}-envelope
+// convention as handleDHCPLeases — an empty-but-successfully-read MDB table
+// is a clean, unremarkable answer (see host/mdb.go's ParseMDB doc comment),
+// not a distinct absent/error condition. Unlike DHCPLeases, a genuine read
+// failure (including host.ErrMDBUnavailable — the `bridge` binary itself
+// missing, an uncommon anomaly rather than an expected state the way "no
+// FRR here" is) is a real error here, not silently downgraded to an empty
+// result: writeHostError below reports it as such.
+func (s *Server) handleMDB(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	data, err := s.opts.Reader.MDB(r.Context(), node)
+	if err != nil {
+		s.writeHostError(w, "reading bridge mdb", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, mdbResponse{Content: string(data)})
+}
+
+// handleRouteTableV4/V6 implement GET /api/peer/host/route/fib-v4 and
+// fib-v6 (T-3903's route explorer): node's raw `ip -j route show table
+// all` / `ip -j -6 route show table all` output, the remote-node
+// counterpart of a local internal/route.Fetcher.RouteTableV4/V6 call.
+// `ip` is a hard OS dependency on every PVE node, so — unlike the FRR
+// routes below — there is no {available} envelope to consider: a read
+// failure here is always a genuine error.
+func (s *Server) handleRouteTableV4(w http.ResponseWriter, r *http.Request) {
+	s.handleRouteContent(w, r, "reading ipv4 route table", func(ctx context.Context, node string) ([]byte, error) {
+		return s.opts.Route.RouteTableV4(ctx, node)
+	})
+}
+
+func (s *Server) handleRouteTableV6(w http.ResponseWriter, r *http.Request) {
+	s.handleRouteContent(w, r, "reading ipv6 route table", func(ctx context.Context, node string) ([]byte, error) {
+		return s.opts.Route.RouteTableV6(ctx, node)
+	})
+}
+
+// handleRouteRulesV4/V6 implement GET /api/peer/host/route/rules-v4 and
+// rules-v6: node's raw `ip -j rule show` / `ip -j -6 rule show` output.
+func (s *Server) handleRouteRulesV4(w http.ResponseWriter, r *http.Request) {
+	s.handleRouteContent(w, r, "reading ipv4 policy rules", func(ctx context.Context, node string) ([]byte, error) {
+		return s.opts.Route.RouteRulesV4(ctx, node)
+	})
+}
+
+func (s *Server) handleRouteRulesV6(w http.ResponseWriter, r *http.Request) {
+	s.handleRouteContent(w, r, "reading ipv6 policy rules", func(ctx context.Context, node string) ([]byte, error) {
+		return s.opts.Route.RouteRulesV6(ctx, node)
+	})
+}
+
+// handleRouteContent is the shared body for the four plain
+// (no-{available}-envelope) route-explorer reads above: 503 when Route
+// isn't wired, writeHostError's usual not-found/internal-error split on a
+// genuine read failure, routeContentResponse otherwise.
+func (s *Server) handleRouteContent(w http.ResponseWriter, r *http.Request, op string, fetch func(context.Context, string) ([]byte, error)) {
+	if s.opts.Route == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "route reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	data, err := fetch(r.Context(), node)
+	if err != nil {
+		s.writeHostError(w, op, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, routeContentResponse{Content: json.RawMessage(data)})
+}
+
+// handleFRRRIBV4/V6 implement GET /api/peer/host/route/frr-rib-v4 and
+// frr-rib-v6 (T-3903): node's raw `vtysh -c "show ip route json"` /
+// "show ipv6 route json" output, wrapped in the same {available, content}
+// envelope as handleFRRBGPSummary/handleFRREVPNVNI (Available is false
+// when node runs no FRR at all — host.ErrFRRUnavailable — rather than an
+// error status).
+func (s *Server) handleFRRRIBV4(w http.ResponseWriter, r *http.Request) {
+	s.handleFRRRIBContent(w, r, "reading frr ipv4 rib", func(ctx context.Context, node string) ([]byte, error) {
+		return s.opts.Route.FRRRIBV4(ctx, node)
+	})
+}
+
+func (s *Server) handleFRRRIBV6(w http.ResponseWriter, r *http.Request) {
+	s.handleFRRRIBContent(w, r, "reading frr ipv6 rib", func(ctx context.Context, node string) ([]byte, error) {
+		return s.opts.Route.FRRRIBV6(ctx, node)
+	})
+}
+
+func (s *Server) handleFRRRIBContent(w http.ResponseWriter, r *http.Request, op string, fetch func(context.Context, string) ([]byte, error)) {
+	if s.opts.Route == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "route reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	data, err := fetch(r.Context(), node)
+	if err != nil {
+		if errors.Is(err, host.ErrFRRUnavailable) {
+			writeJSON(w, http.StatusOK, frrResponse{Available: false})
+			return
+		}
+		s.writeHostError(w, op, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, frrResponse{Available: true, Content: json.RawMessage(data)})
 }
 
 // handleFirewallLog implements GET /api/peer/firewall/log (T-505): node's

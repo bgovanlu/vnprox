@@ -49,6 +49,7 @@ type spyHostReader struct {
 	dhcpLeases map[string][]byte
 	neighbors  map[string][]host.Neighbor
 	conntrack  map[string][]host.ConntrackEntry
+	mdb        map[string][]byte
 	// conntrackErr, when set for a node, is returned by Conntrack instead
 	// of consulting the conntrack map at all — used to simulate
 	// host.ErrConntrackUnavailable (T-3711) without a real kernel.
@@ -75,6 +76,7 @@ func newSpyHostReader() *spyHostReader {
 		dhcpLeases: map[string][]byte{},
 		neighbors:  map[string][]host.Neighbor{},
 		conntrack:  map[string][]host.ConntrackEntry{},
+		mdb:        map[string][]byte{},
 	}
 }
 
@@ -179,6 +181,14 @@ func (r *spyHostReader) Conntrack(_ context.Context, node string) ([]host.Conntr
 
 func (r *spyHostReader) IPv6RA(_ context.Context, _ string) ([]host.IPv6RAObservation, error) {
 	return nil, nil
+}
+
+func (r *spyHostReader) MDB(_ context.Context, node string) ([]byte, error) {
+	b, ok := r.mdb[node]
+	if !ok {
+		return nil, nil
+	}
+	return b, nil
 }
 
 // spyHostWriter records every call it receives and its arguments.

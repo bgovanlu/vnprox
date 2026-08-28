@@ -164,6 +164,29 @@ type dhcpLeasesResponse struct {
 	Content string `json:"content"`
 }
 
+// mdbResponse is GET /api/peer/host/mdb's body (T-3902): node's raw
+// `bridge -d -j mdb show` output, the same "{content: string}" shape
+// dhcpLeasesResponse uses above — an empty Content is itself a clean "no
+// MDB entries" result (see host/mdb.go's ParseMDB doc comment), not a
+// distinct absent/error state to distinguish.
+type mdbResponse struct {
+	Content string `json:"content"`
+}
+
+// routeContentResponse is GET /api/peer/host/route/{fib-v4,fib-v6,
+// rules-v4,rules-v6}'s shared body shape (T-3903): node's raw
+// `ip -j ...` output, passed straight through as JSON (unlike
+// dhcpLeasesResponse's string content, this content is *already* JSON —
+// wrapping it as json.RawMessage rather than a string avoids a
+// pointless marshal-a-JSON-string-inside-JSON round trip for internal/
+// route's own parsers, which expect the same bytes `ip -j` itself would
+// emit). No {available} envelope: `ip` is a hard OS dependency on every
+// PVE node (unlike FRR/vtysh), so there is no documented "not installed"
+// condition to distinguish the way frrResponse's Available does.
+type routeContentResponse struct {
+	Content json.RawMessage `json:"content"`
+}
+
 // AuditRecord is one row of GET /api/peer/audit's page (T-303). Its fields
 // mirror docs/api.md's GET /audit list item shape field-for-field so
 // internal/api's cluster merge can decode a peer's page directly into the

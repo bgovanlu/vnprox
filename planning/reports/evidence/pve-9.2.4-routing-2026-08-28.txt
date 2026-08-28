@@ -1,0 +1,203 @@
+T-3903 route explorer — kernel FIB / policy-rule / FRR RIB evidence
+Host: pvecube (192.168.1.9), PVE 9.2.4
+Captured: 2026-08-28 02:47-03:05 UTC, via `ssh root@192.168.1.9`, read-only commands only.
+iproute2 version on host: iproute2-6.15.0, libbpf 1.5.0
+FRR: frr.service active (running) since 2026-08-21 14:19:05 EDT — FRRouting 10.6.1
+     (dpkg: frr 10.6.1-1+pve2, frr-pythontools 10.6.1-1+pve2). vtysh present at /usr/bin/vtysh.
+     (Initial `vtysh --version` probe with a non-interactive ssh command batch reported
+     "not found" — that was a false negative from how the multi-command ssh invocation was
+     quoted/piped, not a real absence; re-run individually below shows FRR is very much
+     installed and running. Left in this transcript as a reminder to re-check rather than
+     trust a single negative probe.)
+
+No SDN zones/VNets are currently configured on this node (bridges present are vmbr0, vmbr1,
+vmbr2, vmbr3, vmbr99 — plain bridges plus firewall bridges for guests 103/104 — no vnet/VRF
+interfaces), so FRR's RIB is currently just its "default" VRF mirroring the kernel's default
+table (protocol "kernel"/"connected"/"local", no BGP/EVPN-learned routes observed on this run).
+That is a property of this cluster's current config, not of the tooling — the parser below does
+not assume "no learned routes" and is written to carry a protocol field to distinguish
+kernel-static/connected/local from bgp/ospf/static-in-frr-config.
+
+=== systemctl status frr (confirms real state; not `is-active` alone) ===
+$ systemctl status frr --no-pager | head -20
+● frr.service - FRRouting
+     Loaded: loaded (/usr/lib/systemd/system/frr.service; disabled; preset: enabled)
+     Active: active (running) since Fri 2026-08-21 14:19:05 EDT; 6 days ago
+   Main PID: 3675190 (watchfrr)
+     CGroup: /system.slice/frr.service
+             ├─3675190 /usr/lib/frr/watchfrr -d mgmtd zebra bfdd bgpd staticd
+             ├─3675202 /usr/lib/frr/mgmtd -d -F traditional -A 127.0.0.1
+             ├─3675204 /usr/lib/frr/zebra -d -F traditional -A 127.0.0.1 -s 90000000
+             ├─3675209 /usr/lib/frr/bfdd -d -F traditional -A 127.0.0.1
+             ├─3675212 /usr/lib/frr/bgpd -d -F traditional -A 127.0.0.1
+             └─3675219 /usr/lib/frr/staticd -d -F traditional -A 127.0.0.1
+
+=== ip route show table all (text) ===
+$ ip route show table all
+default via 192.168.1.1 dev vmbr0
+10.99.0.0/24 dev vmbr99 proto kernel scope link src 10.99.0.1
+192.168.1.0/24 dev vmbr0 proto kernel scope link src 192.168.1.9
+local 10.99.0.1 dev vmbr99 table local proto kernel scope host src 10.99.0.1
+broadcast 10.99.0.255 dev vmbr99 table local proto kernel scope link src 10.99.0.1
+local 127.0.0.0/8 dev lo table local proto kernel scope host src 127.0.0.1
+local 127.0.0.1 dev lo table local proto kernel scope host src 127.0.0.1
+broadcast 127.255.255.255 dev lo table local proto kernel scope link src 127.0.0.1
+local 192.168.1.9 dev vmbr0 table local proto kernel scope host src 192.168.1.9
+broadcast 192.168.1.255 dev vmbr0 table local proto kernel scope link src 192.168.1.9
+fe80::/64 dev vmbr0 proto kernel metric 256 pref medium
+fe80::/64 dev vmbr2 proto kernel metric 256 pref medium
+fe80::/64 dev vmbr99 proto kernel metric 256 pref medium
+local ::1 dev lo table local proto kernel metric 0 pref medium
+anycast fe80:: dev vmbr0 table local proto kernel metric 0 pref medium
+local fe80::9893:21ff:fe37:69ef dev vmbr99 table local proto kernel metric 0 pref medium
+local fe80::aab8:e0ff:fe00:447 dev vmbr2 table local proto kernel metric 0 pref medium
+local fe80::aab8:e0ff:fe00:ee8 dev vmbr0 table local proto kernel metric 0 pref medium
+multicast ff00::/8 dev vmbr0 table local proto kernel metric 256 pref medium
+multicast ff00::/8 dev vmbr2 table local proto kernel metric 256 pref medium
+multicast ff00::/8 dev vmbr99 table local proto kernel metric 256 pref medium
+
+Note: `ip route show table all` mixes v4 and v6 in one text stream once IPv6 routes exist
+(unlike `-j`, which is scoped by `-4`/`-6`) — the "local" pseudo-table entries (type
+local/broadcast/anycast/multicast) only appear with `table all`, not with a bare
+`ip route show`.
+
+=== ip -6 route show table all (text) — v6-only view of the same data ===
+(identical to the fe80/::1/local/anycast/multicast lines above; omitted for brevity — see
+`ip -j -6 route show table all` below for the exact same data in parseable form.)
+
+=== ip -j route show table all (JSON, v4) — PREFERRED, this is what the parser consumes ===
+$ ip -j route show table all
+[{"dst":"default","gateway":"192.168.1.1","dev":"vmbr0","flags":[]},
+ {"dst":"10.99.0.0/24","dev":"vmbr99","protocol":"kernel","scope":"link","prefsrc":"10.99.0.1","flags":[]},
+ {"dst":"192.168.1.0/24","dev":"vmbr0","protocol":"kernel","scope":"link","prefsrc":"192.168.1.9","flags":[]},
+ {"type":"local","dst":"10.99.0.1","dev":"vmbr99","table":"local","protocol":"kernel","scope":"host","prefsrc":"10.99.0.1","flags":[]},
+ {"type":"broadcast","dst":"10.99.0.255","dev":"vmbr99","table":"local","protocol":"kernel","scope":"link","prefsrc":"10.99.0.1","flags":[]},
+ {"type":"local","dst":"127.0.0.0/8","dev":"lo","table":"local","protocol":"kernel","scope":"host","prefsrc":"127.0.0.1","flags":[]},
+ {"type":"local","dst":"127.0.0.1","dev":"lo","table":"local","protocol":"kernel","scope":"host","prefsrc":"127.0.0.1","flags":[]},
+ {"type":"broadcast","dst":"127.255.255.255","dev":"lo","table":"local","protocol":"kernel","scope":"link","prefsrc":"127.0.0.1","flags":[]},
+ {"type":"local","dst":"192.168.1.9","dev":"vmbr0","table":"local","protocol":"kernel","scope":"host","prefsrc":"192.168.1.9","flags":[]},
+ {"type":"broadcast","dst":"192.168.1.255","dev":"vmbr0","table":"local","protocol":"kernel","scope":"link","prefsrc":"192.168.1.9","flags":[]},
+ {"dst":"fe80::/64","dev":"vmbr0","protocol":"kernel","metric":256,"flags":[],"pref":"medium"},
+ {"dst":"fe80::/64","dev":"vmbr2","protocol":"kernel","metric":256,"flags":[],"pref":"medium"},
+ {"dst":"fe80::/64","dev":"vmbr99","protocol":"kernel","metric":256,"flags":[],"pref":"medium"},
+ {"type":"local","dst":"::1","dev":"lo","table":"local","protocol":"kernel","metric":0,"flags":[],"pref":"medium"},
+ {"type":"anycast","dst":"fe80::","dev":"vmbr0","table":"local","protocol":"kernel","metric":0,"flags":[],"pref":"medium"},
+ {"type":"local","dst":"fe80::9893:21ff:fe37:69ef","dev":"vmbr99","table":"local","protocol":"kernel","metric":0,"flags":[],"pref":"medium"},
+ {"type":"local","dst":"fe80::aab8:e0ff:fe00:447","dev":"vmbr2","table":"local","protocol":"kernel","metric":0,"flags":[],"pref":"medium"},
+ {"type":"local","dst":"fe80::aab8:e0ff:fe00:ee8","dev":"vmbr0","table":"local","protocol":"kernel","metric":0,"flags":[],"pref":"medium"},
+ {"type":"multicast","dst":"ff00::/8","dev":"vmbr0","table":"local","protocol":"kernel","metric":256,"flags":[],"pref":"medium"},
+ {"type":"multicast","dst":"ff00::/8","dev":"vmbr2","table":"local","protocol":"kernel","metric":256,"flags":[],"pref":"medium"},
+ {"type":"multicast","dst":"ff00::/8","dev":"vmbr99","table":"local","protocol":"kernel","metric":256,"flags":[],"pref":"medium"}]
+
+Observations on the JSON shape (drives the parser's field tolerance):
+- `dst:"default"` for the default route, not "0.0.0.0/0" — must special-case.
+- `table` is present on "local"-table rows but ABSENT on main-table rows (main is implicit —
+  `ip route show table all` without a `table` key means table 254/"main"). The parser must
+  default an absent `table` field to "main", never treat it as "unknown".
+- `type` is present (local/broadcast/anycast/multicast) only for non-unicast route types;
+  absent means ordinary unicast — default type to "unicast" when absent.
+- No top-level `table=254` numeric id ever appears in this iproute2 version's JSON — tables are
+  named ("local","main") not numbered, except custom/policy-routing tables which iproute2
+  renders by their /etc/iproute2/rt_tables name if known, else by number as a string.
+- `gateway` present only for routes with a next hop IP (default route here); directly-connected
+  routes carry `prefsrc` instead and no `gateway`.
+- `flags` is always present, always an array (empty `[]` in every row observed here).
+- v6 rows carry `pref` (RFC 4191 route preference: "medium" observed); v4 rows never do.
+
+=== ip -j -6 route show table all (JSON, v6) ===
+(byte-identical to the v6 subset of the combined `-j route show table all` output above —
+ confirms `-j -6` is just a pre-filtered view of the same per-route object shape, not a
+ different schema.)
+
+=== ip -j rule show / ip -j -6 rule show (JSON policy rules) ===
+$ ip -j rule show
+[{"priority":0,"src":"all","table":"local"},{"priority":32766,"src":"all","table":"main"},{"priority":32767,"src":"all","table":"default"}]
+$ ip -j -6 rule show
+[{"priority":0,"src":"all","table":"local"},{"priority":32766,"src":"all","table":"main"}]
+
+Only the three stock rules exist on this node (no SDN VRF-lite / policy routing configured) —
+v6 has no "default" table rule (matches upstream kernel default: IPv6 ships no empty "default"
+table by convention). Parser must not assume all three rules always exist for both families.
+
+=== ip route get (verification-only; a query, mutates nothing) ===
+$ ip route get 8.8.8.8
+8.8.8.8 via 192.168.1.1 dev vmbr0 src 192.168.1.9 uid 0
+    cache
+$ ip -j route get 8.8.8.8
+[{"dst":"8.8.8.8","gateway":"192.168.1.1","dev":"vmbr0","prefsrc":"192.168.1.9","flags":[],"uid":0,"cache":[]}]
+
+$ ip -j route get 10.99.0.5
+[{"dst":"10.99.0.5","dev":"vmbr99","prefsrc":"10.99.0.1","flags":[],"uid":0,"cache":[]}]
+
+$ ip -j -6 route get fe80::1 dev vmbr0
+[{"dst":"fe80::1","from":"::","dev":"vmbr0","protocol":"kernel","prefsrc":"fe80::aab8:e0ff:fe00:ee8","metric":256,"flags":[],"pref":"medium"}]
+
+These three confirm the route explorer's longest-prefix-match lookup against `ip -j route show
+table all`'s parsed data must reproduce: 8.8.8.8 -> default route via 192.168.1.1/vmbr0;
+10.99.0.5 -> the connected 10.99.0.0/24 route via vmbr99 (no gateway, on-link); a link-local v6
+destination requires a `dev` hint the same way `ip route get` itself does (link-locals are only
+resolvable per-interface). `internal/route`'s lookup tests are built to match exactly this.
+
+=== vtysh -c "show ip route json" (FRR RIB, v4, default VRF) ===
+$ vtysh -c "show ip route json"
+{"0.0.0.0/0":[{"prefix":"0.0.0.0/0","prefixLen":0,"protocol":"kernel","vrfId":0,"vrfName":"default","selected":true,"destSelected":true,"distance":0,"metric":0,"installed":true,"table":254,"internalStatus":16,"internalFlags":8,"internalNextHopNum":1,"internalNextHopActiveNum":1,"internalNextHopFibInstalledNum":1,"nexthopGroupId":8,"installedNexthopGroupId":8,"receivedNexthopGroupId":8,"uptime":"6d08h28m","nexthops":[{"flags":3,"fib":true,"ip":"192.168.1.1","afi":"ipv4","interfaceIndex":6,"interfaceName":"vmbr0","active":true,"weight":1}]}]
+,"10.99.0.0/24":[{"prefix":"10.99.0.0/24","prefixLen":24,"protocol":"connected","vrfId":0,"vrfName":"default","selected":true,"destSelected":true,"distance":0,"metric":0,"installed":true,"table":254,"internalStatus":16,"internalFlags":8,"internalNextHopNum":1,"internalNextHopActiveNum":1,"internalNextHopFibInstalledNum":1,"nexthopGroupId":10,"installedNexthopGroupId":10,"receivedNexthopGroupId":10,"uptime":"3d13h22m","nexthops":[{"flags":3,"fib":true,"directlyConnected":true,"interfaceIndex":18,"interfaceName":"vmbr99","active":true,"weight":1}]}]
+,"10.99.0.1/32":[{"prefix":"10.99.0.1/32","prefixLen":32,"protocol":"local","vrfId":0,"vrfName":"default","selected":true,"destSelected":true,"distance":0,"metric":0,"installed":true,"table":254,"internalStatus":16,"internalFlags":8,"internalNextHopNum":1,"internalNextHopActiveNum":1,"internalNextHopFibInstalledNum":1,"nexthopGroupId":10,"installedNexthopGroupId":10,"receivedNexthopGroupId":10,"uptime":"3d13h22m","nexthops":[{"flags":3,"fib":true,"directlyConnected":true,"interfaceIndex":18,"interfaceName":"vmbr99","active":true,"weight":1}]}]
+,"192.168.1.0/24":[{"prefix":"192.168.1.0/24","prefixLen":24,"protocol":"connected","vrfId":0,"vrfName":"default","selected":true,"destSelected":true,"distance":0,"metric":0,"installed":true,"table":254,"internalStatus":16,"internalFlags":8,"internalNextHopNum":1,"internalNextHopActiveNum":1,"internalNextHopFibInstalledNum":1,"nexthopGroupId":5,"installedNexthopGroupId":5,"receivedNexthopGroupId":5,"uptime":"6d08h28m","nexthops":[{"flags":3,"fib":true,"directlyConnected":true,"interfaceIndex":6,"interfaceName":"vmbr0","active":true,"weight":1}]}]
+,"192.168.1.9/32":[{"prefix":"192.168.1.9/32","prefixLen":32,"protocol":"local","vrfId":0,"vrfName":"default","selected":true,"destSelected":true,"distance":0,"metric":0,"installed":true,"table":254,"internalStatus":16,"internalFlags":8,"internalNextHopNum":1,"internalNextHopActiveNum":1,"internalNextHopFibInstalledNum":1,"nexthopGroupId":5,"installedNexthopGroupId":5,"receivedNexthopGroupId":5,"uptime":"6d08h28m","nexthops":[{"flags":3,"fib":true,"directlyConnected":true,"interfaceIndex":6,"interfaceName":"vmbr0","active":true,"weight":1}]}]
+}
+
+=== vtysh -c "show ipv6 route json" (FRR RIB, v6, default VRF) ===
+{"fe80::/64":[{...three connected entries, one per interface (vmbr0/vmbr2/vmbr99), only the
+vmbr0 one has "selected":true/"destSelected":true...}]}
+(full text captured in session log; abbreviated here — see the three-nexthop-groups pattern:
+FRR (like the kernel) can hold multiple identical-prefix routes simultaneously, only one
+"selected"/"destSelected". The parser keeps every entry, not just the selected one, and exposes
+Selected as a bool field so the UI can show "installed" vs. "candidate" routes distinctly.)
+
+=== vtysh -c "show ip route vrf all json" (checked for non-default VRFs) ===
+$ vtysh -c "show ip route vrf all json" | head -c 500
+{"default":{"0.0.0.0/0":[{...same routes as above, now nested one level under a "default" key...
+
+Shape difference vs. plain `show ip route json`: `vrf all` wraps the whole per-prefix map in an
+outer {"<vrfName>": {...}} object; the plain command returns the per-prefix map directly with no
+outer VRF wrapper (defaulting to VRF "default" implicitly, confirmed by each entry's own
+"vrfName":"default" field). The parser (`internal/route/frr_rib.go`) therefore does NOT rely on
+top-level shape to detect which command produced the bytes — it auto-detects "does the top-level
+map's values look like arrays of route objects (plain form) or like nested per-prefix maps
+(vrf-all form)" the same tolerant-shape-sniffing style frr.go's ParseBGPSummary already
+established for the BGP-summary flat-vs-AFI-nested ambiguity — and always trusts each route
+entry's own embedded "vrfName" field for grouping, never the wrapper key alone. vnprox's own
+fetch uses the plain (non-`vrf all`) command day-to-day, since Real only reads one node's default
+VRF path today (no VRF-lite zones are deployed on either cluster node); the tolerant parse means
+a future EVPN-VRF-lite zone's RIB is not a rewrite.
+
+=== ip -j link show type vrf (checked for VRF interfaces; none configured) ===
+$ ip -j link show type vrf
+[{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}]
+(iproute2 6.15's `-j` + `type vrf` filter does not actually filter server-side on this build —
+it returns one empty `{}` per *existing* link, not per VRF link, so this is not a reliable
+"are there any VRFs" probe; the FRR RIB's own vrfName field is the authoritative source instead
+for T-3903's purposes, since a VRF that FRR does not know about would not appear in the RIB the
+UI is showing regardless of the interface list.)
+
+=== bridge -j link (context only — confirms interface topology feeding the graph view) ===
+Shows enp1s0/enp3s0 (physical) and fwln/fwpr/veth (per-guest firewall bridge plumbing for
+guests 103/104) plus tap9101i0/tap9102i0 on vmbr99 — the node's actual interface graph the
+next-hop lookup's device names (vmbr0/vmbr2/vmbr99) resolve against.
+
+=== Summary of what this means for the implementation ===
+1. `ip -j route show table all` and `ip -j -6 route show table all` are both available and
+   produce one flat JSON array each — this is the FIB reader's primary source, used in
+   preference to the non-JSON `ip route show` text form named in the task brief.
+2. `ip -j rule show` / `ip -j -6 rule show` are both available (JSON policy rules).
+3. FRR 10.6.1 is running on pvecube with vtysh present; `show ip route json` /
+   `show ipv6 route json` both work and are consumed for the RIB, using the "plain" (non-`vrf
+   all`) command since Real only ever asks about its own node's default VRF today — matching
+   `frr.go`'s existing `FRRBGPSummary`/`FRREVPNVNI` exec pattern (ErrFRRUnavailable when vtysh
+   is not installed, exactly as those two already implement).
+4. No SDN zones/VRFs are configured on pvecube right now, so this transcript cannot show a
+   non-default-VRF RIB or a custom policy-routing table in the wild — the parser is written
+   tolerant of both (embedded vrfName/table-name fields drive grouping, not response shape),
+   per CLAUDE.md's "observe, don't invent" rule: nothing here that isn't in this transcript was
+   assumed to exist, and nothing in this transcript was overridden by a guess.
