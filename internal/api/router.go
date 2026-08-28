@@ -65,15 +65,20 @@ type PeerServer interface {
 
 // Options configures the router built by NewRouter.
 type Options struct {
-	MetricsExporter   MetricsExporterConfig
-	SimDivergence     simDivergenceRecorder
-	IngressTargets    IngressTargetStore
-	Collectors        CollectorHealth
-	Topology          TopologyService
-	LLDP              LLDPService
-	Drift             DriftService
-	Findings          FindingsService
-	FindingAcks       FindingAckService
+	MetricsExporter MetricsExporterConfig
+	SimDivergence   simDivergenceRecorder
+	IngressTargets  IngressTargetStore
+	Collectors      CollectorHealth
+	Topology        TopologyService
+	LLDP            LLDPService
+	Drift           DriftService
+	Findings        FindingsService
+	FindingAcks     FindingAckService
+	// Runbooks (T-4003) backs POST /findings/{id}/runbooks/{name}/prepare:
+	// stage-only remediation, the third caller of the stage/validate/stop
+	// contract T-4001/T-4002 already established. Nil leaves the route
+	// unmounted, the same degradation every other optional field here uses.
+	Runbooks          RunbookPreparer
 	EntityHistory     EntityHistoryService
 	DoctorLive        DoctorLiveService
 	FindingAudit      findingsAuditWriter
@@ -358,6 +363,7 @@ func NewRouter(opts Options) http.Handler {
 		mountLLDPRoutes(r, opts.LLDP, opts.Auth)
 		mountDriftRoutes(r, opts.Drift, opts.Changesets, opts.Auth)
 		mountFindingsRoutes(r, opts.Findings, opts.Changesets, opts.FindingAcks, opts.FindingAudit, opts.Auth, scopeMW)
+		mountRunbookRoutes(r, opts.Runbooks, opts.Auth)
 		mountCertsRoutes(r, opts.Certs, opts.Auth, scopeMW)
 		mountFDBRoutes(r, opts.FDB, opts.Auth)
 		mountMetricsRoutes(r, opts.Metrics, opts.Auth)
