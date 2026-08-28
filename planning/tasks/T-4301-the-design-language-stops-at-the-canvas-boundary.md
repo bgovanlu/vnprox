@@ -71,6 +71,51 @@ not a synchronisation mechanism**, and this one was broken on arrival, in the sa
 existed to remove hand-picked colours. Every further Phase 43 card would add more fields to the
 same hand-copied literal.
 
+## The canvas is also the least accessible surface in the product
+
+Measured after T-4215 landed, each `SceneTheme` value against the fill it is actually drawn on
+rather than against the page:
+
+| | value | on | ratio | |
+|---|---|---|---|---|
+| light `kindText` | `#94a3b8` | `nodeFill` `#ffffff` | **2.56** | FAIL (AA 4.5) |
+| dark `kindText` | `#64748b` | `nodeFill` `#1e293b` | **3.07** | FAIL |
+| light `nodeText` | `#1e293b` | `#ffffff` | 14.63 | pass |
+| dark `nodeText` | `#e2e8f0` | `#1e293b` | 11.87 | pass |
+| light `badgeText` | `#475569` | `#e2e8f0` | 6.15 | pass |
+| dark `badgeText` | `#cbd5e1` | `#334155` | 6.97 | pass |
+| light `mgmtBadgeText` | `#92400e` | `#fde68a` | 5.69 | pass |
+| dark `mgmtBadgeText` | `#fde68a` | `#78350f` | 7.28 | pass |
+
+`kindText` is not decorative. `canvasDraw.ts:453` draws the entity kind in it at **9px**, and
+`:447` draws the port speed marking at **8px** — well under the 18pt/14pt-bold threshold that
+would exempt them, so AA applies in full. It fails in **both** themes, which is the same
+"fails in opposite themes so neither is obvious" shape `slateContrast.test.ts` was written for,
+except here it fails in both at once.
+
+And the graphical objects, against WCAG 1.4.11's 3:1 floor for non-text content required to
+understand the page:
+
+| | value | on | ratio | |
+|---|---|---|---|---|
+| light `nodeBorderOk` | `#cbd5e1` | `nodeFill` | **1.48** | FAIL (3.0) |
+| dark `nodeBorderOk` | `#475569` | `nodeFill` | **1.93** | FAIL |
+| light `edgeDefault` | `#94a3b8` | `background` | **2.45** | FAIL |
+| dark `edgeDefault` | `#475569` | `background` | **2.36** | FAIL |
+
+`edgeDefault` is the default link stroke, 1.5px (`canvasDraw.ts:305`). **This is a network
+topology tool whose connections are drawn at ~2.4:1 in both themes.** If any graphical object in
+this product is "required to understand the content", an edge on the topology map is it.
+
+Two honest caveats. `nodeBorderOk` sits *between* the node fill and the page background, so it has
+two neighbours; it fails against both (1.48/1.42 light). And highlighted, simulated and
+traffic-mode edges take different strokes — this is the default path, which is the common case
+but not the only one. Neither caveat changes the conclusion.
+
+So T-4301 is not only a consistency card. The most-looked-at screen in the product carries four
+contrast failures that no existing gate can see, because every gate this repo has scans Tailwind
+class names and the canvas has none.
+
 ## Why this is the phase's first card
 
 The roadmap's whole premise is that the topology map is the product, and the honest baseline said
@@ -146,10 +191,15 @@ Constraints that fall out of the rest of the phase:
    contrast and separation gates the status scale gets, in all four modes — and `KIND_ACCENT`
    reads it. Do not simply re-point the existing Tailwind-500 picks; they were never designed to
    be distinguishable from each other or legible on the canvas surfaces.
-6. T-4107's performance envelope still passes — palette resolution happens on theme change, not
+6. The four measured failures are fixed and gated: `kindText` clears AA on `nodeFill` in both
+   themes (`--color-fg-subtle` does, at 5.03 light / 6.28 dark — T-4215 supplied it), and
+   `nodeBorderOk` and `edgeDefault` clear 3:1 against **both** neighbours. The gate measures the
+   resolved palette against the resolved surfaces, in all four modes, the way
+   `index.css.test.ts` now does for the DOM — a canvas-side equivalent, not a second hand-copy.
+7. T-4107's performance envelope still passes — palette resolution happens on theme change, not
    per frame, and the test proves it by counting `getComputedStyle` calls across a render of the
    50-node fixture.
-7. Rendered proof, per the phase rule: the map screenshotted in all four mode combinations, plus
+8. Rendered proof, per the phase rule: the map screenshotted in all four mode combinations, plus
    one exported PNG shown to match its on-screen source. A canvas that passes a token test and
    looks wrong is the failure mode this phase has already hit three times.
 
