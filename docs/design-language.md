@@ -281,7 +281,38 @@ completeness in both directions, so a new kind cannot ship without a glyph.
 
 ## 7. Components
 
-_Pending — T-4207, T-4208, T-4209._
+Everything shared lives in `web/src/components/`. **Look here before hand-rolling.** Each of these
+exists because the app had already grown two or three incompatible versions of it — `KeyValue`
+replaced eight independent `<dl>`s, `SegmentedControl` three separate `role="radiogroup"`
+implementations, none of which had arrow-key navigation.
+
+| | |
+|---|---|
+| `Button` | the one button. Add a variant here rather than a `className` hack at a call site |
+| `SegmentedControl` | a small set of mutually exclusive options, with keyboard navigation |
+| `Badge` | a status as a pill — `role="soft"` or `"solid"`, plus the `stale` modifier |
+| `Chip` | a filter, tag or scope token, optionally removable |
+| `Stat` | a number with a label, optional status dot and detail line |
+| `KeyValue` | a definition list at 1–3 columns |
+| `Skeleton` | a loading placeholder shaped like the content it replaces |
+| `Progress` | a single-value bar, or a segmented one with caller-owned fills |
+| `Banner` | a boxed message with a tone, optional badge pill and actions |
+| `Table`, `Dialog`, `Drawer`, `Tabs`, `Toast`, `Tooltip`, `EmptyState`, `PageHeader`, `ErrorBoundary` | the original primitives |
+
+Rules that apply to all of them:
+
+- **Status goes in via a tone, not a colour.** `Badge` and `Banner` take a `StatusTone`
+  (`components/statusTone.ts`); they resolve the tokens themselves.
+- **Never write a `dark:` variant for a status or surface colour**, and pair every `-solid` fill
+  with `text-status-on-solid` (section 2.2). A `dark:` on a token means it was used wrong.
+- **Density** comes from `useDensity()` (`components/density.ts`). Read `Button.tsx` for the
+  established pattern, including why density classes are nested per size rather than layered as
+  competing utilities — two same-specificity Tailwind utilities for one property are not
+  guaranteed to resolve by source order.
+- **Not everything belongs in the scale.** IPAM's free/allocated/reserved/observed palette is a
+  *taxonomy*, not a health signal — only `conflict` is real health — which is why `Progress`
+  accepts caller-owned segment fills instead of forcing that domain onto six health states. When a
+  domain's colours mean something other than health, say so and keep them out.
 
 ## 8. Canvas grammar
 
