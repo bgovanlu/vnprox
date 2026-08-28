@@ -440,6 +440,7 @@ func (e *Engine) healthFindings() []Finding {
 	out = append(out, checkPathLatencyDegraded(e.latMeshSvc, e.latRttDB, e.thresholds)...)
 	out = append(out, checkPathLoss(e.latMeshSvc, e.latLossDB, e.thresholds)...)
 	out = append(out, checkDualstackDrift(snap)...)
+	out = append(out, checkPtrCoverage(snap)...)
 	return out
 }
 

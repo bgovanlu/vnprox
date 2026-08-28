@@ -90,6 +90,9 @@ var allCheckNames = []string{
 	CheckPeerUnreachable,
 	CheckPeerUntrusted,
 	"pending_interfaces", // internal/drift
+	CheckPtrMismatch,
+	CheckPtrMissing,
+	CheckPtrZoneUnreadable,
 	CheckRogueDHCPServer,
 	CheckScheduleMissed,
 	"sdn_realization", // internal/drift
