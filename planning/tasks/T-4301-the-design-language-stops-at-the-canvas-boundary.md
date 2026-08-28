@@ -187,10 +187,13 @@ Constraints that fall out of the rest of the phase:
    `#2563eb`.
 4. The overlays' ramps are derived from `--color-status-*` rather than independently chosen, and
    `STATUS_STROKE`'s second status scale is deleted in favour of the real one.
-5. A categorical scale for entity kinds is defined in `docs/design-language.md` — with the same
-   contrast and separation gates the status scale gets, in all four modes — and `KIND_ACCENT`
-   reads it. Do not simply re-point the existing Tailwind-500 picks; they were never designed to
-   be distinguishable from each other or legible on the canvas surfaces.
+5. ~~A categorical scale for entity kinds is defined in `docs/design-language.md`~~ — **answered
+   at T-4302, and the answer is that no such scale can exist.** Six kinds + four statuses + one
+   accent is eleven hues; at the 40deg separation the status scale holds itself to that needs
+   440deg of hue circle and there are 360. Four of the six current `KIND_ACCENT` hues are already
+   under the floor (bond is 13deg from the accent, guest 17deg from `ok`). Kind moves to the
+   T-4205 pictograms — a shape channel with no capacity limit — and colour goes back to meaning
+   only status. See T-4302.
 6. The four measured failures are fixed and gated: `kindText` clears AA on `nodeFill` in both
    themes (`--color-fg-subtle` does, at 5.03 light / 6.28 dark — T-4215 supplied it), and
    `nodeBorderOk` and `edgeDefault` clear 3:1 against **both** neighbours. The gate measures the
