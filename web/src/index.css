@@ -296,6 +296,24 @@
   --color-status-unknown-soft: #f3f3f4;
   --color-status-stale: #717579;
 
+  /* The text colour that goes ON a `-solid` fill.
+   *
+   * This token exists because the alternative is the one thing this whole
+   * system is built to avoid. The light `-solid` steps are dark enough for
+   * white text (4.80-5.79:1); the dark `-solid` steps are lighter and more
+   * saturated, so white on them measures 2.36-3.66:1 — every one below AA —
+   * while slate-900 on them measures 4.87-7.56:1. A filled badge therefore
+   * needs the OPPOSITE text colour per theme, and without a token for it
+   * every call site writes `text-white dark:text-slate-900` by hand and has
+   * to get it right from memory.
+   *
+   * Found by T-4208 building `Badge` — which is the sort of thing a
+   * component author discovers and a token author does not. The tokens were
+   * derived by measuring `-solid` against the *surface* in dark mode and
+   * against *white* in light mode, so the asymmetry was in the numbers all
+   * along; nothing named it until something had to render text on one. */
+  --color-status-on-solid: #ffffff;
+
   /* T-4203 · The surface ladder.
    *
    * Four levels — sunken, page, raised, overlay — redefined under
@@ -375,6 +393,7 @@ html.dark {
   --color-status-unknown-solid: #9ea5ad;
   --color-status-unknown-soft: #293142;
   --color-status-stale: #82878c;
+  --color-status-on-solid: #0f172b;
 
   --color-surface-sunken: #090f1c;
   --color-surface-page: #0f172b;

@@ -88,12 +88,20 @@ Six states, three roles, and **no `dark:` prefix at call sites**:
 | role | token | use |
 |---|---|---|
 | bare | `text-status-ok` | text or an icon on the page surface |
-| solid | `bg-status-ok-solid` | a filled badge; white text on it in light mode |
+| solid | `bg-status-ok-solid` | a filled badge — pair it with `text-status-on-solid` |
 | soft | `bg-status-ok-soft` | a wash sitting behind bare-token text |
 
 The tokens are redefined under `html.dark`, so `text-status-critical` resolves correctly in both
 themes on its own. **Adoption therefore deletes conditional classes rather than adding them.** If
 a diff adds a `dark:` variant for a status colour, it is wrong.
+
+**Always pair a `-solid` fill with `text-status-on-solid`, never a hand-written colour.** The two
+themes need *opposite* text colours on a filled badge: the light `-solid` steps are dark enough for
+white (4.80–5.79:1), while the dark ones are lighter and more saturated, so white on them measures
+2.36–3.66:1 — every one below AA — and a near-black clears it at 4.87–7.56:1. The token carries that
+inversion so no call site has to remember it. This gap was found by T-4208 building `Badge`, which
+is the sort of thing a component author discovers and a token author does not; the asymmetry was in
+the derivation numbers all along, but nothing named it until something had to render text on a fill.
 
 `stale` has **no solid and no soft variant**, deliberately. Stale means "we have not re-read this
 recently", which can be true of a perfectly healthy entity, so it renders as a desaturation or a

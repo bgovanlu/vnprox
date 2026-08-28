@@ -3,10 +3,19 @@
 import type { ReactNode } from "react";
 import clsx from "clsx";
 import { useDensity, type Density } from "./density";
+import { EmptyIllustration, type EmptyStateVariant } from "./emptystate/EmptyIllustration";
+import type { PictogramKind } from "../icons/registry";
+
+export type { EmptyStateVariant } from "./emptystate/EmptyIllustration";
 
 export interface EmptyStateProps {
   title: string;
   description?: string;
+  /** T-4209: exactly one next action, if this domain has one. Not a slot
+   * for multiple buttons — an empty state earns its keep by pointing at a
+   * single correct next step, not by offering a menu. Omit entirely where
+   * no action is genuinely correct (a "pick one from the list" hint, for
+   * instance) rather than inventing one. */
   action?: ReactNode;
   className?: string;
   /** T-905: compact/comfortable spacing (density.ts) — "comfortable" is
@@ -15,6 +24,16 @@ export interface EmptyStateProps {
    * a dense dashboard grid) rather than a full-page placeholder. Defaults
    * to the ambient `<DensityProvider>` in scope. */
   density?: Density;
+  /** T-4209: the T-4205 pictogram that seeds this empty state's
+   * illustration — the domain "noun" (bridge, zone, WireGuard peer, ...).
+   * Omit to keep the plain text-only rendering: a loading placeholder or a
+   * "pick one from the list" master-detail hint is not a domain empty
+   * state and doesn't want a picture. */
+  icon?: PictogramKind;
+  /** T-4209: which of the four situations this is (empty / filtered to
+   * nothing / not configured / failed to load) — changes the illustration's
+   * badge and tone. Defaults to "empty". No effect without `icon`. */
+  variant?: EmptyStateVariant;
 }
 
 const DENSITY_CLASSES: Record<Density, string> = {
@@ -25,8 +44,9 @@ const DENSITY_CLASSES: Record<Density, string> = {
 /** Generic "nothing here (yet)" panel — used by every placeholder page in
  * this task, and by the keyboard framework's "not yet implemented"
  * affordances elsewhere in the app. */
-export function EmptyState({ title, description, action, className, density }: EmptyStateProps) {
+export function EmptyState({ title, description, action, className, density, icon, variant }: EmptyStateProps) {
   const resolvedDensity = useDensity(density);
+  const compact = resolvedDensity === "compact";
   return (
     <div
       data-density={resolvedDensity}
@@ -38,6 +58,9 @@ export function EmptyState({ title, description, action, className, density }: E
         className,
       )}
     >
+      {icon ? (
+        <EmptyIllustration icon={icon} variant={variant ?? "empty"} compact={compact} />
+      ) : null}
       <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{title}</h2>
       {description ? (
         // T-3406: same fix as PageHeader's description line and for the

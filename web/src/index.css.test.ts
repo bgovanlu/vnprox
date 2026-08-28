@@ -237,6 +237,21 @@ describe("semantic status scale (T-4204)", () => {
     expect([...night.keys()].sort()).toEqual([...light.keys()].sort());
   });
 
+  it("gives every solid fill a text colour that clears AA on it, per theme", () => {
+    // The reason --color-status-on-solid exists. The light `-solid` steps
+    // are dark enough for white text; the dark ones are lighter and more
+    // saturated, so white on them measures 2.36-3.66:1 — all below AA —
+    // while a near-black clears it. Without this token every filled badge
+    // would carry a hand-written `text-white dark:text-slate-900`, which
+    // is precisely the conditional this token system exists to delete.
+    for (const state of STATUS_STATES) {
+      expect(contrast(token(light, "on-solid"), token(light, `${state}-solid`)), `light ${state}`)
+        .toBeGreaterThanOrEqual(AA);
+      expect(contrast(token(night, "on-solid"), token(night, `${state}-solid`)), `dark ${state}`)
+        .toBeGreaterThanOrEqual(AA);
+    }
+  });
+
   it("gives `stale` no solid or soft variant", () => {
     // Deliberate, and load-bearing: stale is a freshness qualifier layered
     // on top of a health state, not a state of its own. A filled stale
