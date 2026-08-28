@@ -67,6 +67,23 @@ func (e *Engine) evaluateNotifications(ctx context.Context, findings []Finding) 
 		prevSev, wasNotified := prev[id]
 
 		switch {
+		case f.Suppressed:
+			// T-4007: a node maintenance window suppresses the ALERT too,
+			// not only the finding's visibility — "suppress findings/alerts
+			// for a node during a declared maintenance window" is the
+			// card's own framing. No Notify call fires while suppressed,
+			// but the prior notified severity (if any) is carried forward
+			// UNCHANGED rather than dropped: if the condition is still
+			// exactly as it was before the window opened, nothing fires
+			// once the window closes either (no spurious "new" transition
+			// for something already known); if it escalated WHILE
+			// suppressed, the escalation is caught and notified the very
+			// next cycle after the window ends and the finding is next
+			// evaluated unsuppressed, because next[id] still holds the
+			// PRE-suppression severity for that comparison to fire against.
+			if wasNotified {
+				next[id] = prevSev
+			}
 		case !meets:
 			// Below threshold: nothing to notify, and nothing to remember
 			// (if it later crosses the threshold, that's a "new" transition,

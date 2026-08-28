@@ -191,11 +191,27 @@ func int64Literal(v any) (int64, bool) {
 // window (from the cluster's installed policy set) alongside every
 // currently-pending scheduled changeset — the same two window models
 // (policy.go's PolicyRule and schedule.go's Schedule) an operator needs on
-// one timeline to see WHY an apply would be refused before staging it,
-// without this file inventing a third.
+// one timeline to see WHY an apply would be refused before staging it —
+// plus, since T-4007, every declared node maintenance window
+// (maintenance.go's MaintenanceWindow), rendered on the SAME timeline
+// because a maintenance window is, in that card's own words, "another
+// declared time range" alongside a freeze window and a schedule, not a
+// fourth unrelated concept needing its own view.
 type CalendarView struct {
-	FreezeWindows []FreezeWindowView `json:"freezeWindows"`
-	Schedules     []Schedule         `json:"schedules"`
+	FreezeWindows      []FreezeWindowView      `json:"freezeWindows"`
+	Schedules          []Schedule              `json:"schedules"`
+	MaintenanceWindows []MaintenanceWindowView `json:"maintenanceWindows"`
+}
+
+// MaintenanceWindowView is one declared maintenance window as GET /calendar
+// renders it: the stored MaintenanceWindow plus a computed Active flag —
+// unlike a freeze window (an opaque PolicyRule this file has to pattern-
+// match), a maintenance window is already first-class typed data, so no
+// extraction step is needed; the only thing the calendar adds is "is this
+// one live right now".
+type MaintenanceWindowView struct {
+	MaintenanceWindow
+	Active bool `json:"active"`
 }
 
 // Calendar returns GET /calendar's response for the local cluster: every
@@ -222,6 +238,18 @@ func (s *Service) Calendar(ctx context.Context) (CalendarView, error) {
 		}
 		for _, row := range rows {
 			view.Schedules = append(view.Schedules, scheduleFromRow(row))
+		}
+	}
+
+	// T-4007: declared node maintenance windows, on the same timeline.
+	if s.maintenanceWindows != nil {
+		windows, err := s.MaintenanceWindows(ctx)
+		if err != nil {
+			return CalendarView{}, err
+		}
+		now := s.now()
+		for _, w := range windows {
+			view.MaintenanceWindows = append(view.MaintenanceWindows, MaintenanceWindowView{MaintenanceWindow: w, Active: w.Active(now)})
 		}
 	}
 	return view, nil

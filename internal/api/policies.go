@@ -35,11 +35,18 @@ type PolicyService interface {
 	SetPolicySet(ctx context.Context, author string, set change.PolicySet) (change.PolicyStatus, error)
 	EvaluatePolicySet(ctx context.Context, set change.PolicySet, ops []change.Op) (change.PolicyResult, error)
 	EvaluatePolicyForChangeset(ctx context.Context, set change.PolicySet, changesetID string) (change.PolicyResult, error)
-	// Calendar (T-4006) is the change-calendar view's read: every declared
-	// freeze window in the installed policy set alongside every
-	// currently-pending scheduled changeset — see change.Service.Calendar's
-	// own doc comment.
+	// Calendar (T-4006, extended T-4007) is the change-calendar view's read:
+	// every declared freeze window and node maintenance window in the
+	// installed policy set alongside every currently-pending scheduled
+	// changeset — see change.Service.Calendar's own doc comment.
 	Calendar(ctx context.Context) (change.CalendarView, error)
+	// DeclareMaintenanceWindow/MaintenanceWindows/DeleteMaintenanceWindow
+	// (T-4007) back the node-maintenance-mode surface — see
+	// change/maintenance.go's own doc comments.
+	DeclareMaintenanceWindow(ctx context.Context, actor string, in change.MaintenanceWindowInput) (change.MaintenanceWindow, error)
+	MaintenanceWindows(ctx context.Context) ([]change.MaintenanceWindow, error)
+	DeleteMaintenanceWindow(ctx context.Context, actor, id string) error
+	MaintenanceState(ctx context.Context, node string) (change.MaintenanceState, error)
 }
 
 // policyPutRequest is `PUT /policies`' body: a whole policy document,
@@ -82,6 +89,11 @@ func mountPolicyRoutes(r chi.Router, svc PolicyService, auth AuthService) {
 		// the same policy set GET /policies serves) alongside pending
 		// scheduled changesets. A read, like the two routes above.
 		r.Get("/calendar", handleGetCalendar(svc))
+		// T-4007: declared node maintenance windows and the per-node "is
+		// this node in maintenance right now" read model. Reads, like
+		// everything else in this group.
+		r.Get("/maintenance-windows", handleListMaintenanceWindows(svc))
+		r.Get("/nodes/{node}/maintenance", handleGetMaintenanceState(svc))
 	})
 
 	r.Group(func(r chi.Router) {
@@ -91,7 +103,102 @@ func mountPolicyRoutes(r chi.Router, svc PolicyService, auth AuthService) {
 		}
 		r.Use(auth.RequireCap(capNetWrite))
 		r.Put("/policies", handlePutPolicies(svc, lookup))
+		// T-4007: declaring/ending a maintenance window is a write to
+		// vnprox's own app-owned state (never to the network, and never
+		// through the change engine), so it takes netWrite + CSRF like
+		// every other authenticated mutation on this surface.
+		r.Post("/maintenance-windows", handleDeclareMaintenanceWindow(svc, lookup))
+		r.Delete("/maintenance-windows/{id}", handleDeleteMaintenanceWindow(svc, lookup))
 	})
+}
+
+// maintenanceWindowPutRequest is `POST /maintenance-windows`' body.
+type maintenanceWindowPutRequest struct {
+	Node       string `json:"node"`
+	Reason     string `json:"reason,omitempty"`
+	Zone       string `json:"zone"`
+	StartLocal string `json:"startLocal"`
+	EndLocal   string `json:"endLocal"`
+}
+
+// handleListMaintenanceWindows serves `GET /maintenance-windows` (T-4007):
+// every declared window, expired ones included — the same "the caller
+// decides what's still active" contract GET /calendar's own
+// maintenanceWindows already renders (this route exists in addition to
+// that one for a client that wants the list without the freeze/schedule
+// half of the calendar).
+func handleListMaintenanceWindows(svc PolicyService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		windows, err := svc.MaintenanceWindows(r.Context())
+		if err != nil {
+			writePolicyError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": windows})
+	}
+}
+
+// handleGetMaintenanceState serves `GET /nodes/{node}/maintenance` (T-4007):
+// the read-model TwoPersonState.breakGlass's visibility pattern generalizes
+// to — whether this node is in a declared maintenance window right now, and
+// which one.
+func handleGetMaintenanceState(svc PolicyService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		node := chi.URLParam(r, "node")
+		state, err := svc.MaintenanceState(r.Context(), node)
+		if err != nil {
+			writePolicyError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, state)
+	}
+}
+
+// handleDeclareMaintenanceWindow serves `POST /maintenance-windows`
+// (T-4007). Every statically-decidable defect (missing node, missing zone,
+// unloadable zone, unparsable/backwards start-end) is refused with
+// `400 validation_failed` naming the field, mirroring writePolicyError's
+// existing *PolicyLoadError handling.
+func handleDeclareMaintenanceWindow(svc PolicyService, lookup UsernameLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		var req maintenanceWindowPutRequest
+		if !decodePolicyBody(w, r, &req) {
+			return
+		}
+		win, err := svc.DeclareMaintenanceWindow(r.Context(), username, change.MaintenanceWindowInput{
+			Node: req.Node, Reason: req.Reason, Zone: req.Zone, StartLocal: req.StartLocal, EndLocal: req.EndLocal,
+		})
+		if err != nil {
+			writePolicyError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, win)
+	}
+}
+
+// handleDeleteMaintenanceWindow serves `DELETE /maintenance-windows/{id}`
+// (T-4007): end a declared window early, or correct a mistaken one. Not an
+// error to delete an absent id, mirroring DELETE /findings/{id}/ack's
+// identical "always clearable" contract.
+func handleDeleteMaintenanceWindow(svc PolicyService, lookup UsernameLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		id := chi.URLParam(r, "id")
+		if err := svc.DeleteMaintenanceWindow(r.Context(), username, id); err != nil {
+			writePolicyError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 func handleGetPolicies(svc PolicyService) http.HandlerFunc {
@@ -197,6 +304,22 @@ func writePolicyError(w http.ResponseWriter, err error) {
 	var notConfigured *change.ErrPolicyNotConfigured
 	if errors.As(err, &notConfigured) {
 		writeJSONError(w, http.StatusServiceUnavailable, "policy_unavailable", err.Error())
+		return
+	}
+	// T-4007: a maintenance-window declaration's statically-decidable
+	// defects (missing node, missing/unloadable zone, unparsable or
+	// backwards start/end) name the offending field the same way
+	// *PolicyLoadError does above.
+	var maintInvalid *change.ErrMaintenanceWindowInvalid
+	if errors.As(err, &maintInvalid) {
+		writeJSONErrorDetails(w, http.StatusBadRequest, "validation_failed", err.Error(), map[string]any{
+			"field": maintInvalid.Field,
+		})
+		return
+	}
+	var maintNotConfigured *change.ErrMaintenanceWindowNotConfigured
+	if errors.As(err, &maintNotConfigured) {
+		writeJSONError(w, http.StatusServiceUnavailable, "maintenance_window_unavailable", err.Error())
 		return
 	}
 	writeApplyError(w, err)

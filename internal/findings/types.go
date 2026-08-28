@@ -196,6 +196,39 @@ type Finding struct {
 	// Engine's transition tracking both ignore it, so acking a finding is not
 	// a state change that could fire a notification.
 	Ack *Ack `json:"ack,omitempty"`
+
+	// Suppressed and SuppressedWindow (T-4007) mark a finding currently
+	// muted by a declared node maintenance window. Like Ack above, neither
+	// is ever set by a producer: Engine.Findings attaches them fresh every
+	// call (decorateMaintenance, maintenance.go) from the live
+	// MaintenanceProvider seam, evaluated against the clock passed in — so
+	// a window's expiry takes effect on the very next call, with no
+	// sweeper and no manual action.
+	//
+	// SUPPRESSION IS NOT REMOVAL, for the identical reason ack.go's own doc
+	// comment gives for acknowledgement: this finding is still produced by
+	// its producer, still returned by GET /findings, still counted. Nothing
+	// here filters it out of the stream — an operator sees `suppressed:
+	// true` and SuppressedWindow's {windowId, reason, startsAt, endsAt}
+	// instead of the finding silently vanishing for the maintenance
+	// window's duration.
+	Suppressed       bool         `json:"suppressed,omitempty"`
+	SuppressedWindow *Suppression `json:"suppressedWindow,omitempty"`
+}
+
+// Suppression names the maintenance window currently suppressing a finding
+// (T-4007) — the "why" half of Finding.Suppressed, so an operator watching
+// the stream during a maintenance window can tell "nothing is wrong" from
+// "something is wrong but muted" apart, and can tell which window and until
+// when.
+//
+//nolint:govet // fieldalignment: wire shape; field order is the documented JSON contract, matching Ack's own precedent above.
+type Suppression struct {
+	Node     string `json:"node"`
+	WindowID string `json:"windowId"`
+	Reason   string `json:"reason,omitempty"`
+	StartsAt int64  `json:"startsAt"`
+	EndsAt   int64  `json:"endsAt"`
 }
 
 // RemediationKind is which of Phase 36's two producer-declarable tiers a
