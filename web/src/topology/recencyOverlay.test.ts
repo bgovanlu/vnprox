@@ -11,6 +11,7 @@ import {
   recencyBucketForAge,
   recencyBucketForInstant,
   recencyBucketPhrase,
+  recencyGlyphColor,
   recencyMarkColor,
   recencyMarkGlyph,
   summarizeRecencyOverlay,
@@ -191,5 +192,40 @@ describe("recencyBucketPhrase", () => {
     for (const b of buckets) {
       expect(recencyBucketPhrase(b).length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("recencyGlyphColor (T-4303)", () => {
+  // The badge's glyph is this overlay's non-colour channel, provided for a
+  // WCAG requirement. It was drawn in flat white on every bucket, and white
+  // measures 2.80 on `today` and 3.19 on `thisWeek` — so the mitigation was
+  // the part that failed. Asserted by measurement, not by naming the two
+  // buckets, so a future fill change is caught rather than the table drifting.
+  const AA = 4.5;
+  const relLum = (hex: string) => {
+    const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+    const lin = ch.map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * (lin[0] ?? 0) + 0.7152 * (lin[1] ?? 0) + 0.0722 * (lin[2] ?? 0);
+  };
+  const contrast = (a: string, b: string) => {
+    const [hi, lo] = [relLum(a), relLum(b)].sort((x, y) => y - x);
+    return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05);
+  };
+
+  it("every bucket's glyph clears AA against its own badge fill", () => {
+    const buckets: RecencyBucket[] = ["drift", "justNow", "today", "thisWeek", "older"];
+    for (const bucket of buckets) {
+      const ratio = contrast(recencyGlyphColor(bucket), recencyMarkColor(bucket));
+      expect(ratio, `${bucket}: glyph on its own badge`).toBeGreaterThanOrEqual(AA);
+    }
+  });
+
+  it("would fail if the glyph went back to flat white", () => {
+    // Guards the guard: if this ever passes, the assertion above has stopped
+    // measuring anything, because flat white is exactly what was wrong.
+    const failing = (["today", "thisWeek"] as RecencyBucket[]).filter(
+      (b) => contrast("#ffffff", recencyMarkColor(b)) < AA,
+    );
+    expect(failing).toHaveLength(2);
   });
 });

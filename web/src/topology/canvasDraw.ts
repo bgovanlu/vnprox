@@ -21,11 +21,11 @@ import type { Size, Viewport } from "./canvasScene";
 import { DEFAULT_NODE_SIZE, graphToScreen } from "./canvasScene";
 import type { LatencyOverlayEdge } from "./latencyMode";
 import type { BlastRadiusRole } from "./blastRadiusFocus";
-import { diffMarkColor, diffMarkGlyph, type DiffMark } from "./diffOverlay";
+import { diffGlyphColor, diffMarkColor, diffMarkGlyph, type DiffMark } from "./diffOverlay";
 import { findingChipText, hasOpenFinding, parseFindingBadge, shouldPulse } from "./findingBadges";
 import { formatMTUBadgeLabel, type MTUOverlayBadge } from "./mtuOverlay";
 import { jackKindForEntity, speedMarking, type PortBodyKind } from "./portMedia";
-import { recencyMarkColor, recencyMarkGlyph, type RecencyMark } from "./recencyOverlay";
+import { recencyGlyphColor, recencyMarkColor, recencyMarkGlyph, type RecencyMark } from "./recencyOverlay";
 import { trafficEdgeStyle, type UtilizationTone } from "./trafficMode";
 
 // T-3501/T-4204: severity fill/text colours for a "finding:<source>:<severity>"
@@ -759,7 +759,10 @@ export function drawDiffOverlay(ctx: CanvasRenderingContext2D, params: DrawDiffO
     ctx.beginPath();
     ctx.arc(x + w + 2, y - 2, 8, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#ffffff";
+    // T-4303: white measured 3.30 on `added` (#16a34a) and 3.96 on `changed`
+    // (#a855f7) — below AA for a glyph that exists as this overlay's
+    // non-colour channel. Picked per mark; see diffGlyphColor.
+    ctx.fillStyle = diffGlyphColor(mark);
     const glyphWidth = ctx.measureText(glyph).width;
     ctx.fillText(glyph, x + w + 2 - glyphWidth / 2, y - 1);
     ctx.restore();
@@ -822,7 +825,10 @@ export function drawRecencyOverlay(ctx: CanvasRenderingContext2D, params: DrawRe
     ctx.beginPath();
     ctx.arc(x - 2, y + h + 2, 8, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#ffffff";
+    // T-4303: per-bucket, not flat white — white measured 2.80 and 3.19 on
+    // the two warm fills, so the glyph that exists AS the non-colour channel
+    // was itself unreadable. See recencyGlyphColor for the table.
+    ctx.fillStyle = recencyGlyphColor(mark.bucket);
     const glyphWidth = ctx.measureText(glyph).width;
     ctx.fillText(glyph, x - 2 - glyphWidth / 2, y + h + 3);
     ctx.restore();
@@ -949,6 +955,9 @@ export function drawBlastRadiusOverlay(ctx: CanvasRenderingContext2D, params: Dr
     ctx.beginPath();
     ctx.arc(tl.x + w + 2, tl.y + h + 2, 8, 0, Math.PI * 2);
     ctx.fill();
+    // White is correct here and measured: 4.71 on fuchsia-600, which clears
+    // AA. Stated rather than assumed, because the sibling badges above did
+    // not and looked identical.
     ctx.fillStyle = "#ffffff";
     const glyphWidth = ctx.measureText(glyph).width;
     ctx.fillText(glyph, tl.x + w + 2 - glyphWidth / 2, tl.y + h + 3);

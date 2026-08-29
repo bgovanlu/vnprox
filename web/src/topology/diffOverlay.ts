@@ -101,6 +101,33 @@ export function computeDiffOverlay(
  * color regardless of what kind of change they are: "vnprox did not do this"
  * is the distinction that matters, and it must not be readable only by
  * squinting at three shades of the same hue. */
+/** The colour the badge's own glyph is drawn in.
+ *
+ * T-4303. `canvasDraw.ts` drew every diff badge's glyph in flat white, and
+ * white does not clear AA on two of the four fills:
+ *
+ *     mark          fill       white   dark
+ *     unattributed  #dc2626    4.83    3.69
+ *     added         #16a34a    3.30    5.41   <- white FAILS
+ *     changed       #a855f7    3.96    4.51   <- white FAILS
+ *     removed       #2563eb    5.17    2.63
+ *
+ * Same asymmetry `--color-status-on-solid` exists for: no single on-colour
+ * serves both a light fill and a dark one. Found while measuring
+ * recencyOverlay, which had the identical defect on its own badges — two
+ * overlays, one mistake, made independently, which is what a shared
+ * `-on-solid` token would have prevented and what these canvas literals
+ * cannot yet use.
+ *
+ * Note the diff palette is deliberately NOT converted to severity tones, per
+ * this card's own exemption: added/removed/changed is a NOMINAL set, not a
+ * quantity or a severity, so hue is the correct channel and monotonicity
+ * would be meaningless here. Only the glyph pairing is fixed. */
+export function diffGlyphColor(mark: Pick<DiffMark, "change" | "attributed">): string {
+  const fill = diffMarkColor(mark);
+  return fill === "#16a34a" || fill === "#a855f7" ? "#0f172b" : "#ffffff";
+}
+
 export function diffMarkColor(mark: Pick<DiffMark, "change" | "attributed">): string {
   if (!mark.attributed) return "#dc2626"; // red-600
   switch (mark.change) {

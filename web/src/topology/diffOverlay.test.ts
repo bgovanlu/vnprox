@@ -3,7 +3,9 @@
 import { describe, expect, it } from "vitest";
 
 import type { TopologyDiffResponse, TopologyEntityDiff } from "../api/topologyDiff";
+import type { DiffMark } from "./diffOverlay";
 import {
+  diffGlyphColor,
   computeDiffOverlay,
   diffMarkColor,
   diffMarkGlyph,
@@ -147,5 +149,45 @@ describe("diffMarkColor", () => {
 describe("diffMarkGlyph", () => {
   it("is a distinct glyph per change kind", () => {
     expect(new Set(["added", "removed", "modified"].map((c) => diffMarkGlyph(c as DiffMarkChange))).size).toBe(3);
+  });
+});
+
+describe("diffGlyphColor (T-4303)", () => {
+  // The badge glyph is this overlay's non-colour channel. It was drawn in
+  // flat white on every mark, and white measures 3.30 on `added` and 3.96 on
+  // `changed` — below AA, so the accessibility mitigation was the part that
+  // failed. Asserted by measuring every mark rather than by naming the two
+  // that were wrong, so a future palette change is caught instead of the
+  // table silently drifting.
+  const AA = 4.5;
+  const relLum = (hex: string) => {
+    const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+    const lin = ch.map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * (lin[0] ?? 0) + 0.7152 * (lin[1] ?? 0) + 0.0722 * (lin[2] ?? 0);
+  };
+  const contrast = (a: string, b: string) => {
+    const [hi, lo] = [relLum(a), relLum(b)].sort((x, y) => y - x);
+    return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05);
+  };
+
+  const MARKS: Pick<DiffMark, "change" | "attributed">[] = [
+    { change: "added", attributed: true },
+    { change: "removed", attributed: true },
+    { change: "modified", attributed: true },
+    { change: "modified", attributed: false },
+  ];
+
+  it("every mark's glyph clears AA against its own badge fill", () => {
+    for (const mark of MARKS) {
+      const ratio = contrast(diffGlyphColor(mark), diffMarkColor(mark));
+      expect(ratio, `${mark.change}/${String(mark.attributed)}: glyph on its own badge`).toBeGreaterThanOrEqual(AA);
+    }
+  });
+
+  it("would fail if the glyph went back to flat white", () => {
+    // Guards the guard: flat white is exactly what was wrong, so if nothing
+    // fails under it the assertion above has stopped measuring anything.
+    const failing = MARKS.filter((m) => contrast("#ffffff", diffMarkColor(m)) < AA);
+    expect(failing.length).toBeGreaterThan(0);
   });
 });

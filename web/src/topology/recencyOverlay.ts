@@ -185,6 +185,47 @@ export function recencyMarkColor(bucket: RecencyBucket): string {
   }
 }
 
+/** The colour the badge's own glyph is drawn in.
+ *
+ * T-4303 (while measuring this overlay): the badge is a filled disc with a
+ * glyph on it, and `canvasDraw.ts` drew that glyph in flat white for every
+ * bucket. Against the two warm fills white does not clear AA:
+ *
+ *     bucket     fill      white glyph   dark glyph
+ *     drift      #4f46e5      6.29          2.84
+ *     justNow    #dc2626      4.83          3.69
+ *     today      #f97316      2.80  FAIL    6.36
+ *     thisWeek   #d97706      3.19  FAIL    5.60
+ *     older      #64748b      4.76          3.75
+ *
+ * Two of the five glyphs were unreadable on their own badge — and the glyph
+ * is not decoration. This module's own comment introduces it as the
+ * non-colour channel provided "per this task's WCAG requirement", so the
+ * accessibility mitigation was the part that failed.
+ *
+ * This is the same asymmetry `--color-status-on-solid` exists for (T-4208):
+ * a fill light enough to need dark text and a fill dark enough to need light
+ * text cannot share one on-colour. The buckets are canvas literals rather
+ * than status tokens, so the pairing is written out per bucket here with the
+ * measurement above rather than resolved from a token — but the rule is the
+ * same one, and picking per fill is not optional.
+ *
+ * The colour scheme itself is deliberately NOT converted to severity tones
+ * the way trafficMode and latencyMode were. Recency is not severity: a thing
+ * changed a minute ago is not "critical", and painting it with the critical
+ * token would say something false. Its chroma already falls monotonically
+ * from justNow to older (0.215, 0.187, 0.157, 0.041), which is a real
+ * ordering, and every mark carries a glyph and a text label besides. */
+export function recencyGlyphColor(bucket: RecencyBucket): string {
+  switch (bucket) {
+    case "today":
+    case "thisWeek":
+      return "#0f172b";
+    default:
+      return "#ffffff";
+  }
+}
+
 /** The one-character glyph drawn in a mark's corner badge — the non-color
  * channel diffMarkGlyph already establishes the precedent for. Each bucket
  * gets a distinct letter rather than a shape, since a screen magnifier or a

@@ -1,7 +1,7 @@
 # T-4303 — The overlay ramps encode a quantity with hue, so they carry no order
 
 **Phase:** 43 (Canvas rendering)
-**Status:** trafficMode and latencyMode done — neither the way this card proposed; recencyOverlay open
+**Status:** all four overlays addressed — none of them the way this card proposed
 **Depends on:** T-4301 (canvas palette, landed)
 **Related:** T-4302 (kind stops using colour) — same principle, different channel
 
@@ -123,7 +123,45 @@ no colour already on the map. That was the correct contract for a private four-h
 wrong one now — sharing the status vocabulary with traffic mode is the point, since both answer
 "how bad is this link?" and should answer it the same way.
 
-## What to do (for recencyOverlay, still unmeasured)
+## recencyOverlay and diffOverlay: the defect was somewhere else entirely
+
+Measuring `recencyOverlay` produced a third answer, and then an accident produced a fourth.
+
+**recency should NOT be converted, and the card would have been wrong to.** Recency is not
+severity — a thing changed a minute ago is not "critical", and painting it with the critical token
+would state something false. Its chroma already falls monotonically from `justNow` to `older`
+(0.215, 0.187, 0.157, 0.041), which is a real ordering, and every mark carries a letter glyph and
+a text label besides. This is the same exemption `diffOverlay` gets below, and it is the reason
+the card carried one at all: a rule applied where it does no good is worse than no rule.
+
+**But the badge glyph was unreadable.** These badges are filled discs with a glyph drawn on them,
+so the load-bearing contrast is glyph-on-fill, not fill-on-page — checking the draw code is what
+established that, exactly as it did for `PortBody` under T-4216. `canvasDraw.ts` drew every glyph
+in flat white:
+
+| overlay | mark | fill | white glyph | |
+|---|---|---|---|---|
+| recency | today | `#f97316` | **2.80** | FAIL |
+| recency | thisWeek | `#d97706` | **3.19** | FAIL |
+| diff | added | `#16a34a` | **3.30** | FAIL |
+| diff | modified | `#a855f7` | **3.96** | FAIL |
+| blast radius | — | `#c026d3` | 4.71 | pass |
+
+**The glyph is the accessibility mitigation.** `recencyOverlay`'s own comment introduces it as the
+non-colour channel provided "per this task's WCAG requirement". So in four of nine badges, the
+thing provided to satisfy the requirement was itself below the requirement.
+
+Two overlays, the same mistake, made independently — which is precisely what
+`--color-status-on-solid` (T-4208) exists to prevent, and what these canvas literals cannot yet
+use because they are not status tokens. Each now picks its glyph colour per fill, with the
+measurement in the comment, and each has a test that measures **every** mark rather than naming
+the ones that were wrong, plus a guard-the-guard case asserting flat white would still fail.
+
+`diffOverlay` was found only because a careless replace-all applied recency's fix to all three
+badge draw sites at once and TypeScript rejected it (`DiffMark` has no `bucket`). The edit was
+sloppy; the finding it exposed is real.
+
+## What to do (nothing outstanding on the overlays)
 
 - **Make each overlay ramp monotonic** in lightness *and* chroma, so more load reads as more ink
   without a legend. A single-hue or two-hue sequential ramp does this; five categorical hues
