@@ -41,6 +41,8 @@ const THEME: SceneTheme = {
   statusUnknown: "role:statusUnknown",
   badgeBg: "role:badgeBg",
   badgeText: "role:badgeText",
+  minimapBg: "role:minimapBg",
+  minimapDot: "role:minimapDot",
   mgmtBadgeBg: "role:mgmtBadgeBg",
   mgmtBadgeText: "role:mgmtBadgeText",
   edgeDefault: "role:edgeDefault",

@@ -11,6 +11,7 @@ import * as RadixDropdown from "@radix-ui/react-dropdown-menu";
 import { useState } from "react";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toast";
+import { resolveSceneTheme, documentTokenReader } from "./canvasPalette";
 import type { ExportScene, RenderSvgOptions } from "./export";
 import { downloadPng, downloadSvg } from "./exportDownload";
 
@@ -26,6 +27,24 @@ export interface ExportMapMenuProps {
 export function ExportMapMenu({ getScene, captionLines, theme }: ExportMapMenuProps) {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
+
+  // T-4301 remainder: resolve the palette off the live document at click
+  // time, so the exported file carries the colours the user was looking at —
+  // including demo mode, which `html.demo` re-points and which no
+  // light/dark boolean could have expressed.
+  //
+  // Resolving from the document is exactly right here and it is worth saying
+  // why, since it would be wrong in general: `theme` is not a free choice, it
+  // is `useThemeStore`'s current value threaded down from TopologyPage, so it
+  // always equals the document's own theme. There is no "export the dark
+  // version of a light page" path to get wrong.
+  //
+  // At click time and not in a memo: an export is a once-in-a-while action,
+  // and `getComputedStyle` is the style recalculation canvasPalette.ts warns
+  // against putting anywhere that repeats.
+  function paletteNow(): RenderSvgOptions["palette"] {
+    return resolveSceneTheme(documentTokenReader(document.documentElement), theme === "dark");
+  }
 
   function sceneOrWarn(): ExportScene | undefined {
     const scene = getScene();
@@ -43,14 +62,14 @@ export function ExportMapMenu({ getScene, captionLines, theme }: ExportMapMenuPr
   function handleSvg(): void {
     const scene = sceneOrWarn();
     if (!scene) return;
-    const opts: RenderSvgOptions = { captionLines, theme };
+    const opts: RenderSvgOptions = { captionLines, palette: paletteNow() };
     downloadSvg(scene, opts);
   }
 
   function handlePng(): void {
     const scene = sceneOrWarn();
     if (!scene) return;
-    const opts: RenderSvgOptions = { captionLines, theme };
+    const opts: RenderSvgOptions = { captionLines, palette: paletteNow() };
     setBusy(true);
     downloadPng(scene, opts)
       .catch(() => {

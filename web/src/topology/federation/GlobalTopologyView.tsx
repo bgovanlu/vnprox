@@ -44,10 +44,23 @@ const INTERCONNECT_LIST_ITEM_CLASS: Record<InterconnectState, string> = {
  * never colour alone even on the decorative SVG line itself — the line is
  * additionally `aria-hidden` because the "WireGuard interconnects" list below
  * it is the actual accessible statement of the same facts, in text. */
+/** T-4301 remainder: `var()` rather than hex, because this is an SVG in the
+ * DOM and needs no resolver — `EntityEdge.tsx` already draws the per-node map
+ * this way. The comment above says these mirror `statusBorder`; before this
+ * they mirrored a version of it from three refactors ago, which is what a
+ * mirror maintained by hand does.
+ *
+ * `up` differs from the others: the map's own `ok` state is deliberately
+ * NEUTRAL (`--color-outline`), on the reasoning `StatusDot` documents — a
+ * healthy thing is the absence of a signal. A federation interconnect is not
+ * that: this view exists to answer "are the clusters talking?", and "yes" is
+ * the answer being asked for, so it keeps a positive colour and takes
+ * `--color-status-ok` rather than the outline. Stated because it is a real
+ * divergence from the map, not an oversight in copying it. */
 const EDGE_STROKE: Record<InterconnectState, string> = {
-  up: "#10b981", // emerald-500
-  down: "#ef4444", // red-500
-  unknown: "#94a3b8", // slate-400
+  up: "var(--color-status-ok)",
+  down: "var(--color-status-critical)",
+  unknown: "var(--color-status-unknown)",
 };
 
 function edgeDashArray(state: InterconnectState): string | undefined {

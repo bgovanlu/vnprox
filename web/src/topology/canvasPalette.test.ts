@@ -129,6 +129,14 @@ describe("canvasPalette (T-4301)", () => {
         expect(contrast(t[role], t.nodeFill), `${name}: ${role} on nodeFill`).toBeGreaterThanOrEqual(3);
         expect(contrast(t[role], t.background), `${name}: ${role} on background`).toBeGreaterThanOrEqual(3);
       }
+
+      // The minimap's node dots — its only content, at 2x2 px. They were
+      // `#94a3b8` on `#f1f5f9` (2.34) and `#475569` on `#0f172a` (2.36):
+      // failing in both themes and by almost the same margin, which is the
+      // signature of a light value and a dark value picked by eye rather than
+      // solved. Measured here and not by the DOM contrast gates for the
+      // reason this whole file exists — a <canvas> has no class names to scan.
+      expect(contrast(t.minimapDot, t.minimapBg), `${name}: minimapDot on minimapBg`).toBeGreaterThanOrEqual(3);
     }
   });
 
@@ -172,15 +180,19 @@ describe("canvasPalette (T-4301)", () => {
       return readerFor(false)(name);
     };
     resolveSceneTheme(counting, false);
-    // 17 lookups over 14 distinct tokens. Three fields share a token with
-    // another field, and each sharing is the point rather than an accident:
-    // nodeBorderOk/edgeDefault are both `--color-outline`, and T-4302's
+    // 19 lookups over 15 distinct tokens. Four fields share a token with
+    // another field, and every sharing is the point rather than an accident:
+    // nodeBorderOk/edgeDefault are both `--color-outline`; T-4302's
     // statusDown/statusDegraded land on the same `--color-status-critical`/
-    // `-degraded` the finding badges already read. That last pair is worth
-    // reading twice — a node border saying "down" and a badge saying "error"
-    // now provably resolve to one value, which two tables of literals could
-    // not promise and, when measured, did not deliver.
-    expect(reads).toHaveLength(17);
-    expect(new Set(reads).size).toBe(14);
+    // `-degraded` the finding badges already read; and minimapDot is
+    // `--color-fg-subtle`, the same role the on-node kind word takes, since
+    // both are secondary information rendered small.
+    //
+    // The status pair is worth reading twice — a node border saying "down"
+    // and a badge saying "error" now provably resolve to one value, which two
+    // tables of literals could not promise and, when measured, did not
+    // deliver.
+    expect(reads).toHaveLength(19);
+    expect(new Set(reads).size).toBe(15);
   });
 });

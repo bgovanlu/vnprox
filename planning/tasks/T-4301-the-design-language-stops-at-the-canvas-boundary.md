@@ -1,7 +1,7 @@
 # T-4301 — The design language stops at the canvas boundary
 
 **Phase:** 43 (Canvas rendering) — this is the phase's first card, ahead of any drawing work
-**Status:** open
+**Status:** criteria 1, 4, 6 done. Criterion 2 is now the only substantial one left, and this card records why it cannot be met as written. Criterion 3 untouched.
 **Depends on:** T-4201 (accent ramp), T-4203 (surfaces), T-4204 (status scale), T-4206 (motion)
 **Blocks:** effectively every other Phase 43 card
 
@@ -212,3 +212,54 @@ Constraints that fall out of the rest of the phase:
 dirties the working tree with a new asset hash. Unrelated to this card, but it means a clean
 `make ci` leaves `git status` dirty and the next agent has to decide whether that is their change.
 Worth a separate one-line card.
+
+## Progress after T-4302/T-4303 — what is done, and where criterion 2 breaks
+
+**Done.** `canvasPalette` exists (criterion 1) and the four measured failures are fixed and gated
+(criterion 6). Criterion 4's overlays landed at T-4303 — traffic and latency now name a severity
+band from the status scale instead of carrying private ramps — and `STATUS_STROKE` is deleted, in
+all three copies of it T-4302 found rather than the one this card named.
+
+Three more consumers were swept afterwards, each because measuring it turned up a real defect
+rather than merely a literal:
+
+| | was | measured | now |
+|---|---|---|---|
+| `Minimap.tsx` dots | `#94a3b8` / `#475569` | **2.34 / 2.36** vs a 3:1 floor | `--color-fg-subtle` on `--color-surface-sunken`, 4.64 / 7.47 |
+| `export.ts` status | its own 4-entry table | `ok` border **2.45** on its own node fill | the resolved palette, 3.25 |
+| `export.ts` surfaces | `#f8fafc` node on `#ffffff` page | **ladder inverted in light mode** | `surface-raised` on `surface-page` |
+
+The export one is the one worth remembering. This card predicted an export "stops matching the
+screen it was exported from"; it was worse than stale. In light mode it drew nodes *darker* than
+the page while the design language's ladder puts a raised surface *lighter* than it — so the
+exported picture had the surface ladder upside down, in the theme most exports are taken in. Its
+palette is now resolved off the live document at click time, which also gets demo mode right for
+free, something the `theme?: "light" | "dark"` parameter it replaced could not express at all.
+
+`renderSvg`'s palette is **required**, with no default: a default here would be the fallback
+palette `canvasPalette`'s own doc comment argues against, since a fallback that drifts renders
+plausibly while being wrong.
+
+**Criterion 2 — "zero hex literals in `web/src/topology/**`" — cannot be met as written, and
+should be rewritten rather than chased.** T-4303 established that `recencyOverlay` and
+`diffOverlay` are *nominal* scales — added/removed/changed, and an age bucket that is not a
+severity — for which hue is the correct channel and the status scale would state something false.
+Those two files hold 21 of the 33 literals left. `SIM_STROKE`, `FLOW_EDGE_COLOR`,
+`STP_BLOCKING_STROKE` and `BLAST_RADIUS_COLOR` are the same category.
+
+So the remaining literals are not stragglers of one sweep; they are **one unanswered design
+question**: the product has a status scale, one brand accent, and nothing at all for "these are
+different KINDS of thing". T-4302 proved that a general categorical scale cannot be added at the
+status scale's own 40deg separation, and solved the node case by moving kind to shape. The cases
+left are the ones with nowhere to put a shape — an edge, a 2px badge — and they need their own
+answer, not a token rename.
+
+What is genuinely still a literal-with-a-role, and should be swept whenever its blocking decision
+lands:
+
+- `Minimap.tsx:104`, the viewport rectangle, and `canvasDraw`'s hover-highlight and selection
+  rings: all three are the brand accent. They are blocked on **T-4214**, because `index.css`
+  re-points every `--color-accent-*` step under `html.demo` but not under `html.dark` — a dark
+  page picks a different *step*, so there is no single token to name. None is a defect meanwhile:
+  the rectangle measures 4.72 / 4.85.
+- Criterion 3 (`index.html`, `manifest.webmanifest`) is untouched and independent of all of this.

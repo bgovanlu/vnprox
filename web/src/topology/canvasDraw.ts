@@ -83,6 +83,21 @@ export interface SceneTheme {
   statusUnknown: string;
   badgeBg: string;
   badgeText: string;
+  /** T-4301 remainder: the minimap's own two colours. It is a second
+   * `<canvas>` inside the same component, and it was carrying the exact
+   * `dark ? "#0f172a" : "#f1f5f9"` shape this module's palette exists to
+   * delete — so it resolves through the same one pass rather than growing a
+   * second resolver.
+   *
+   * Measured before choosing: the dots were `#94a3b8` on `#f1f5f9` (2.34) and
+   * `#475569` on `#0f172a` (2.36), against WCAG 1.4.11's 3:1 — failing in
+   * both themes, symmetrically, which is what picking a light value and a
+   * dark value by eye produces. They are the minimap's ONLY content; the
+   * viewport rectangle just says where you are. `--color-fg-subtle` measures
+   * 4.64 / 7.47 on `--color-surface-sunken`, and the extra headroom over the
+   * 3:1 floor is deliberate for a 2x2px mark. */
+  minimapBg: string;
+  minimapDot: string;
   mgmtBadgeBg: string;
   mgmtBadgeText: string;
   edgeDefault: string;

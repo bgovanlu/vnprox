@@ -29,6 +29,7 @@
 // dimmed noise into the file — "only the filtered/toggled entity set" (task
 // card AC1), not a fainter copy of everything.
 import type { EntityStatus, Layer } from "../api/types";
+import type { SceneTheme } from "./canvasDraw";
 import { DEFAULT_NODE_SIZE } from "./canvasScene";
 import type { SwitchTopology } from "./switchModel";
 import { switchCarriesVlan } from "./switchModel";
@@ -264,15 +265,45 @@ export function buildCaptionLines(params: CaptionParams): string[] {
 export interface RenderSvgOptions {
   captionLines?: string[];
   padding?: number;
-  theme?: "light" | "dark";
+  /** The resolved scene palette — the SAME object `TopologyCanvasV2` draws
+   * the live map from.
+   *
+   * T-4301 said an export that carries its own palette "stops matching the
+   * screen it was exported from", and measuring this one showed that is not
+   * a forecast. Its `STATUS_COLOR` was a FOURTH copy of the status scale
+   * (T-4302 found three), and its surface pair was worse than stale — it was
+   * backwards: light mode drew nodes at `#f8fafc` on a `#ffffff` page, i.e.
+   * DARKER than the page, while the design language's ladder puts a raised
+   * surface LIGHTER than the page (`#ffffff` on `#fafbfd`). The exported
+   * picture had the surface ladder inverted, in the theme most exports are
+   * taken in. Its `ok` border also measured 2.45 against the fill it was
+   * drawn on, versus 3.25 for the token.
+   *
+   * Required, not optional: a default here would be a fallback palette, and
+   * canvasPalette.ts's whole argument is that a fallback which drifts renders
+   * plausibly while being wrong. Resolving it is the caller's job because
+   * only the caller has a document — `renderSvg` stays a pure string builder,
+   * which is what lets export.test.ts drive it with a stub. */
+  palette: SceneTheme;
 }
 
-const STATUS_COLOR: Record<EntityStatus, string> = {
-  ok: "#94a3b8",
-  down: "#ef4444",
-  degraded: "#f59e0b",
-  unknown: "#94a3b8",
-};
+/** The export's status colours, taken from the same palette the canvas uses.
+ * `ok` and `unknown` both read `nodeBorderOk` (`--color-outline`), matching
+ * canvasDraw's `statusBorder` — the dash that separates them on screen has no
+ * counterpart in this flat SVG, which is worth knowing rather than papering
+ * over: an exported map states `unknown` less clearly than the live one. */
+function exportStatusColor(status: EntityStatus, palette: SceneTheme): string {
+  switch (status) {
+    case "down":
+      return palette.statusDown;
+    case "degraded":
+      return palette.statusDegraded;
+    case "unknown":
+      return palette.statusUnknown;
+    default:
+      return palette.nodeBorderOk;
+  }
+}
 
 function escapeXml(value: string): string {
   return value
@@ -292,13 +323,13 @@ function escapeXml(value: string): string {
  * SVG's entity count"). The root `<svg>` additionally carries
  * data-export-node-count/data-export-edge-count summary attributes for a
  * cheap, non-traversing assertion. */
-export function renderSvg(scene: ExportScene, opts: RenderSvgOptions = {}): string {
+export function renderSvg(scene: ExportScene, opts: RenderSvgOptions): string {
   const padding = opts.padding ?? 32;
   const captionLines = opts.captionLines ?? [];
-  const dark = opts.theme === "dark";
-  const bg = dark ? "#0f172a" : "#ffffff";
-  const fg = dark ? "#e2e8f0" : "#1e293b";
-  const nodeFill = dark ? "#1e293b" : "#f8fafc";
+  const palette = opts.palette;
+  const bg = palette.background;
+  const fg = palette.nodeText;
+  const nodeFill = palette.nodeFill;
 
   let minX = Infinity;
   let minY = Infinity;
@@ -346,7 +377,7 @@ export function renderSvg(scene: ExportScene, opts: RenderSvgOptions = {}): stri
     parts.push(
       `<line data-export-entity="edge" data-entity-ref="${escapeXml(e.id)}" ` +
         `x1="${String(ax)}" y1="${String(ay)}" x2="${String(bx)}" y2="${String(by)}" ` +
-        `stroke="${STATUS_COLOR[e.status]}" stroke-width="1.5" />`,
+        `stroke="${exportStatusColor(e.status, palette)}" stroke-width="1.5" />`,
     );
   }
   parts.push(`</g>`);
@@ -358,7 +389,7 @@ export function renderSvg(scene: ExportScene, opts: RenderSvgOptions = {}): stri
     parts.push(
       `<g data-export-entity="node" data-entity-ref="${escapeXml(n.id)}" data-entity-kind="${escapeXml(n.kind)}">` +
         `<rect x="${String(x)}" y="${String(y)}" width="${String(n.width)}" height="${String(n.height)}" rx="6" ` +
-        `fill="${nodeFill}" stroke="${STATUS_COLOR[n.status]}" stroke-width="1.5" />` +
+        `fill="${nodeFill}" stroke="${exportStatusColor(n.status, palette)}" stroke-width="1.5" />` +
         `<text x="${String(x + 6)}" y="${String(y + n.height / 2)}" font-size="10" ` +
         `font-family="ui-sans-serif, system-ui, sans-serif" fill="${fg}" dominant-baseline="middle">` +
         `${escapeXml(n.label)}</text>` +

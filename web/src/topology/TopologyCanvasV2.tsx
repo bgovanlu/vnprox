@@ -832,6 +832,7 @@ export function TopologyCanvasV2({
           mainViewport={viewport}
           mainView={size}
           onPan={setViewport}
+          theme={sceneTheme}
           dark={effectiveTheme === "dark"}
         />
       )}

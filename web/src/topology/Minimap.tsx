@@ -17,6 +17,7 @@
 // steady-state pan/zoom frame redraws only the cheap top layer (one clear +
 // one strokeRect), not a full re-plot of every node dot every frame.
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import type { SceneTheme } from "./canvasDraw";
 import type { SceneNode, Size, Viewport } from "./canvasScene";
 import { MINIMAP_SIZE, computeMinimapViewport, panFromMinimapPoint, viewportRectOnMinimap } from "./minimap";
 
@@ -25,6 +26,19 @@ export interface MinimapProps {
   mainViewport: Viewport;
   mainView: Size;
   onPan: (viewport: Viewport) => void;
+  /** The already-resolved scene palette, passed down rather than re-resolved:
+   * `getComputedStyle` forces a style recalculation, and TopologyCanvasV2 has
+   * already paid for it once in a memo keyed on the theme (canvasPalette.ts's
+   * own note on why resolution must not creep into a draw path). */
+  theme: SceneTheme;
+  /** Still needed for the ONE colour this component does not take from the
+   * palette: the viewport rectangle is the brand accent, and the accent has
+   * no per-theme alias yet — index.css re-points every `--color-accent-*`
+   * step under `html.demo` but not under `html.dark`, so a dark page picks a
+   * different STEP rather than a re-pointed token. Choosing that step is
+   * T-4214's decision, not this change's, and the rectangle is not a defect
+   * meanwhile: it measures 4.72 light / 4.85 dark against the minimap
+   * background, comfortably over the 3:1 floor the dots were failing. */
   dark?: boolean;
 }
 
@@ -50,7 +64,7 @@ function getContext2d(canvas: HTMLCanvasElement | null): CanvasRenderingContext2
   }
 }
 
-export function Minimap({ sceneNodes, mainViewport, mainView, onPan, dark = false }: MinimapProps) {
+export function Minimap({ sceneNodes, mainViewport, mainView, onPan, theme, dark = false }: MinimapProps) {
   const dotsCanvasRef = useRef<HTMLCanvasElement>(null);
   const rectCanvasRef = useRef<HTMLCanvasElement>(null);
   const draggingRef = useRef(false);
@@ -67,15 +81,15 @@ export function Minimap({ sceneNodes, mainViewport, mainView, onPan, dark = fals
     ensureCanvasSize(dotsCanvasRef.current, dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, MINIMAP_SIZE.width, MINIMAP_SIZE.height);
-    ctx.fillStyle = dark ? "#0f172a" : "#f1f5f9";
+    ctx.fillStyle = theme.minimapBg;
     ctx.fillRect(0, 0, MINIMAP_SIZE.width, MINIMAP_SIZE.height);
-    ctx.fillStyle = dark ? "#475569" : "#94a3b8";
+    ctx.fillStyle = theme.minimapDot;
     for (const n of sceneNodes) {
       const x = n.position.x * minimapViewport.zoom + minimapViewport.x;
       const y = n.position.y * minimapViewport.zoom + minimapViewport.y;
       ctx.fillRect(x, y, 2, 2);
     }
-  }, [sceneNodes, minimapViewport, dark]);
+  }, [sceneNodes, minimapViewport, theme]);
 
   // Per-frame layer: just the viewport rectangle — cheap regardless of node
   // count, safe to redraw on every pan/zoom frame.

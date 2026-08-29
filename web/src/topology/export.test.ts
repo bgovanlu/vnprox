@@ -15,6 +15,36 @@ import {
 } from "./export";
 import type { FlowElements } from "./toFlowElements";
 import type { SwitchTopology } from "./switchModel";
+import type { SceneTheme } from "./canvasDraw";
+
+/** T-4301 remainder: `renderSvg` now takes the resolved scene palette rather
+ * than a light/dark boolean and its own table of literals. Sentinel values,
+ * not plausible colours, for the same reason canvasDraw.kind.test.ts uses
+ * them — a hex reintroduced into the serializer shows up instantly among the
+ * `role:` strings, which is what the last test in this block asserts. */
+const PALETTE = {
+  background: "role:background",
+  nodeFill: "role:nodeFill",
+  nodeText: "role:nodeText",
+  kindText: "role:kindText",
+  nodeBorderOk: "role:nodeBorderOk",
+  statusDown: "role:statusDown",
+  statusDegraded: "role:statusDegraded",
+  statusUnknown: "role:statusUnknown",
+  badgeBg: "role:badgeBg",
+  badgeText: "role:badgeText",
+  minimapBg: "role:minimapBg",
+  minimapDot: "role:minimapDot",
+  mgmtBadgeBg: "role:mgmtBadgeBg",
+  mgmtBadgeText: "role:mgmtBadgeText",
+  edgeDefault: "role:edgeDefault",
+  findingErrorFill: "role:findingErrorFill",
+  findingErrorText: "role:findingErrorText",
+  findingWarningFill: "role:findingWarningFill",
+  findingWarningText: "role:findingWarningText",
+  findingInfoFill: "role:findingInfoFill",
+  findingInfoText: "role:findingInfoText",
+} satisfies SceneTheme;
 
 function node(id: string, overrides: Partial<EntityFlowNode["data"]> = {}, position = { x: 0, y: 0 }): EntityFlowNode {
   return {
@@ -198,7 +228,7 @@ describe("renderSvg", () => {
       edges: [edge("a=>b", "a", "b")],
     };
     const scene = sceneFromFlowElements(elements);
-    const svg = renderSvg(scene);
+    const svg = renderSvg(scene, { palette: PALETTE });
 
     expect(svg.startsWith("<svg")).toBe(true);
     expect(svg).toContain('data-export-node-count="2"');
@@ -213,12 +243,12 @@ describe("renderSvg", () => {
 
   it("includes caption lines as visible text when provided, and omits the caption group otherwise", () => {
     const scene = sceneFromFlowElements({ nodes: [node("a")], edges: [] });
-    const withCaption = renderSvg(scene, { captionLines: ["VLAN filter: 20", "Layers hidden: Guests"] });
+    const withCaption = renderSvg(scene, { palette: PALETTE, captionLines: ["VLAN filter: 20", "Layers hidden: Guests"] });
     expect(withCaption).toContain("VLAN filter: 20");
     expect(withCaption).toContain("Layers hidden: Guests");
     expect(withCaption).toContain('data-export-group="caption"');
 
-    const withoutCaption = renderSvg(scene);
+    const withoutCaption = renderSvg(scene, { palette: PALETTE });
     expect(withoutCaption).not.toContain('data-export-group="caption"');
   });
 
@@ -227,13 +257,40 @@ describe("renderSvg", () => {
       nodes: [node("weird", { label: `<script>&"'</script>` })],
       edges: [],
     });
-    const svg = renderSvg(scene);
+    const svg = renderSvg(scene, { palette: PALETTE });
     expect(svg).not.toContain("<script>");
     expect(svg).toContain("&lt;script&gt;&amp;&quot;&apos;&lt;/script&gt;");
   });
 
+  it("takes every colour from the palette, so an export matches the screen it came from", () => {
+    // T-4301 remainder. This serializer used to carry its own four-entry
+    // status table — a FOURTH copy of the scale, after the three T-4302
+    // consolidated — plus its own background/foreground/node-fill pairs. They
+    // were not merely stale: in light mode it drew nodes at #f8fafc on a
+    // #ffffff page, DARKER than the page, while the design language's ladder
+    // puts a raised surface LIGHTER than it. The exported picture had the
+    // surface ladder inverted, in the theme most exports are taken in.
+    //
+    // Asserted by exclusion rather than by listing the expected values: any
+    // hex at all in the output means a literal survived somewhere, which is
+    // the failure mode worth catching and the one a spot-check of three
+    // colours would miss.
+    const scene = sceneFromFlowElements({
+      nodes: [node("ok"), node("bad", { status: "down" }), node("meh", { status: "degraded" })],
+      edges: [],
+    });
+    const svg = renderSvg(scene, { palette: PALETTE, captionLines: ["caption"] });
+    expect(svg).not.toMatch(/#[0-9a-fA-F]{6}/);
+    expect(svg).toContain("role:statusDown");
+    expect(svg).toContain("role:statusDegraded");
+    expect(svg).toContain("role:nodeBorderOk");
+    expect(svg).toContain("role:background");
+    expect(svg).toContain("role:nodeFill");
+    expect(svg).toContain("role:nodeText");
+  });
+
   it("produces a well-formed, non-empty document even for an empty scene", () => {
-    const svg = renderSvg({ nodes: [], edges: [] });
+    const svg = renderSvg({ nodes: [], edges: [] }, { palette: PALETTE });
     expect(svg).toContain('data-export-node-count="0"');
     expect(svg).toContain('data-export-edge-count="0"');
     expect(svg.endsWith("</svg>")).toBe(true);
