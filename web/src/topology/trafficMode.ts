@@ -21,30 +21,52 @@ export function computeUtilizationPct(bps: number, speedMbps: number | undefined
   return (bps / (speedMbps * 1_000_000)) * 100;
 }
 
-/** A five-stop heat scale from idle (cool slate) to saturated (hot red),
- * matching the codebase's existing status-color vocabulary (EntityEdge's
- * STATUS_STROKE uses the same red/amber/slate palette) so "hot" reads
- * consistently with "down"/"degraded" elsewhere on the map. */
-const HEAT_STOPS: readonly { max: number; color: string }[] = [
-  { max: 1, color: "#94a3b8" }, // idle: same slate as a normal/ok edge
-  { max: 25, color: "#38bdf8" }, // light traffic: cool blue
-  { max: 50, color: "#22c55e" }, // moderate: green
-  { max: 75, color: "#f59e0b" }, // busy: amber
-  { max: Infinity, color: "#ef4444" }, // saturated/over: red
-];
+/** The severity a utilization reading crosses into, as a design-language
+ * token NAME rather than a colour — the two renderers consume colour
+ * differently (v1's `EntityEdge` sets an SVG `stroke`, which can take
+ * `var(--color-*)`; v2's canvas needs a resolved value) and neither should
+ * be handed a literal.
+ *
+ * T-4303 asked for this ramp to be made monotonic. Measuring it is what
+ * changed the answer.
+ *
+ * The old scale was five hues — slate, blue, green, amber, red — whose
+ * OKLCH lightness ran 0.711, 0.754, 0.723, 0.769, 0.637. Up, down, up,
+ * down. Utilization is a quantity, and an encoding of a quantity has to be
+ * orderable by eye or it is a lookup table rendered in colour.
+ *
+ * But a monotonic COLOUR ramp turns out to be the wrong repair, for two
+ * reasons found by trying to build one.
+ *
+ * First, there is nowhere on the hue circle to put it. A ramp from a cool
+ * neutral to red must pass through either green and amber — which are `ok`
+ * and `degraded` — or through violet and magenta, where the derived
+ * midpoints landed 3deg from `BLAST_RADIUS_COLOR` and 5deg from
+ * `SIM_STROKE.indeterminate`. Holding the hue constant instead avoids every
+ * collision and tints every IDLE link faintly red, which is worse: idle is
+ * the majority state on any healthy map.
+ *
+ * Second, and decisively: `utilizationStrokeWidth` below ALREADY encodes
+ * this quantity, continuously and monotonically, 1.5px to 6px linear in
+ * percent. Width is a better channel for magnitude than hue is, it was
+ * already correct, and the colour ramp was a redundant second encoding of
+ * the same number — the one that had no order.
+ *
+ * So width keeps the quantity and colour stops competing for it. Colour
+ * now says only which severity band the link has crossed into, which is
+ * what the status scale is for, and it uses that scale rather than a
+ * palette invented here.
+ *
+ * The 75 boundary is the one the previous scale already drew (its
+ * busy/saturated split); 90 is the one addition. Neither is invented from
+ * scratch and neither claims to be an operational standard. */
+export type UtilizationTone = "outline" | "status-degraded" | "status-critical";
 
-/** Maps a utilization percentage (0-100+, see UtilizationPct's doc comment
- * for why it isn't clamped server-side either) to a heat color. Values
- * are looked up by their first matching (inclusive) upper bound. */
-export function utilizationColor(utilizationPct: number): string {
+export function utilizationTone(utilizationPct: number): UtilizationTone {
   const pct = Number.isFinite(utilizationPct) ? Math.max(0, utilizationPct) : 0;
-  for (const stop of HEAT_STOPS) {
-    if (pct <= stop.max) return stop.color;
-  }
-  // Unreachable (the last stop's max is Infinity), but a defensible
-  // fallback rather than a possibly-undefined index if HEAT_STOPS is ever
-  // edited without keeping that invariant.
-  return "#ef4444";
+  if (pct > 90) return "status-critical";
+  if (pct > 75) return "status-degraded";
+  return "outline";
 }
 
 const MIN_STROKE_WIDTH = 1.5;
@@ -66,9 +88,21 @@ export function utilizationStrokeWidth(utilizationPct: number): number {
  * this ref) reports the idle look, not an error/blank edge, so a map
  * freshly switched into traffic mode before the first WS tick arrives
  * still renders sensibly. */
-export function trafficEdgeStyle(utilizationPct: number | undefined): { stroke: string; strokeWidth: number } {
+export function trafficEdgeStyle(utilizationPct: number | undefined): {
+  tone: UtilizationTone;
+  strokeWidth: number;
+} {
   const pct = utilizationPct ?? 0;
-  return { stroke: utilizationColor(pct), strokeWidth: utilizationStrokeWidth(pct) };
+  return { tone: utilizationTone(pct), strokeWidth: utilizationStrokeWidth(pct) };
+}
+
+/** The CSS custom property a tone names. Used by the DOM renderer, which can
+ * put `var(...)` straight into an SVG `stroke`; the canvas renderer resolves
+ * the same token through `canvasPalette` instead, because `ctx.strokeStyle`
+ * cannot take a `var()`. Two consumers, one token name, no third copy of the
+ * colours. */
+export function toneVar(tone: UtilizationTone): string {
+  return `var(--color-${tone})`;
 }
 
 /** An edge connects two inventory entities, but utilization is a property

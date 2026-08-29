@@ -26,7 +26,7 @@ import { findingChipText, hasOpenFinding, parseFindingBadge, shouldPulse } from 
 import { formatMTUBadgeLabel, type MTUOverlayBadge } from "./mtuOverlay";
 import { jackKindForEntity, speedMarking, type PortBodyKind } from "./portMedia";
 import { recencyMarkColor, recencyMarkGlyph, type RecencyMark } from "./recencyOverlay";
-import { trafficEdgeStyle } from "./trafficMode";
+import { trafficEdgeStyle, type UtilizationTone } from "./trafficMode";
 
 // T-3501/T-4204: severity fill/text colours for a "finding:<source>:<severity>"
 // badge chip on the canvas — the same soft-wash/fg pairing
@@ -148,6 +148,16 @@ const KIND_ACCENT: Record<string, string> = {
   "guest-group": "#10b981",
   "phys-group": "#64748b",
   "lldp-neighbor": "#64748b",
+};
+
+/** Resolves a T-4303 utilization tone against the already-resolved scene
+ * palette. `edgeDefault` IS `--color-outline` (see canvasPalette's ROLE
+ * table), so the neutral band reuses the value the map already draws its
+ * ordinary edges with rather than naming the token twice. */
+const TRAFFIC_TONE: Record<UtilizationTone, (theme: SceneTheme) => string> = {
+  outline: (theme) => theme.edgeDefault,
+  "status-degraded": (theme) => theme.findingWarningText,
+  "status-critical": (theme) => theme.findingErrorText,
 };
 
 const MGMT_BADGES = new Set(["mgmt", "corosync", "mgmt-path"]);
@@ -306,7 +316,12 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
       width = 3.5;
     } else if (trafficMode) {
       const t = trafficEdgeStyle(data?.utilizationPct);
-      stroke = t.stroke;
+      // T-4303: the tone names a design token; the canvas cannot use
+      // `var()` in `strokeStyle`, so it resolves through the SceneTheme the
+      // palette already built. The DOM renderer takes the same tone and
+      // writes `var(--color-...)` directly — one name, two resolutions, no
+      // third copy of the colours.
+      stroke = TRAFFIC_TONE[t.tone](theme);
       width = t.strokeWidth;
     } else {
       const status = data?.status ?? "ok";

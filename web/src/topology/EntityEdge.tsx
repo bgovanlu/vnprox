@@ -9,7 +9,7 @@ import clsx from "clsx";
 import type { EntityStatus, FindingBadge, SimVerdict } from "../api/types";
 import { findingChipText, hasOpenFinding, parseFindingBadge } from "./findingBadges";
 import { isStpBlockingEdge, stpBadgeLabel } from "./stpOverlay";
-import { trafficEdgeStyle } from "./trafficMode";
+import { trafficEdgeStyle, toneVar } from "./trafficMode";
 
 export interface EntityEdgeData extends Record<string, unknown> {
   status: EntityStatus;
@@ -123,7 +123,7 @@ export function EntityEdge({
             : stpBlocking
               ? STP_BLOCKING_STROKE
               : trafficMode
-                ? traffic.stroke
+                ? toneVar(traffic.tone)
                 : STATUS_STROKE[status],
           strokeWidth: simVerdict ? 3.5 : stpBlocking ? 2.5 : trafficMode ? traffic.strokeWidth : highlighted ? 2.5 : 1.5,
           // An open finding = dashed outline (docs/features/topology.md

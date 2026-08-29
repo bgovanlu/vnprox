@@ -4,9 +4,10 @@ import { describe, expect, it } from "vitest";
 import {
   computeUtilizationPct,
   resolveEdgeUtilizationRef,
+  toneVar,
   trafficEdgeStyle,
-  utilizationColor,
   utilizationStrokeWidth,
+  utilizationTone,
 } from "./trafficMode";
 
 describe("computeUtilizationPct", () => {
@@ -28,25 +29,47 @@ describe("computeUtilizationPct", () => {
   });
 });
 
-describe("utilizationColor", () => {
+describe("utilizationTone (T-4303)", () => {
+  // Colour names a severity BAND now, not a magnitude. Magnitude is
+  // `utilizationStrokeWidth` below, which was always continuous and
+  // monotonic and is a better channel for a quantity than hue is.
   it.each([
-    [0, "#94a3b8"],
-    [1, "#94a3b8"],
-    [10, "#38bdf8"],
-    [25, "#38bdf8"],
-    [40, "#22c55e"],
-    [50, "#22c55e"],
-    [60, "#f59e0b"],
-    [75, "#f59e0b"],
-    [90, "#ef4444"],
-    [150, "#ef4444"], // over 100% (bursty/measurement noise) still reads "hot", not an error color
-  ])("utilizationColor(%d) = %s", (pct, want) => {
-    expect(utilizationColor(pct)).toBe(want);
+    [0, "outline"],
+    [1, "outline"],
+    [50, "outline"],
+    [75, "outline"],
+    [75.1, "status-degraded"],
+    [90, "status-degraded"],
+    [90.1, "status-critical"],
+    [150, "status-critical"], // over 100% (bursty/measurement noise) still reads hot
+  ] as const)("utilizationTone(%d) = %s", (pct, want) => {
+    expect(utilizationTone(pct)).toBe(want);
   });
 
-  it("treats negative/NaN as idle rather than throwing or returning a bogus color", () => {
-    expect(utilizationColor(-5)).toBe("#94a3b8");
-    expect(utilizationColor(Number.NaN)).toBe("#94a3b8");
+  it("treats negative/NaN as idle rather than throwing", () => {
+    expect(utilizationTone(-5)).toBe("outline");
+    expect(utilizationTone(Number.NaN)).toBe("outline");
+  });
+
+  it("names only design tokens, never a literal colour", () => {
+    // The whole point of returning a token name is that neither renderer is
+    // handed a hex. If a tone ever resolves to something that is not a
+    // custom property, one of them has quietly grown its own palette again.
+    for (const pct of [0, 80, 95]) {
+      expect(toneVar(utilizationTone(pct))).toMatch(/^var\(--color-[a-z-]+\)$/);
+    }
+  });
+
+  it("is monotonic in severity as utilization rises", () => {
+    // The defect this card was opened for, asserted in the channel that now
+    // carries the ordering. The old five-hue scale ran OKLCH lightness
+    // 0.711, 0.754, 0.723, 0.769, 0.637 — up, down, up, down — so a viewer
+    // could not tell more from less without a legend.
+    const rank = { outline: 0, "status-degraded": 1, "status-critical": 2 } as const;
+    const series = [0, 10, 40, 70, 75, 80, 90, 95, 150].map((p) => rank[utilizationTone(p)]);
+    for (let i = 1; i < series.length; i++) {
+      expect(series[i], `severity must not fall as utilization rises`).toBeGreaterThanOrEqual(series[i - 1] ?? 0);
+    }
   });
 });
 
@@ -71,12 +94,12 @@ describe("trafficEdgeStyle", () => {
   it("a hot bond is visibly distinct from a cold one (AC2)", () => {
     const hot = trafficEdgeStyle(92);
     const cold = trafficEdgeStyle(3);
-    expect(hot.stroke).not.toBe(cold.stroke);
+    expect(hot.tone).not.toBe(cold.tone);
     expect(hot.strokeWidth).toBeGreaterThan(cold.strokeWidth);
   });
 
   it("undefined (no live data yet) renders as idle, not blank/erroring", () => {
-    expect(trafficEdgeStyle(undefined)).toEqual({ stroke: "#94a3b8", strokeWidth: 1.5 });
+    expect(trafficEdgeStyle(undefined)).toEqual({ tone: "outline", strokeWidth: 1.5 });
   });
 });
 

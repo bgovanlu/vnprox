@@ -1,7 +1,7 @@
 # T-4303 — The overlay ramps encode a quantity with hue, so they carry no order
 
 **Phase:** 43 (Canvas rendering)
-**Status:** open
+**Status:** trafficMode done — but NOT the way this card proposed; latencyMode and recencyOverlay open
 **Depends on:** T-4301 (canvas palette, landed)
 **Related:** T-4302 (kind stops using colour) — same principle, different channel
 
@@ -56,7 +56,43 @@ amber edge meaning "75% utilized, healthy" beside an amber node border meaning "
 hue, two meanings, no visual cue which is which. That is narrower than "the ramp collides with
 status" and it is what the evidence actually supports.
 
-## What to do
+## The card's own proposal was wrong, and building it is what showed that
+
+This card asked for the ramp to be made **monotonic in lightness and chroma**. I derived one:
+interpolating OKLCH from `--color-outline` to `--color-status-critical` gives five stops that are
+monotonic in both, clear 3:1 against the page in both themes, and end on the product's own word
+for "critical". It satisfied every constraint the card wrote down.
+
+It is still unusable, for two reasons found only by building it.
+
+**There is nowhere on the hue circle to put it.** A ramp from a cool neutral to red must pass
+through either green and amber — which are `ok` and `degraded` — or through violet and magenta.
+The derived midpoints took the second route and landed **3deg from `BLAST_RADIUS_COLOR`** and
+**5deg from `SIM_STROKE.indeterminate`**. Holding hue constant instead avoids every collision and
+tints every *idle* link faintly red, which is worse: idle is the majority state on a healthy map.
+This is T-4302's finding again in a new place — the circle is full.
+
+**And the quantity was already encoded, correctly, in another channel.**
+`utilizationStrokeWidth` maps 0-100% to 1.5-6px, linear, continuous, monotonic. It was never
+broken. The colour ramp was a *redundant second encoding of the same number* — and it was the one
+without an order.
+
+So the repair is not a better ramp. It is to stop colour competing for a channel that was already
+doing the job:
+
+- **Width keeps the quantity.** It is a better channel for magnitude than hue, and it was correct.
+- **Colour names a severity band**: neutral below 75%, `status-degraded` to 90%, `status-critical`
+  above. That is what the status scale is for, and it borrows no hue the circle cannot spare.
+
+`utilizationTone()` returns a token *name*, not a colour, because the two renderers consume colour
+differently — v1's `EntityEdge` puts `var(--color-*)` straight into an SVG `stroke`; v2's canvas
+cannot, and resolves the same name through `canvasPalette`. One name, two resolutions, no third
+copy of the palette.
+
+The 75 boundary is the one the old scale already drew (its busy/saturated split). 90 is the single
+addition. Neither is presented as an operational standard.
+
+## What to do (for the remaining two overlays)
 
 - **Make each overlay ramp monotonic** in lightness *and* chroma, so more load reads as more ink
   without a legend. A single-hue or two-hue sequential ramp does this; five categorical hues
