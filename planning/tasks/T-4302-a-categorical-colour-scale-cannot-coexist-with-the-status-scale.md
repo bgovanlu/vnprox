@@ -85,6 +85,26 @@ with the kind rail gone it is the only colour left on a node, so it had better b
    statuses — this card was only findable because I measured a comparison nothing tests. See
    T-4211, which is open on the same gap in demo mode.
 
+## It also unblocks the node border (added after T-4305 measured v1)
+
+`EntityNode.tsx` carries a second `KIND_ACCENT` — the same concept, a different table
+(`bg-sky-50 dark:bg-sky-950` and friends), with nothing keeping the two agreed. Two things follow.
+
+First, a caveat that *narrows* this card for v1: a `50`/`950` background wash does not compete
+with a status border for attention the way v2's saturated `#0ea5e9` rail does, and the 40deg
+hue-separation argument barely applies at that chroma. For v1 the case is duplication and
+consistency, not legibility. The stronger v2 framing should not be smuggled across.
+
+Second, a reason to do it that is stronger than either: **those washes are why the node border
+cannot be fixed.** The `ok` border measures 1.43:1 light and 2.35:1 dark against a 3:1 floor, and
+`--color-outline` — which fixes exactly this in v2 — only reaches 2.64 / 2.21 against the washes,
+because it was solved against the surface ladder and the washes are not in it. Delete
+`KIND_ACCENT` and the node sits on `surface-raised`, where the existing token already measures
+3.25 / 3.43.
+
+So the order matters: this card first, the border second. Fixing the border first means solving a
+second outline value against a set of backgrounds this card is about to remove.
+
 ## Note on scope
 
 This does not remove colour from the map. Traffic, latency, recency and diff overlays all

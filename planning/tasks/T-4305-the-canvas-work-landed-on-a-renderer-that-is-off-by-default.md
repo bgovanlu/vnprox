@@ -1,7 +1,7 @@
 # T-4305 — The canvas work landed on a renderer that is off by default
 
 **Phase:** 43 (Canvas rendering)
-**Status:** open
+**Status:** criterion 2 measured (below); 1, 3, 4 open
 **Corrects:** T-4301's impact claim, and narrows T-4302's
 
 ## The correction
@@ -34,12 +34,48 @@ three times: the element it asked for is not on the default page.
 
 ## What that implies
 
-**1. The v1 renderer needs its own contrast pass.** It was never measured, because the whole of
-T-4301 was framed around `SceneTheme`. `EntityNode.tsx`'s `STATUS_CLASSES` already uses
-`border-status-critical` / `-degraded` (T-4204's sweep reached it), and its `ok`/`unknown` states
-deliberately stay neutral slate — the same choice `StatusDot` documents, so that is intentional
-and not a gap. What has not been checked is the rest of the node: label text, chips, the drift
-dash, the sim rings.
+**1. The v1 renderer needed its own contrast pass — now done, and the result is split.**
+
+**Text passes, everywhere.** Measured against every `KIND_ACCENT` wash a v1 node can actually
+land on (which is the only correct denominator — the node brings its own background, so the
+surface-ladder gates could not have judged it even if they had looked):
+
+| | worst case | |
+|---|---|---|
+| light label `slate-800` | 11.87 | PASS |
+| light kind/badge `slate-600` | 6.15 | PASS |
+| dark label `slate-100` | 8.87 | PASS |
+| dark kind/badge `slate-300`/`200` | 6.55 | PASS |
+
+No defect. Worth recording as a null result rather than silence: I expected to find the three
+failures v2 had, and there are none. `STATUS_CLASSES` already uses `border-status-critical` /
+`-degraded` from T-4204's sweep, and the `ok`/`unknown` states staying neutral slate is the
+documented choice `StatusDot` makes too, not a gap.
+
+**The border fails, in both renderers.** The `ok`-state node border measures:
+
+| | vs page | vs worst wash |
+|---|---|---|
+| light `slate-300` | **1.43** | **1.20** |
+| dark `slate-600` | **2.35** | **1.37** |
+
+against WCAG 1.4.11's 3:1. That is the same defect as v2's `nodeBorderOk` (1.48 / 1.93), which
+T-4301 fixed with `--color-outline` — so the failure is not a v2 quirk, it is in the product's
+default view as well.
+
+**But `--color-outline` does not fix v1 on its own**, and the reason is the third instance of one
+pattern today. The token was solved against the four *surface* levels and clears 3:1 on all of
+them (3.14 light / 3.80 dark against the page). Against the kind washes it measures **2.64 and
+2.21** — because the v1 node introduces backgrounds that were not in the set the token was solved
+against. A guard that measures against a surface is blind to a call site that brings its own
+surface; here, so is the token.
+
+**Which ties this card to T-4302.** If kind stops being encoded as colour, the washes go away, the
+node sits on `surface-raised`, and `--color-outline` measures 3.25 / 3.43 there — it already
+clears. So T-4302 is not merely a tidiness card that happens to sit nearby: **removing the
+categorical washes is what makes the border fixable with the token that already exists.** Doing
+the border first would mean solving a second outline value against a set of backgrounds that
+T-4302 is about to delete.
 
 **2. T-4302 has two call sites, not one.** `EntityNode.tsx` carries its own `KIND_ACCENT`, a
 second copy of the categorical scale:
