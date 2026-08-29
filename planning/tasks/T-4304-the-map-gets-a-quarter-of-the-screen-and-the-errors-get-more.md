@@ -1,7 +1,7 @@
 # T-4304 — The map gets a quarter of the screen, and the error text gets more
 
 **Phase:** 43 (Canvas rendering)
-**Status:** deliverables 1, 2 and 4 done; 3 (raw error strings) open
+**Status:** deliverables 1, 2 and 4 done; **3 is blocked on an API-contract decision** — see below
 **Found by:** the first visual-gate capture of the graph view against a current build (T-4216)
 
 ## What the screenshot shows
@@ -117,3 +117,44 @@ visibility first, so a wrong selector fails in seconds and names itself.
 The layout numbers above are read off a real capture rather than computed from CSS, which is the
 only way this was findable — and the reason every card in this phase asks for a rendered artifact
 rather than only a measurement.
+
+## Deliverable 3 is blocked, deliberately
+
+The raw error text is `SourceStaleness.LastError` (`internal/topology/types.go:282`), and that is
+a **documented API field** — `docs/api.md:125` specifies the `staleness` object `GET /topology`
+returns. CLAUDE.md is explicit about this class of change:
+
+> API routes, JSON field names, and error format: follow `docs/api.md` exactly — other tasks
+> depend on those contracts.
+
+and
+
+> Do not re-litigate decisions … if a decision blocks you, flag it in your final report instead of
+> changing it unilaterally.
+
+So I have not changed it. Both available routes alter the contract:
+
+**Option A — change what `lastError` carries.** Put an operator-facing sentence in the existing
+field. Smallest diff, no new field, and the SPA needs no change. But it silently redefines a
+documented field's meaning for every existing consumer, and it throws away the wrapped chain that
+is genuinely useful in a bug report.
+
+**Option B — add a sibling field**, e.g. `lastErrorSummary`, and have the banner show the summary
+with the full chain behind a disclosure. Additive, so existing consumers are byte-identical, and
+it keeps both audiences served. Costs a new documented field and a `docs/api.md` edit.
+
+**Recommendation: B.** It matches how the codebase already treats this exact tension — the
+finding directly below the stale banner reads *"cluster member pve1 has no certificate at
+nodes/pve1/pve-ssl.pem — peers cannot verify it and it cannot verify them. To fix: on pve1: pvecm
+updatecerts -f"*, which is cause, consequence and command, while the underlying error is still
+available elsewhere. The product already knows the shape; only the peer-poll path lacks it.
+
+Note this problem is **older than this card**. `internal/api/collectorrefresh.go`'s T-3603 header
+opens with *"The staleness banner used to say 'no successful poll yet — context canceled' and
+offer nothing."* That phase's answer was to add a Retry button — the right move at the time, and
+it left the message itself untouched. This card is the other half.
+
+What is *not* blocked and could be done independently of the contract decision: the SPA could
+truncate the chain to its first clause and put the remainder behind a disclosure, purely
+client-side. That is a genuine improvement and needs no API change. It is not done here because it
+treats the symptom, and doing it first tends to remove the pressure to do B.
