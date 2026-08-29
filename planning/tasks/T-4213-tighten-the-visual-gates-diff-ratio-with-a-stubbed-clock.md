@@ -48,3 +48,40 @@ justification implies.
    the gate — both demonstrated, not asserted.
 4. `docs/development.md`'s determinism paragraph is updated; it currently states the timestamp
    cause is not neutralizable without a source change.
+
+## Demonstrated, 2026-08-28 — it hid a real change and cost a wrong conclusion
+
+This card argued the 2% tolerance was "wide enough to hide a real regression". That is no longer
+an argument; here is the instance.
+
+T-4302 changed the v1 node's background from `bg-emerald-50` (`#ecfdf5`) to `bg-surface-raised`
+(`#ffffff`) across every node on the map, removed the per-kind wash entirely, strengthened the
+border and added a pictogram. A `--update-snapshots` run reported **3 passed and did not rewrite a
+single baseline** — the files kept their timestamps from the previous run.
+
+`--update-snapshots` only writes when the comparison *fails*. `#ecfdf5` against `#ffffff` sits
+under Playwright's per-pixel YIQ threshold, so those pixels never counted as differing, and
+`maxDiffPixelRatio: 0.02` had room to absorb what remained. The comparator concluded the two
+images were the same.
+
+Consequences worth recording, because they are the actual cost:
+
+- **I read the stale baseline and concluded the change had not shipped.** It had. I then spent six
+  tool calls on build-staleness theories — checking the bundle, the embed directive, the harness's
+  `go run` decision — before checking the baseline's mtime, which would have settled it in one.
+- **A `--update-snapshots` run that writes nothing is indistinguishable from one that writes
+  everything.** Both print `N passed`. That is a second, separable defect from the tolerance
+  itself.
+- The change was ultimately verified by sampling the PNG directly
+  (`convert -format '%[pixel:p{760,600}]'` → `srgb(255,255,255)`, and `srgb(24,33,51)` in dark),
+  which is the check that should have been reached for first.
+
+## Additional deliverables from that instance
+
+5. **Report what was written.** A snapshot-updating run must say which baselines it rewrote and
+   which it left alone. Silence on a no-op write is how the stale file was trusted.
+6. **Lower the per-pixel threshold as well as the ratio.** The ratio was not what hid this — the
+   per-pixel comparison was. Tightening only `maxDiffPixelRatio` would not have caught it.
+7. Until both land, **delete the baselines before a regeneration run** rather than relying on
+   `--update-snapshots` to overwrite them. Note this in the suite's header comment; it is the
+   workaround that actually produced a correct capture.

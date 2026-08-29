@@ -25,6 +25,7 @@ import {
   shouldPulse,
 } from "./findingBadges";
 import { PortJack } from "./PortBody";
+import { PICTOGRAMS, type PictogramKind } from "../icons/registry";
 import { jackKindForEntity, speedMarking } from "./portMedia";
 import { STP_ROOT_BADGE, stpBadgeLabel } from "./stpOverlay";
 
@@ -87,30 +88,60 @@ export type EntityFlowNode = Node<EntityNodeData, "entity">;
 // "unknown" gets a neutral dashed treatment — it's a legitimate, common
 // state for peer nodes' host-only fields (see api/types.ts's EntityStatus
 // doc comment), not something to visually alarm on.
+
+/** The T-4205 glyph for a kind, or nothing.
+ *
+ * Deliberately renders NOTHING for a kind the registry does not cover,
+ * rather than `UnknownPictogram`. The registry is a curated set (its own
+ * comment lists the app-owned kinds it excludes on purpose); a node for one
+ * of those is not "unknown", it simply has no glyph yet, and drawing a
+ * question mark next to a perfectly well-identified qos-shape would state
+ * something false. The `{data.kind}` text label beside this is the
+ * authoritative answer either way. */
+function KindPictogram({ kind }: { kind: string }) {
+  // `Object.hasOwn` and not `getPictogram`, which falls back to
+  // UnknownPictogram — see this function's doc comment for why a fallback
+  // glyph is the wrong answer at this call site.
+  if (!Object.hasOwn(PICTOGRAMS, kind)) return null;
+  const Glyph = PICTOGRAMS[kind as PictogramKind];
+  return (
+    <span className="shrink-0 text-fg-muted" aria-hidden="true">
+      <Glyph size={14} />
+    </span>
+  );
+}
+
 const STATUS_CLASSES: Record<EntityStatus, string> = {
-  ok: "border-slate-300 dark:border-slate-600",
+  ok: "border-outline",
   down: "border-status-critical ring-1 ring-status-critical/40",
   degraded: "border-status-degraded ring-1 ring-status-degraded/40",
-  unknown: "border-slate-400 border-dashed dark:border-slate-500",
+  unknown: "border-outline border-dashed",
 };
 
-const KIND_ACCENT: Record<string, string> = {
-  physnic: "bg-slate-50 dark:bg-slate-800",
-  bond: "bg-sky-50 dark:bg-sky-950",
-  "ovs-bond": "bg-sky-50 dark:bg-sky-950",
-  bridge: "bg-indigo-50 dark:bg-indigo-950",
-  "ovs-bridge": "bg-indigo-50 dark:bg-indigo-950",
-  vlan: "bg-violet-50 dark:bg-violet-950",
-  "sdn-zone": "bg-teal-50 dark:bg-teal-950",
-  "sdn-vnet": "bg-teal-50 dark:bg-teal-950",
-  "sdn-subnet": "bg-teal-50 dark:bg-teal-950",
-  guest: "bg-emerald-50 dark:bg-emerald-950",
-  "guest-nic": "bg-emerald-50 dark:bg-emerald-950",
-  "guest-group": "bg-emerald-100 dark:bg-emerald-900",
-  "phys-group": "bg-slate-200 dark:bg-slate-700",
-  "lldp-neighbor": "bg-slate-100 dark:bg-slate-800",
-};
-
+// T-4302: `KIND_ACCENT` used to live here — a per-kind background wash
+// (`bg-sky-50 dark:bg-sky-950` and eleven siblings), a second copy of the
+// same categorical scale canvasDraw.ts carried for the v2 renderer.
+//
+// It is gone for two reasons, and the second is the load-bearing one.
+//
+// Redundant: this node already states its kind twice more — the uppercase
+// `{data.kind}` label to the right of the name, and (for physnic/guest-nic)
+// the drawn jack. Kind was never relying on the wash.
+//
+// And the wash was what made the node's own border unfixable. The `ok`
+// border measures 1.43:1 in light mode and 2.35:1 in dark against WCAG
+// 1.4.11's 3:1 floor for a graphic you need to see. `--color-outline` fixes
+// exactly that — it is why T-4301 added it — but against the kind washes it
+// only reached 2.64/2.21, because it was solved against the surface ladder
+// and the washes were not in that set. On `surface-raised` it measures
+// 3.25/3.43 and clears. So deleting the wash is what let the border be
+// fixed with the token that already existed, rather than solving a second
+// outline value against backgrounds that were about to be deleted anyway.
+//
+// Kind is now carried by a T-4205 pictogram, which is a shape channel: no
+// capacity limit, and no competition with status for hue. See T-4302 for
+// why a categorical COLOUR scale cannot exist alongside the status scale at
+// all (eleven hues at 40deg of separation needs 440deg; there are 360).
 // Path simulator verdict colors (T-504, docs/features/firewall.md §5):
 // allow=emerald, deny=red, unreachable=amber, indeterminate=violet (a
 // distinct fourth color — never squeezed into the allow/deny/unreachable
@@ -210,7 +241,7 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
         reducedMotion ? "transition-none" : "transition-opacity",
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500",
         isPill ? "rounded-full text-center" : "rounded-md",
-        KIND_ACCENT[data.kind] ?? "bg-white dark:bg-slate-900",
+        "bg-surface-raised",
         STATUS_CLASSES[data.status],
         // One opacity class per node (never two competing ones, whose CSS
         // order would decide): the VLAN filter's dim wins over staleness.
@@ -294,6 +325,17 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
         </span>
       )}
       <div className="flex items-center justify-between gap-2">
+        {/* T-4302: kind, as a shape rather than as a colour. The pictogram
+            set (T-4205) took its kind strings verbatim from
+            internal/inventory/ref.go for exactly this adoption — that
+            module's own comment names "a future EntityNode.tsx" caller and
+            says `guest-nic` is in the set because this file's KIND_ACCENT
+            showed it as real.
+
+            `text-fg-muted` and not a per-kind colour: the whole point of
+            moving kind onto the shape channel is that colour goes back to
+            meaning status alone. */}
+        <KindPictogram kind={data.kind} />
         <span className="truncate font-medium text-slate-800 dark:text-slate-100">{data.label}</span>
         {!isPill && (
           // Contrast here is measured against the *node's own tint*, not the

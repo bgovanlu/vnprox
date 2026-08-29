@@ -247,6 +247,15 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
         await waitForSteadyState(page);
         await page.evaluate(() => document.fonts.ready);
       
+        // T-4213: `--update-snapshots` only WRITES when the comparison
+        // fails. A change smaller than the per-pixel threshold — a node fill
+        // moving from #ecfdf5 to #ffffff, say — leaves every baseline
+        // untouched and still reports "passed", which is indistinguishable
+        // from a run that rewrote them all. Until that card lands, DELETE the
+        // baselines before a regeneration run rather than trusting the flag
+        // to overwrite them. This cost a wrong conclusion on 2026-08-28: the
+        // stale file was read as evidence the change had not shipped.
+        //
         // Deliverable 4: this suite deliberately does not commit baseline
         // PNGs (see docs/development.md) — Phases 42-51 restyle the whole
         // product and would invalidate every one of them on the first
