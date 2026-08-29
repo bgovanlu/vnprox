@@ -36,11 +36,31 @@ export interface EntityEdgeData extends Record<string, unknown> {
 
 export type EntityFlowEdge = Edge<EntityEdgeData, "entity">;
 
+/** T-4302 AC2 — "`STATUS_STROKE` is deleted in favour of `--color-status-*`".
+ *
+ * The card names the symbol once and there were three of it: two in
+ * canvasDraw.ts (`STATUS_STROKE` and `statusBorder`'s own switch, which
+ * disagreed about `ok`) and this one. Doing only the canvas pair would have
+ * repeated T-4305's finding exactly — the fix landing on the renderer that is
+ * off by default, while the renderer users actually get kept the literals.
+ *
+ * A `var()` goes straight into an SVG `stroke`, so this side needs no
+ * resolver; the canvas takes the same token names through `canvasPalette`
+ * because `ctx.strokeStyle` cannot take one. Same division of labour
+ * trafficMode.ts's `toneVar` already documents.
+ *
+ * `ok` takes `--color-outline`, the same role an ordinary unstatused edge
+ * takes, because "healthy" is the absence of a signal rather than a signal.
+ * `unknown` no longer shares that value: it was `#94a3b8` here and `#94a3b8`
+ * in canvasDraw's edge table but `--color-outline` in canvasDraw's NODE
+ * table, so the three copies did not even agree with each other. The product
+ * has a `--color-status-unknown` token for precisely this state; all three
+ * now use it, and the dash stays as the second channel. */
 const STATUS_STROKE: Record<EntityStatus, string> = {
-  ok: "#94a3b8",
-  down: "#ef4444",
-  degraded: "#f59e0b",
-  unknown: "#94a3b8",
+  ok: "var(--color-outline)",
+  down: "var(--color-status-critical)",
+  degraded: "var(--color-status-degraded)",
+  unknown: "var(--color-status-unknown)",
 };
 
 // Same verdict palette as EntityNode.tsx's SIM_RING_CLASS, in stroke-color

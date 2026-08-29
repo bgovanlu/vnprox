@@ -117,6 +117,18 @@ describe("canvasPalette (T-4301)", () => {
       expect(contrast(t.nodeBorderOk, t.nodeFill), `${name}: nodeBorderOk on nodeFill`).toBeGreaterThanOrEqual(3);
       expect(contrast(t.nodeBorderOk, t.background), `${name}: nodeBorderOk on background`).toBeGreaterThanOrEqual(3);
       expect(contrast(t.edgeDefault, t.background), `${name}: edgeDefault on background`).toBeGreaterThanOrEqual(3);
+
+      // T-4302's status roles, measured against BOTH surfaces for the reason
+      // T-4305 had to file against `--color-outline`: these are drawn as a
+      // node border (on `nodeFill`) *and* as an edge stroke (on `background`),
+      // and a token solved against one surface is blind to the other. That
+      // mistake has now been made twice in this phase; measuring both is what
+      // stops it being made a third time.
+      const status = ["statusDown", "statusDegraded", "statusUnknown"] as const;
+      for (const role of status) {
+        expect(contrast(t[role], t.nodeFill), `${name}: ${role} on nodeFill`).toBeGreaterThanOrEqual(3);
+        expect(contrast(t[role], t.background), `${name}: ${role} on background`).toBeGreaterThanOrEqual(3);
+      }
     }
   });
 
@@ -160,9 +172,15 @@ describe("canvasPalette (T-4301)", () => {
       return readerFor(false)(name);
     };
     resolveSceneTheme(counting, false);
-    // 14 lookups over 13 distinct tokens: nodeBorderOk and edgeDefault share
-    // `--color-outline`, which is the point of it being one role.
-    expect(reads).toHaveLength(14);
-    expect(new Set(reads).size).toBe(13);
+    // 17 lookups over 14 distinct tokens. Three fields share a token with
+    // another field, and each sharing is the point rather than an accident:
+    // nodeBorderOk/edgeDefault are both `--color-outline`, and T-4302's
+    // statusDown/statusDegraded land on the same `--color-status-critical`/
+    // `-degraded` the finding badges already read. That last pair is worth
+    // reading twice — a node border saying "down" and a badge saying "error"
+    // now provably resolve to one value, which two tables of literals could
+    // not promise and, when measured, did not deliver.
+    expect(reads).toHaveLength(17);
+    expect(new Set(reads).size).toBe(14);
   });
 });

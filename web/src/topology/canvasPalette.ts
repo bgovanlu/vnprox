@@ -66,6 +66,9 @@ const ROLE: Record<keyof SceneTheme, string> = {
   nodeText: "--color-fg-body",
   kindText: "--color-fg-subtle",
   nodeBorderOk: "--color-outline",
+  statusDown: "--color-status-critical",
+  statusDegraded: "--color-status-degraded",
+  statusUnknown: "--color-status-unknown",
   badgeBg: "--color-border",
   badgeText: "--color-fg-muted",
   edgeDefault: "--color-outline",
@@ -80,16 +83,20 @@ const ROLE: Record<keyof SceneTheme, string> = {
   // in this table that is not a role lookup.
   //
   // `mgmt` is not a status and not the brand — it marks a management or
-  // corosync path, one member of a CATEGORY of link kinds that also includes
-  // bond, bridge, VLAN and SDN (see canvasDraw.ts's KIND_ACCENT, which
-  // invented a hue for each). The design language has semantic status
-  // colours and one brand accent and nothing for "these are different kinds
-  // of thing". Pointing these at `status-degraded` because both happen to be
-  // amber would state something false — that a management path is a warning.
+  // corosync path. The design language has semantic status colours and one
+  // brand accent and nothing for "these are different kinds of thing".
+  // Pointing these at `status-degraded` because both happen to be amber would
+  // state something false — that a management path is a warning.
   //
-  // A categorical scale is a design decision, not a re-point, and it gets
-  // made once in docs/design-language.md rather than here. Until then these
-  // stay where they were, visibly exceptional in this table.
+  // T-4302 answered the categorical-scale question this comment used to
+  // defer, and answered it "no such scale can exist here" — eleven hues at
+  // the status scale's own 40deg separation needs 440deg of a 360deg circle.
+  // Kind moved to SHAPE instead (canvasGlyphs.ts), which is why the
+  // `KIND_ACCENT` this comment once pointed at is gone. That does not rescue
+  // this pair: mgmt marks an EDGE, and an edge has no room for a glyph, so
+  // the one categorical distinction the map still draws in colour is the one
+  // with nowhere else to go. It stays visibly exceptional in this table
+  // rather than being quietly folded into a status role it does not mean.
   mgmtBadgeBg: "",
   mgmtBadgeText: "",
 };
@@ -125,6 +132,9 @@ export function resolveSceneTheme(read: TokenReader, isDark: boolean): SceneThem
     nodeText: value("nodeText"),
     kindText: value("kindText"),
     nodeBorderOk: value("nodeBorderOk"),
+    statusDown: value("statusDown"),
+    statusDegraded: value("statusDegraded"),
+    statusUnknown: value("statusUnknown"),
     badgeBg: value("badgeBg"),
     badgeText: value("badgeText"),
     mgmtBadgeBg: mgmt.bg,
@@ -139,12 +149,12 @@ export function resolveSceneTheme(read: TokenReader, isDark: boolean): SceneThem
   };
 
   // Named once, not per-token and not per-frame: a stylesheet either loaded
-  // or it did not, and 14 identical warnings would bury the one fact worth
-  // reading.
+  // or it did not, and seventeen identical warnings would bury the one fact
+  // worth reading.
   if (missing.length > 0 && !warned) {
     warned = true;
     // Distinct tokens, not lookups: two fields resolve `--color-outline`, so
-    // counting occurrences would report 14 for 13 names and read as a bug in
+    // counting occurrences would report 17 for 14 names and read as a bug in
     // the message rather than in the stylesheet.
     const names = [...new Set(missing)];
     // console.warn, not slog: this is the browser, the map is about to render

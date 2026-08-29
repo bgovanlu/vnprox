@@ -12,7 +12,8 @@
 // firewall rule/group — see each glyph module's doc comment for where it
 // was confirmed), plus one kind the card didn't name but EntityNode.tsx's
 // own `KIND_ACCENT` map showed up as real and separately rendered:
-// guest-nic. It deliberately excludes the model's more niche app-owned/
+// guest-nic — that map is gone (T-4302 moved kind onto this set), but the
+// kind it surfaced was real and is still drawn. It deliberately excludes the model's more niche app-owned/
 // infra Kinds not named by the card (qos-shape, nat-rule, vf, ceph-osd,
 // pbs-host, sdn-controller, sdn-ipam, sdn-dns-zone/record, tc-mirror) —
 // extending this map for one of those is a small, additive change for

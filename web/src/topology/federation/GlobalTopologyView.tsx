@@ -39,7 +39,7 @@ const INTERCONNECT_LIST_ITEM_CLASS: Record<InterconnectState, string> = {
   unknown: "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
 };
 
-/** Every edge state's line paint, mirroring canvasDraw.ts's own STATUS_STROKE/
+/** Every edge state's line paint, mirroring canvasDraw.ts's own statusBorder/
  * dash convention (unknown -> dashed; down -> thicker line) so edge state is
  * never colour alone even on the decorative SVG line itself — the line is
  * additionally `aria-hidden` because the "WireGuard interconnects" list below

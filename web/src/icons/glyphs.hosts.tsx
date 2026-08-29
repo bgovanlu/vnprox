@@ -110,8 +110,9 @@ export function PortIcon(props: PictogramProps) {
   );
 }
 
-/** A guest NIC: `KindGuestNic` — EntityNode.tsx's `KIND_ACCENT` tints it
- * separately from every other kind, and portMedia.ts's `jackKindForEntity`/
+/** A guest NIC: `KindGuestNic` — a kind EntityNode.tsx's since-deleted
+ * `KIND_ACCENT` tinted separately from every other (T-4302 removed the map;
+ * this glyph is what replaced it), and portMedia.ts's `jackKindForEntity`/
  * `PortBody.tsx`'s `PortJack` already draw it as a *dashed* jack (a guest
  * NIC has no physical socket, docs/features/topology.md §2's "virtual =
  * dashed" convention). This glyph reuses that exact real/virtual convention

@@ -2,8 +2,8 @@
 
 // Linux/OVS link-layer glyphs: bond, bridge (both with an OVS variant —
 // internal/inventory/ref.go's KindOVSBond/KindOVSBridge are distinct kinds
-// from KindBond/KindBridge, EntityNode.tsx's KIND_ACCENT already tints them
-// separately), and VLAN.
+// from KindBond/KindBridge, and were separately tinted by the KIND_ACCENT
+// map T-4302 has since deleted in favour of these very glyphs), and VLAN.
 import { IconShell, type PictogramProps } from "./Icon";
 import { isDetailed } from "./sizing";
 

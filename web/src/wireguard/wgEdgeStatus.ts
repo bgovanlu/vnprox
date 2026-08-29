@@ -5,7 +5,7 @@
 // findings define (docs/features/topology.md's new wg-tunnel edge kind):
 //
 //   - healthy         -> status "ok", no "drift" badge
-//   - handshake-stale -> status "degraded" (amber, the same STATUS_STROKE
+//   - handshake-stale -> status "degraded" (amber, the same EntityEdge.tsx
 //                        every other degraded edge/node already paints)
 //   - endpoint-drift  -> "drift" badge added (dashed outline — the exact
 //                        existing convention EntityEdge.tsx/canvasDraw.ts

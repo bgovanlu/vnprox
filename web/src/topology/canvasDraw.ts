@@ -4,7 +4,7 @@
 // the component file stays about interaction/state and this stays about
 // pixels. It is a pure function of (FlowElements, viewport, theme): it reads
 // the same EntityNodeData/EntityEdgeData the v1 DOM renderer reads, and
-// paints the same visual vocabulary — status colors, kind accents, VLAN-dim,
+// paints the same visual vocabulary — status colors, kind pictograms, VLAN-dim,
 // hover-chain highlight, selection, the amber mgmt/corosync/mgmt-path badge
 // trio, the drift dashed outline, and the path-simulator overlay — so v2 is a
 // faithful rendering swap, not a different picture (T-901 parity).
@@ -24,6 +24,7 @@ import type { BlastRadiusRole } from "./blastRadiusFocus";
 import { diffGlyphColor, diffMarkColor, diffMarkGlyph, type DiffMark } from "./diffOverlay";
 import { findingChipText, hasOpenFinding, parseFindingBadge, shouldPulse } from "./findingBadges";
 import { formatMTUBadgeLabel, type MTUOverlayBadge } from "./mtuOverlay";
+import { drawGlyph, glyphOps } from "./canvasGlyphs";
 import { jackKindForEntity, speedMarking, type PortBodyKind } from "./portMedia";
 import { recencyGlyphColor, recencyMarkColor, recencyMarkGlyph, type RecencyMark } from "./recencyOverlay";
 import { trafficEdgeStyle, type UtilizationTone } from "./trafficMode";
@@ -69,6 +70,17 @@ export interface SceneTheme {
   nodeText: string;
   kindText: string;
   nodeBorderOk: string;
+  /** T-4302: the status scale, for the three states that are not `ok`.
+   * These existed twice as literals — `STATUS_STROKE` for edges and
+   * `statusBorder`'s switch for nodes — a second and third status palette
+   * beside the real one, neither re-pointing per theme. With the kind accent
+   * gone, colour on a node means status alone, so it had better BE the status
+   * scale. `unknown` takes `--color-status-unknown` rather than the outline
+   * token: it is a state the product names, and the dash is what separates it
+   * from `ok` at a glance. */
+  statusDown: string;
+  statusDegraded: string;
+  statusUnknown: string;
   badgeBg: string;
   badgeText: string;
   mgmtBadgeBg: string;
@@ -119,12 +131,11 @@ export function pulseAlphaForPhase(phaseMs: number, periodMs: number = PULSE_PER
   return 0.55 + 0.45 * Math.abs(Math.sin(t * Math.PI));
 }
 
-const STATUS_STROKE: Record<EntityStatus, string> = {
-  ok: "#94a3b8",
-  down: "#ef4444",
-  degraded: "#f59e0b",
-  unknown: "#94a3b8",
-};
+/** Below this the kind pictogram is skipped rather than drawn illegibly —
+ * see the draw site's comment. 7px, because the smallest interior the icon
+ * set draws is designed against a 16px floor and half of that is already
+ * generous; the node's label has stopped rendering well before it. */
+const GLYPH_MIN_PX = 7;
 
 const SIM_STROKE: Record<string, string> = {
   allow: "#10b981",
@@ -133,22 +144,19 @@ const SIM_STROKE: Record<string, string> = {
   indeterminate: "#8b5cf6",
 };
 
-const KIND_ACCENT: Record<string, string> = {
-  physnic: "#64748b",
-  bond: "#0ea5e9",
-  "ovs-bond": "#0ea5e9",
-  bridge: "#6366f1",
-  "ovs-bridge": "#6366f1",
-  vlan: "#8b5cf6",
-  "sdn-zone": "#14b8a6",
-  "sdn-vnet": "#14b8a6",
-  "sdn-subnet": "#14b8a6",
-  guest: "#10b981",
-  "guest-nic": "#10b981",
-  "guest-group": "#10b981",
-  "phys-group": "#64748b",
-  "lldp-neighbor": "#64748b",
-};
+// T-4302: `KIND_ACCENT` used to live here — fourteen kinds, each with its own
+// hue, painted as a 3-4px rail down the node's left edge. It is deleted, not
+// re-pointed at tokens, because the scale itself was the defect: four of its
+// six distinct hues sat closer to a status colour than the status colours sit
+// to each other, and the two worst (bond 13deg from the accent, guest 17deg
+// from `ok`) are the two commonest kinds in any cluster. At a 3px width hue
+// is the only channel available, so the rail was competing for exactly the
+// channel status needs.
+//
+// Kind is now drawn as the T-4205 pictogram (canvasGlyphs.ts). Shape is a
+// categorical channel with no capacity limit and no collision with status,
+// and those glyphs were drawn to work small. Colour on a node now means
+// status, and nothing else.
 
 /** Resolves a T-4303 utilization tone against the already-resolved scene
  * palette. `edgeDefault` IS `--color-outline` (see canvasPalette's ROLE
@@ -165,11 +173,11 @@ const MGMT_BADGES = new Set(["mgmt", "corosync", "mgmt-path"]);
 function statusBorder(status: EntityStatus, theme: SceneTheme): string {
   switch (status) {
     case "down":
-      return "#ef4444";
+      return theme.statusDown;
     case "degraded":
-      return "#f59e0b";
+      return theme.statusDegraded;
     case "unknown":
-      return "#94a3b8";
+      return theme.statusUnknown;
     default:
       return theme.nodeBorderOk;
   }
@@ -325,7 +333,11 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
       width = t.strokeWidth;
     } else {
       const status = data?.status ?? "ok";
-      stroke = STATUS_STROKE[status];
+      // T-4302: was `STATUS_STROKE`, a second status palette that differed
+      // from `statusBorder`'s third one only in what it called `ok`. One
+      // scale now, resolved from `--color-status-*` through canvasPalette,
+      // so an edge and the node it lands on cannot disagree about a colour.
+      stroke = statusBorder(status, theme);
       dashed = status === "unknown" || hasOpenFinding(data?.badges ?? []);
     }
     // T-3501: dashing stays source-agnostic (hasOpenFinding, above — any
@@ -381,14 +393,30 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
     roundRectPath(ctx, tl.x, tl.y, w, h, radius);
     ctx.fillStyle = d.stale ? theme.badgeBg : theme.nodeFill;
     ctx.fill();
-    // Kind accent bar (left edge)
-    if (!isPill && w > 20) {
-      ctx.save();
-      roundRectPath(ctx, tl.x, tl.y, w, h, radius);
-      ctx.clip();
-      ctx.fillStyle = KIND_ACCENT[d.kind] ?? "#64748b";
-      ctx.fillRect(tl.x, tl.y, Math.max(3, 4 * vp.zoom), h);
-      ctx.restore();
+    // T-4302: kind, as a shape. Where the accent rail used to be — the node's
+    // left edge when there is room for a label beside it, dead centre when
+    // there is not (the band the rail used to own alone, and the one AC4 asks
+    // about). The glyph is drawn in `kindText`, the same role the uppercase
+    // kind word takes, so kind reads at one weight whichever channel carries
+    // it at this zoom.
+    //
+    // `glyphBox` feeds `glyphOps` as a size, not a resolution: it selects the
+    // icon set's own simplified interior below INLINE_THRESHOLD, so a
+    // shrinking node sheds the same interior lines a shrinking table-row icon
+    // does. Below GLYPH_MIN_PX nothing is drawn at all — a 5px pictogram is
+    // not a smaller pictogram, it is a smudge, and the rail it replaced was
+    // no more legible there.
+    const glyphBox = showText
+      ? Math.min(18 * vp.zoom, h * 0.42, w * 0.22)
+      : Math.min(h * 0.6, w * 0.5);
+    // physnic/guest-nic keep T-3505's drawn jack at low zoom instead: copper
+    // vs fibre vs virtual is strictly more than "this is a NIC", and it is
+    // the same corner.
+    const centredGlyph = !showText && !jackKind;
+    const drawsGlyph = !isPill && glyphBox >= GLYPH_MIN_PX && (showText || centredGlyph);
+    if (drawsGlyph) {
+      const gx = showText ? tl.x + 6 : tl.x + (w - glyphBox) / 2;
+      drawGlyph(ctx, glyphOps(d.kind, glyphBox), gx, tl.y + (h - glyphBox) / 2, glyphBox, theme.kindText);
     }
     // Status border (+ drift dash / sim ring)
     const sim = d.simVerdict;
@@ -438,12 +466,16 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
       ctx.save();
       roundRectPath(ctx, tl.x, tl.y, w, h, radius);
       ctx.clip();
-      const padX = tl.x + 8;
+      // T-4302: the label starts clear of the pictogram. The accent rail this
+      // replaced was 3-4px and the label simply cleared it at a flat 8px pad;
+      // a glyph is wider, so the pad is computed rather than constant, and
+      // falls back to the old 8 exactly when no glyph was drawn.
+      const padX = drawsGlyph ? tl.x + 6 + glyphBox + 5 : tl.x + 8;
       ctx.fillStyle = theme.nodeText;
       ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif";
       ctx.textAlign = "left";
       const labelY = showBadges ? tl.y + h * 0.32 : tl.y + h / 2;
-      ctx.fillText(d.label, padX, labelY, w - 16);
+      ctx.fillText(d.label, padX, labelY, Math.max(1, tl.x + w - 8 - padX));
       if (!isPill && showBadges && jackKind) {
         // T-3505: physnic/guest-nic swap the generic uppercase kind word
         // for their drawn jack — strictly more information (copper vs
@@ -531,7 +563,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
 // it never participates in the base scene's status/traffic-mode styling —
 // the card's "visually distinct from trafficMode... so the two don't
 // collide" requirement is satisfied by construction: a flow edge always
-// renders in its own fixed cyan accent (never STATUS_STROKE or
+// renders in its own fixed cyan accent (never the status scale or
 // trafficEdgeStyle's heat palette), animated via a dashed stroke whose
 // offset marches from source to destination.
 
@@ -560,7 +592,7 @@ export interface DrawFlowOverlayParams {
   selectedId?: string;
 }
 
-const FLOW_EDGE_COLOR = "#06b6d4"; // cyan-500: distinct from every STATUS_STROKE/SIM_STROKE/heat-scale color already in use
+const FLOW_EDGE_COLOR = "#06b6d4"; // cyan-500: distinct from every status/SIM_STROKE/heat-scale colour already in use
 const FLOW_EDGE_SELECTED_COLOR = "#0e7490"; // cyan-700
 
 export function drawFlowOverlay(ctx: CanvasRenderingContext2D, params: DrawFlowOverlayParams): void {
@@ -856,7 +888,7 @@ export function drawRecencyOverlay(ctx: CanvasRenderingContext2D, params: DrawRe
 // theme-background fill over every non-focused node, theme-background
 // restroke over every non-focused edge) and the solid accent-colored
 // path-edge stroke are the parts nothing else in this file does at all.
-const BLAST_RADIUS_COLOR = "#c026d3"; // fuchsia-600 — distinct from every STATUS_STROKE/SIM_STROKE/KIND_ACCENT/FLOW_EDGE_COLOR/diff/recency color already in use
+const BLAST_RADIUS_COLOR = "#c026d3"; // fuchsia-600 — distinct from every status/SIM_STROKE/FLOW_EDGE_COLOR/diff/recency colour already in use (the KIND_ACCENT it also had to clear is gone, T-4302)
 const BLAST_RADIUS_SCRIM_ALPHA = 0.72;
 const BLAST_RADIUS_ROLE_GLYPH: Record<BlastRadiusRole, string> = {
   target: "X",
