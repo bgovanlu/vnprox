@@ -514,6 +514,7 @@ export function TopologyCanvasV2({
         edges: latencyEdges,
         viewport,
         nodeSize: DEFAULT_NODE_SIZE,
+        theme: sceneTheme,
         dragTopLeft,
       });
     }

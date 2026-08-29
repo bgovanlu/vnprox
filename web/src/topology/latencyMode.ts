@@ -34,40 +34,50 @@ export const LOSS_WARN_PCT = 2;
  * both sides simply agree on the same documented constant, mirroring how
  * trafficMode.ts's own stops are this module's own reasoned choice, not a
  * server-fetched value either). */
-const LATENCY_HEAT_STOPS: readonly { maxMs: number; color: string }[] = [
-  { maxMs: LATENCY_WARN_MS * 0.25, color: "#c4b5fd" }, // excellent: violet-300
-  { maxMs: LATENCY_WARN_MS * 0.625, color: "#a78bfa" }, // good: violet-400
-  { maxMs: LATENCY_WARN_MS, color: "#c026d3" }, // borderline (at the warn threshold): fuchsia-600
-  { maxMs: Infinity, color: "#9d174d" }, // degraded (over threshold): pink-800
-];
-
-/** DEGRADED_LOSS_COLOR is LATENCY_HEAT_STOPS' own "degraded" color — a
- * link over the loss threshold reads exactly as degraded as one over the
- * RTT threshold, not a fifth, different color, so "this link has a
- * problem" always means the same thing at a glance regardless of which
+/** The severity band a latency reading falls into, as a design-token NAME.
+ *
+ * T-4303, applied a second time. This module's ramp was violet-300 ->
+ * violet-400 -> fuchsia-600 -> pink-800, and measuring it first is what the
+ * card asked for, because it is NOT the same defect trafficMode had:
+ *
+ *   - It was already monotonic in lightness (0.811, 0.709, 0.591, 0.459),
+ *     steadily darkening as latency rose. The rainbow problem was not here.
+ *   - It failed on CONTRAST instead, and it failed at both ends, because one
+ *     ramp served both themes. `excellent` measured 1.78:1 against the light
+ *     page — invisible on white. `degraded` measured 2.26:1 against the dark
+ *     page, so the state most needing to be seen was the least visible in
+ *     dark mode. A ramp that does not re-point per theme cannot clear a floor
+ *     at both ends, whatever its hues.
+ *
+ * The repair is the one trafficMode arrived at. `latencyStrokeWidth` below
+ * already encodes the magnitude, linearly and monotonically, so colour was a
+ * redundant second encoding of the same number; it now names a severity band
+ * instead, from the status scale, which re-points per theme and therefore
+ * clears its floor at both ends by construction.
+ *
+ * The bands are this module's existing thresholds, not new ones: everything
+ * below 0.625x the warn threshold reads as fine, up to the warn threshold is
+ * `degraded`, over it is `critical`. Loss over its own threshold maps to the
+ * same top band, preserving the property the old DEGRADED_LOSS_COLOR comment
+ * established — "this link has a problem" looks the same regardless of which
  * threshold tripped. */
-const DEGRADED_LOSS_COLOR = "#9d174d";
+export type LatencyTone = "outline" | "status-degraded" | "status-critical";
 
-/** Maps a rolling RTT (ms) to a heat color, ignoring loss — see
- * latencyEdgeColor for the combined mapping drawLatencyOverlay actually
- * uses. Values are looked up by their first matching (inclusive) upper
- * bound, mirroring trafficMode.ts's utilizationColor. */
-export function latencyColor(rollingRttMs: number): string {
+export function latencyTone(rollingRttMs: number): LatencyTone {
   const ms = Number.isFinite(rollingRttMs) ? Math.max(0, rollingRttMs) : 0;
-  for (const stop of LATENCY_HEAT_STOPS) {
-    if (ms <= stop.maxMs) return stop.color;
-  }
-  return DEGRADED_LOSS_COLOR; // unreachable (last stop is Infinity), defensible fallback
+  if (ms > LATENCY_WARN_MS) return "status-critical";
+  if (ms > LATENCY_WARN_MS * 0.625) return "status-degraded";
+  return "outline";
 }
 
-/** Combines rolling RTT and rolling loss% into one heat color: a link over
- * the loss threshold always reads as degraded regardless of its RTT (a
+/** Combines rolling RTT and rolling loss% into one severity band: a link over
+ * the loss threshold always reads as critical regardless of its RTT (a
  * lossy-but-fast path is not "good" just because the packets that do
- * arrive are quick), otherwise falls back to the pure RTT scale. */
-export function latencyEdgeColor(rollingRttMs: number, rollingLossPct: number): string {
+ * arrive are quick), otherwise falls back to the pure RTT bands. */
+export function latencyEdgeTone(rollingRttMs: number, rollingLossPct: number): LatencyTone {
   const loss = Number.isFinite(rollingLossPct) ? rollingLossPct : 0;
-  if (loss > LOSS_WARN_PCT) return DEGRADED_LOSS_COLOR;
-  return latencyColor(rollingRttMs);
+  if (loss > LOSS_WARN_PCT) return "status-critical";
+  return latencyTone(rollingRttMs);
 }
 
 const MIN_LATENCY_STROKE_WIDTH = 1.5;
@@ -92,7 +102,7 @@ export interface LatencyOverlayEdge {
   id: string;
   from: string;
   to: string;
-  color: string;
+  tone: LatencyTone;
   strokeWidth: number;
 }
 
@@ -115,7 +125,7 @@ export function computeLatencyOverlayEdges(
       id: l.linkId,
       from,
       to,
-      color: latencyEdgeColor(l.rollingRttMs, l.rollingLossPct),
+      tone: latencyEdgeTone(l.rollingRttMs, l.rollingLossPct),
       strokeWidth: latencyStrokeWidth(l.rollingRttMs),
     });
   }

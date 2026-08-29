@@ -1,7 +1,7 @@
 # T-4303 — The overlay ramps encode a quantity with hue, so they carry no order
 
 **Phase:** 43 (Canvas rendering)
-**Status:** trafficMode done — but NOT the way this card proposed; latencyMode and recencyOverlay open
+**Status:** trafficMode and latencyMode done — neither the way this card proposed; recencyOverlay open
 **Depends on:** T-4301 (canvas palette, landed)
 **Related:** T-4302 (kind stops using colour) — same principle, different channel
 
@@ -92,7 +92,38 @@ copy of the palette.
 The 75 boundary is the one the old scale already drew (its busy/saturated split). 90 is the single
 addition. Neither is presented as an operational standard.
 
-## What to do (for the remaining two overlays)
+## latencyMode: measured first, and it was a different defect
+
+The card said to measure `latencyMode` before changing it and to assume nothing. That was right:
+its ramp (violet-300 → violet-400 → fuchsia-600 → pink-800) **was already monotonic in
+lightness** — 0.811, 0.709, 0.591, 0.459, steadily darkening as latency rises. The rainbow problem
+trafficMode had is not present here.
+
+It failed on **contrast**, at both ends, for one root cause: a single set of hues served both
+themes.
+
+| stop | vs light page | vs dark page |
+|---|---|---|
+| excellent `#c4b5fd` | **1.78** | 9.66 |
+| good `#a78bfa` | **2.63** | 6.55 |
+| borderline `#c026d3` | 4.55 | 3.79 |
+| degraded `#9d174d` | 7.62 | **2.26** |
+
+Against a 3:1 floor. `excellent` is invisible on white; `degraded` — the state most needing to be
+seen — is nearly invisible on the dark page. **A ramp that does not re-point per theme cannot
+clear a floor at both ends, whatever its hues.**
+
+The repair is the one trafficMode arrived at, and it fixes the contrast by construction rather
+than by re-picking colours: `latencyStrokeWidth` already encodes the magnitude linearly, so colour
+names a severity band from the status scale, which re-points per theme. The bands are this
+module's own existing thresholds — 0.625x warn, warn — not new ones.
+
+One test had to be **inverted** rather than updated: it asserted latency's palette collided with
+no colour already on the map. That was the correct contract for a private four-hue ramp and is the
+wrong one now — sharing the status vocabulary with traffic mode is the point, since both answer
+"how bad is this link?" and should answer it the same way.
+
+## What to do (for recencyOverlay, still unmeasured)
 
 - **Make each overlay ramp monotonic** in lightness *and* chroma, so more load reads as more ink
   without a legend. A single-hue or two-hue sequential ramp does this; five categorical hues

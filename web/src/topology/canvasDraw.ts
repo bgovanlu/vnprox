@@ -608,11 +608,14 @@ export interface DrawLatencyOverlayParams {
   edges: readonly LatencyOverlayEdge[];
   viewport: Viewport;
   nodeSize: Size;
+  /** T-4303: the overlay's edges name design tokens rather than carrying
+   * colours, so this draw needs the resolved palette like drawScene does. */
+  theme: SceneTheme;
   dragTopLeft?: DrawSceneParams["dragTopLeft"];
 }
 
 export function drawLatencyOverlay(ctx: CanvasRenderingContext2D, params: DrawLatencyOverlayParams): void {
-  const { nodes, edges, viewport: vp, nodeSize, dragTopLeft } = params;
+  const { nodes, edges, viewport: vp, nodeSize, theme, dragTopLeft } = params;
   if (edges.length === 0) return;
   const size = nodeSize.width > 0 ? nodeSize : DEFAULT_NODE_SIZE;
   const byId = new Map<string, FlowNode<EntityNodeData, "entity">>();
@@ -627,7 +630,9 @@ export function drawLatencyOverlay(ctx: CanvasRenderingContext2D, params: DrawLa
     const a = nodeCenterScreen(from, vp, size, dragTopLeft);
     const b = nodeCenterScreen(to, vp, size, dragTopLeft);
     ctx.save();
-    ctx.strokeStyle = e.color;
+    // T-4303: the overlay edge names a token; the canvas resolves it the
+    // same way traffic mode does, through the palette already built.
+    ctx.strokeStyle = TRAFFIC_TONE[e.tone](theme);
     ctx.lineWidth = e.strokeWidth;
     ctx.globalAlpha = 0.9;
     ctx.beginPath();
