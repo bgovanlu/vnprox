@@ -73,22 +73,97 @@ export default defineConfig({
     timeout: 30_000,
     toHaveScreenshot: {
       animations: "disabled",
-      // T-4210: 2%, not 0%. Two sources of noise this suite could not fully
-      // neutralize even after blocking the WebSocket, disabling CSS
-      // animations, forcing prefers-reduced-motion, hiding scrollbars and
-      // settling the fixture's cross-node staleness once before any capture
-      // (see visual.spec.ts's settleClusterStaleness): sub-pixel font
-      // antialiasing differences between runs, and a relative-timestamp
-      // label ("3s ago") that can tick over by a second between the
-      // baseline-generating run and the verification run. Both are real
-      // measured 0%-flakiness causes in local testing, not a hypothetical
-      // margin. At full-page screenshot resolution a one-line text label or
-      // a font hinting difference is a small fraction of total pixels, so
-      // 2% is enough headroom to absorb that residue without also absorbing
-      // a genuine regression — the class of change Phase 42-51's restyle
-      // could introduce (an accent-color swap, a spacing/radius change, a
-      // missing dark: pairing) moves far more than 2% of a page's pixels.
-      maxDiffPixelRatio: 0.02,
+      // T-4213: 0.001, measured — not chosen.
+      //
+      // T-4210 set this to 0.02 and attributed the residue to sub-pixel font
+      // antialiasing plus a relative-timestamp label ticking over between
+      // runs, recording the second as not neutralizable "without a source
+      // change this task's scope excludes". Both halves turned out to be
+      // wrong, and measuring is what showed it.
+      //
+      // `page.clock` has shipped since Playwright 1.45 and this repo pins
+      // 1.61.1, so the clock IS freezable from outside the app —
+      // visual.spec.ts now does it. But freezing it barely moved the number,
+      // because the dominant cause was never a client-derived label: it was
+      // timestamps the SERVER produces, rendered as absolute local time, on
+      // pages whose content the test suite itself writes. With the clock
+      // frozen and baselines regenerated, `/audit` still differed by 103,641
+      // of 1,260,000 pixels — **8.2%, four times the tolerance the gate was
+      // already set to.** The suite was photographing its own logins.
+      //
+      // So the gate was not "loose"; it was loose AND non-deterministic, and
+      // nothing had caught that because the visual suite had never been run
+      // twice in a row (and `make ci`, the pre-push gate, omits the e2e job
+      // entirely — see the Makefile).
+      //
+      // With the volatile regions masked (visual.spec.ts's VOLATILE), the
+      // residue across all 102 captures measures:
+      //
+      //     /settings/certificates   246 px   0.0195%   <- worst
+      //     /analysis                220 px   0.0175%
+      //     every other capture        0 px
+      //
+      // That is the antialiasing floor T-4210 was reaching for, and it is
+      // ~100x smaller than the tolerance it settled on.
+      //
+      // The value is 0.0005 rather than 0.001, and the reason is the second
+      // half of T-4213's proof — "confirm the gate FAILS on a real change".
+      // Sizing the things this gate is supposed to catch, at fullPage
+      // 1400x900 (1,260,000 px):
+      //
+      //     a StatusDot        h-2 w-2      ~64 px
+      //     a small Badge      soft chip  ~1,200 px
+      //     0.001 tolerance                 1,260 px   <- larger than both
+      //     0.0005 tolerance                  630 px
+      //
+      // At 0.001 a single recoloured badge is INSIDE the tolerance. That is
+      // not a threshold that catches "a status badge that changed colour",
+      // which is the property the card asked for. 0.0005 is 2.5x the measured
+      // 246 px floor and catches anything larger than roughly a 25x25 block.
+      //
+      // An 8px status dot remains below it, and no full-page ratio gate will
+      // ever catch one — that is a real limit of this technique and is worth
+      // stating rather than implying otherwise. Component-level assertions
+      // (index.css.test.ts, findingChipContrast.test.ts) are what cover marks
+      // that small.
+      maxDiffPixelRatio: 0.0005,
+      // `threshold` is deliberately LEFT AT PLAYWRIGHT'S DEFAULT of 0.2, and
+      // that is a known blind spot rather than an oversight. Measured, because
+      // T-4213 asked for a ratio and the ratio turned out not to be the
+      // binding constraint:
+      //
+      // `threshold` is a per-PIXEL tolerance in YIQ space. A pixel whose
+      // colour moved less than it is not counted as different at all, so
+      // `maxDiffPixelRatio` never sees it. Changing
+      // `--color-status-degraded` from #9b6200 to #8a5a10 — a real, visible
+      // token regression — moves YIQ luminance by **0.0312, six times below
+      // the 0.2 default**. The suite reported 102 passed. No value of
+      // maxDiffPixelRatio would have changed that, which means tightening the
+      // ratio (this card's entire premise) could not have fixed the blind
+      // spot the card describes. The same trap cost T-4302 six tool calls
+      // when `--update-snapshots` silently rewrote nothing for an
+      // #ecfdf5 -> #ffffff change.
+      //
+      // Lowering it was tried and measured, and the two settings trade
+      // against each other:
+      //
+      //                              threshold 0.2   threshold 0.02
+      //     /settings/certificates        246 px         3,750 px
+      //     /audit (masked)                 0 px       144,690 px
+      //     one small Badge             ~1,200 px       ~1,200 px
+      //
+      // At 0.02 the antialiasing floor on a text-dense page EXCEEDS a single
+      // badge, so no ratio can both suppress the noise and catch the badge.
+      // "Catch a one-badge colour change on a full-page screenshot" is not
+      // achievable with this technique at this viewport, and pretending
+      // otherwise by shipping an unstable pair would be worse than saying so.
+      //
+      // What this gate is therefore FOR, stated plainly: layout, geometry,
+      // spacing, and colour changes above ~ΔY 0.2. What covers the rest is
+      // the token-level assertions (index.css.test.ts measures every status
+      // and foreground role against every surface it lands on) and the axe
+      // sweep, which measures rendered pixels against real backgrounds. See
+      // T-4213's card for the follow-up.
     },
   },
   // Baselines are deliberately NOT committed (docs/development.md's "Visual

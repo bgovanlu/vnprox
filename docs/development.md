@@ -266,12 +266,34 @@ demo-accent mode deterministically (rather than booting a second `vnproxd --demo
 one-time wait for the three-node-vlan fixture's cross-node staleness to reach its permanent state
 *before* the parameterised sweep starts (see `settleClusterStaleness`'s comment — otherwise which side
 of that one-way transition a given page lands on would depend on how far into the run it sits), a
-fixed 1400x900 viewport, hidden scrollbars, and a `document.fonts.ready` wait. `maxDiffPixelRatio` is
-`0.02`, not `0`: sub-pixel font antialiasing and a relative-timestamp label ("3s ago") ticking over
-between the baseline run and the verification run were both measured causes of flakiness at `0` in
-local testing, and neither is neutralizable from outside the app without a source change this task's
-scope excludes (see its own task report for what a future card should add — a stubbed clock or a
-`data-testid` on the relative-timestamp components).
+fixed 1400x900 viewport, hidden scrollbars, and a `document.fonts.ready` wait.
+
+`maxDiffPixelRatio` is **`0.001`**, and the number is measured rather than chosen. It was `0.02`
+until `T-4213`, on the reasoning that sub-pixel antialiasing and a relative-timestamp label ("3s
+ago") were irreducible "without a source change this task's scope excludes". Both halves of that
+were wrong:
+
+- **The clock was always freezable from outside the app.** `page.clock` has shipped since Playwright
+  1.45 and this repo pins 1.61.1. Every test now calls `page.clock.setFixedTime` before its first
+  navigation — `setFixedTime`, not `install`, because `install` also pauses the timer queue and
+  stalls the app's own polling.
+- **Antialiasing and relative labels were not the dominant cause.** With the clock frozen, `/audit`
+  still differed by 103,641 of 1,260,000 pixels — **8.2%, four times the tolerance the gate was set
+  to** — because the page renders *server*-produced timestamps for audit entries that the suite's own
+  logins had just written. The gate was photographing its own footprint, and no browser-side clock
+  can reach that.
+
+Content that is a live record of actions taken against the daemon is marked `data-volatile-time` in
+the app and masked in every capture, so the page's chrome, layout and colour stay gated while the
+feed itself does not. With that in place the residue across all 102 captures is **246 pixels
+(0.0195%)** at worst, on `/settings/certificates`; every other capture is pixel-identical. `0.001` is
+five times that floor and twenty times tighter than the value it replaced.
+
+**Neither this gate nor the axe sweep runs on push.** `make ci` deliberately omits the `e2e` job (the
+Makefile says so); it covers lint, the vitest suite, govulncheck, cross-arm64, fuzz and package. The
+visual and accessibility gates run only via `scripts/ci-local.sh` or by hand. That is why three real
+AA failures — and a visual gate that was non-deterministic at its own threshold — survived a day of
+green pushes; if you are relying on "make ci passed" to mean the UI is unchanged, it does not.
 
 ### The vitest suite has the same flake visibility (`T-3708`)
 

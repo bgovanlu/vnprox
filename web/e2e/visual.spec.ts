@@ -175,6 +175,53 @@ async function settleClusterStaleness(page: Page): Promise<void> {
 }
 
 test.describe("T-4210: visual regression, every routed page x light/dark/demo", () => {
+  // T-4213: every test renders relative timestamps ("3s ago", "2 minutes
+  // ago"), and a label that ticks over between the baseline run and the
+  // verification run is a diff nobody introduced. T-4210 recorded this as not
+  // neutralizable "from outside the app without a source change this task's
+  // scope excludes"; that was already untrue when written — `page.clock` has
+  // shipped since Playwright 1.45 and this repo pins 1.61.1.
+  //
+  // `setFixedTime`, not `install`. `install` pauses the timer queue as well as
+  // the clock, which stalls the app's own polling and can leave a page waiting
+  // for a data tick that never arrives. `setFixedTime` pins `Date.now()` and
+  // `new Date()` while leaving every timer running — precisely the difference
+  // this gate needs, and the reason the card's warning about `fastForward`
+  // does not apply.
+  //
+  // The constant is arbitrary but must be STABLE across runs, which is the
+  // whole point; it is written out rather than derived so nothing can make it
+  // drift.
+  const FIXED_CLOCK = new Date("2026-01-15T12:00:00.000Z");
+
+  /** Regions no clock can stabilise, painted over before comparison.
+   *
+   * Freezing the browser clock (above) fixes labels the CLIENT derives from
+   * `Date.now()`. It does nothing for a timestamp the SERVER produced, and
+   * measurement showed that is the dominant cause here, not antialiasing:
+   * with the clock frozen and baselines regenerated, `/audit` still differed
+   * by 103,641 of 1,260,000 pixels (**8.2%**) between two consecutive runs —
+   * four times the tolerance the gate was already set to. The diff image is
+   * unambiguous: rows of `8/29/2026, 10:36:15 PM`, each one an audit entry
+   * written by THIS SUITE logging in. The gate was photographing its own
+   * footprint.
+   *
+   * `/flows` (4.5%) and the dashboard's "Recent audit activity" tile are the
+   * same fact in two more places. All four render a server unix timestamp as
+   * absolute local time.
+   *
+   * Masking rather than excluding the routes: the pages' chrome, layout,
+   * spacing and colour — everything a VISUAL gate exists to guard — stay
+   * covered, and only the cells whose content is a wall-clock reading are
+   * painted out. One selector, marked in the app beside the thing that is
+   * actually volatile, rather than a per-route mask table that would drift
+   * from the router the way T-4212's route list did. */
+  const VOLATILE = "[data-volatile-time]";
+
+  test.beforeEach(async ({ page }) => {
+    await page.clock.setFixedTime(FIXED_CLOCK);
+  });
+
   // Skips the whole file, before any fixture (browser context, page) is
   // created, unless the dedicated visual harness set the marker env var —
   // see this file's header comment for why sharing web/e2e/shards.ts's
@@ -283,7 +330,10 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
           );
         }
 
-        await expect(page).toHaveScreenshot(snapshotName, { fullPage: true });
+        await expect(page).toHaveScreenshot(snapshotName, {
+          fullPage: true,
+          mask: [page.locator(VOLATILE)],
+        });
       });
     }
   }
@@ -406,7 +456,10 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
               "npx playwright test --config=playwright.visual.config.ts --update-snapshots",
           );
         }
-        await expect(page).toHaveScreenshot(snapshotName, { fullPage: true });
+        await expect(page).toHaveScreenshot(snapshotName, {
+          fullPage: true,
+          mask: [page.locator(VOLATILE)],
+        });
       });
     }
   }
@@ -422,6 +475,11 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
         storageState: undefined,
       });
       const page = await context.newPage();
+      // This test builds its own context (pre-auth chrome needs no storage
+      // state), so the describe-level beforeEach's clock does not reach it.
+      // Pinned here too, or AC1's "no test depends on wall-clock time" would
+      // be true of every test but one.
+      await page.clock.setFixedTime(FIXED_CLOCK);
       await page.emulateMedia({ reducedMotion: "reduce" });
       await forceTheme(page, mode.theme);
       if (mode.demo) {
@@ -442,7 +500,10 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
             "npx playwright test --config=playwright.visual.config.ts --update-snapshots",
         );
       }
-      await expect(page).toHaveScreenshot(snapshotName, { fullPage: true });
+      await expect(page).toHaveScreenshot(snapshotName, {
+        fullPage: true,
+        mask: [page.locator(VOLATILE)],
+      });
       await context.close();
     });
   }

@@ -107,8 +107,16 @@ export const HEADING_LEVEL_OVERRIDES: Readonly<Record<string, 1 | 2>> = {
   "/diagnose": 2,
 };
 
-/** A `toHaveURL` matcher anchored at the end of the path, so "/guests" does
- * not accidentally satisfy a check for "/guest".
+/** A `toHaveURL` matcher for a route path: the path must END the URL, except
+ * for a query string or fragment after it.
+ *
+ * Anchored so "/guests" cannot satisfy a check for "/guest". The `[?#]` tail
+ * is not decoration — several pages rewrite their own URL after mount to
+ * record state (`/firewall/compiled` redirects to `?node=pve1`), and a bare
+ * `$` anchor turns that into a RACE: the assertion passes if it runs before
+ * the rewrite and fails if it runs after. It passed 102/102 twice and then
+ * failed once, which is the worst way for a gate to be wrong — found only
+ * because T-4213's injected-regression run happened to lose the race.
  *
  * Lives here rather than in either spec because it is route knowledge, and
  * T-4212 exists because route knowledge kept in two places drifts. Both the
@@ -116,5 +124,5 @@ export const HEADING_LEVEL_OVERRIDES: Readonly<Record<string, 1 | 2>> = {
  * on the page we asked for" check — neither needs a per-route heading table to
  * do it. */
 export function pathEndRegExp(literal: string): RegExp {
-  return new RegExp(`${literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+  return new RegExp(`${literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:[?#].*)?$`);
 }

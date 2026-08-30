@@ -68,7 +68,12 @@ function CertRow({ cert }: { cert: Certificate }) {
         <div className="font-mono text-xs text-slate-600 dark:text-slate-400">{cert.path}</div>
       </td>
       <td className="py-2 pr-4 text-sm text-slate-700 dark:text-slate-200">{cert.subject}</td>
-      <td className={`py-2 pr-4 text-sm ${expiryTone(cert.notAfter)}`}>
+      {/* T-4213: masked out of the visual gate. The daemon mints its
+          self-signed certificates at boot, so `notAfter` is "boot + 1 year" —
+          both the date and the day count differ between any two runs. Same
+          class as the audit feed: server-generated content the act of testing
+          creates, which no browser-side clock can stabilise. */}
+      <td className={`py-2 pr-4 text-sm ${expiryTone(cert.notAfter)}`} data-volatile-time>
         {new Date(cert.notAfter).toISOString().slice(0, 10)}
         <div className="text-xs">{expiryLabel(cert.notAfter)}</div>
       </td>

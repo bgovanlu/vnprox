@@ -50,7 +50,9 @@ export function RecentAuditTile() {
             <span className="truncate text-slate-700 dark:text-slate-200" title={describe(entry)}>
               {describe(entry)}
             </span>
-            <span className="shrink-0 text-xs text-fg-subtle">{formatTime(entry.at)}</span>
+            <span className="shrink-0 text-xs text-fg-subtle" data-volatile-time>
+              {formatTime(entry.at)}
+            </span>
           </li>
         ))}
       </ul>

@@ -160,7 +160,14 @@ export function AuditPage() {
                 <TableHead>Result</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            {/* T-4213: masked out of the visual gate. This table is a live
+                feed of actions taken against the daemon — and the e2e suite's
+                own logins are among them, so the rows differ between any two
+                runs in count, order and timestamp. Masking only the timestamp
+                cell was measured and was not enough (8.2% -> 8.0%): the ROWS
+                differ, not just their times. The page's chrome, filters and
+                table header stay gated; only the feed is painted over. */}
+            <TableBody data-volatile-time>
               {entries.map((entry) => {
                 const expanded = expandedId === entry.id;
                 const detailId = `audit-detail-${String(entry.id)}`;

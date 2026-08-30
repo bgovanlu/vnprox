@@ -407,7 +407,9 @@ export function FlowExplorer() {
                 <TableCell>{formatBytes(row.bytes)}</TableCell>
                 <TableCell>{row.packets.toLocaleString()}</TableCell>
                 <TableCell>{row.recordCount.toLocaleString()}</TableCell>
-                <TableCell className="whitespace-nowrap font-mono text-xs">{formatTime(row.lastAt)}</TableCell>
+                <TableCell className="whitespace-nowrap font-mono text-xs" data-volatile-time>
+                  {formatTime(row.lastAt)}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -420,7 +422,9 @@ export function FlowExplorer() {
 function FlowRow({ record, k8sIndex }: { record: FlowRecord; k8sIndex: K8sAttributionIndex }) {
   return (
     <TableRow>
-      <TableCell className="whitespace-nowrap font-mono text-xs">{formatTime(record.at)}</TableCell>
+      <TableCell className="whitespace-nowrap font-mono text-xs" data-volatile-time>
+        {formatTime(record.at)}
+      </TableCell>
       <TableCell>{record.node}</TableCell>
       <TableCell className="font-mono text-xs">
         {endpointLabel(record.srcIp, record.srcRef)}
