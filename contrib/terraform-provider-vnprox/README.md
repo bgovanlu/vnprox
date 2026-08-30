@@ -79,6 +79,63 @@ pve1` now exists, already validated. **Now go review the changeset** at your vnp
 Changesets screen (`https://pve1:8007/#/changesets/01M13H...`, or `GET /changesets/01M13H...`) and
 apply it from there when you're satisfied with the diff.
 
+### Making a CI pipeline honest (ADR-0012's gate pattern)
+
+Everything above is about a human reading output. A pipeline does not read READMEs — it reads
+`terraform plan -detailed-exitcode`, which reports **0 (no changes)** after a stage-only apply,
+because from Terraform's point of view the resource exists and matches config. **It does, and the
+network has not changed.**
+
+`docs/adr/0012-stage-only-integrations-never-imply-liveness.md` is the decision behind that: a
+stage-only integration reports *intent recorded*, never *network converged*, and publishes a gate
+so a pipeline can tell the difference. This is that gate.
+
+```hcl
+resource "vnprox_bridge" "example" {
+  node = "pve1"
+  name = "vmbr99"
+  mtu  = 9000
+}
+
+# Fails the plan/apply until a human has reviewed and applied the changeset
+# in vnprox. Terraform >= 1.5.
+check "bridge_is_live" {
+  assert {
+    condition     = vnprox_bridge.example.changeset_status == "applied"
+    error_message = <<-EOT
+      Changeset ${vnprox_bridge.example.changeset_id} is still
+      "${vnprox_bridge.example.changeset_status}" — staged, not applied.
+      Nothing has changed on ${vnprox_bridge.example.node}. Review and apply it
+      in vnprox, then re-run.
+    EOT
+  }
+}
+```
+
+`changeset_status` is re-read from the daemon on every `Read`, so `terraform plan` re-evaluates the
+check against the changeset's *current* status — a value frozen at creation would make this gate
+report a truth that had expired.
+
+The Ansible collection's equivalent is `result.changeset.status`, which every changed run returns:
+
+```yaml
+- name: Stage the bridge
+  vnprox.vnprox.bridge: { node: pve1, name: vmbr99, mtu: 9000 }
+  register: staged
+
+- name: Fail the play until a human has applied it
+  ansible.builtin.assert:
+    that: staged.changeset.status == "applied"
+    fail_msg: >-
+      Changeset {{ staged.changeset.id }} is still
+      {{ staged.changeset.status }} — staged, not applied.
+```
+
+**The gate is opt-in, and that is a deliberate, accepted cost.** A pipeline that adopts neither
+gets a green run over a network that has not changed. ADR-0012 records why the alternatives were
+worse — chiefly that a "permanent diff until applied" model is structurally unreachable for
+Ansible, which has no state file to hold the changeset id it would need to check.
+
 ### What happens after a human applies
 
 Once a human applies the changeset outside Terraform, this resource's `changeset_status` in state

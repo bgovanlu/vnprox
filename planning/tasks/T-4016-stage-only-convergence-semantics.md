@@ -1,5 +1,6 @@
 # T-4016 · Stage-only integrations report "converged" while nothing is live
 
+**Status:** done. Option 2, recorded as ADR-0012.
 **Found by:** T-4001's Terraform provider work, 2026-08-28 · **size:** M ·
 **depends:** T-4001 (landed) · **blocks-decision-for:** T-4002 (Ansible), T-4003 (runbooks) ·
 **affects:** every future stage-only integration
@@ -77,3 +78,55 @@ That asymmetry is the strongest evidence so far, and it points at option 2.
 1. An ADR exists stating what a stage-only integration may and may not imply about liveness.
 2. The Terraform provider implements it, with a test.
 3. T-4002 and T-4003's cards reference the ADR rather than re-deriving an answer.
+
+---
+
+## Outcome — option 2, as [ADR-0012](../../docs/adr/0012-stage-only-integrations-never-imply-liveness.md)
+
+**The decision, in one line:** a stage-only integration may report that it recorded an intent; it
+may never report, or let its host tool imply, that the network matches the configuration.
+
+The ADR states three requirements (expose a *refreshed* status, say plainly that success means
+staged, publish a tested gate) and two prohibitions (never synthesise a permanent diff; never
+block, poll or wait for a human — that is a second apply path wearing a disguise, and D4 exists to
+prevent exactly that).
+
+### The machinery mostly existed, which is evidence for the choice
+
+As this card predicted, option 2 was "a documentation and consistency job, not new machinery":
+`resource_bridge.go` and `resource_vlan.go` already expose `changeset_status`, `Read` already
+re-reads it from the daemon, and the Ansible modules already return `result.changeset.status`. The
+option that fits an existing shape is usually the one the system was already asking for.
+
+**The refresh is the load-bearing part**, and it is now stated as a requirement rather than left as
+an implementation detail: a status frozen at creation would make a gate report a truth that had
+expired — the same defect as a recorded performance figure nothing asserts (T-4113) or a comment
+promising a property nothing measures (T-4306).
+
+### The gate is published and tested
+
+`contrib/terraform-provider-vnprox/README.md` gains a "Making a CI pipeline honest" section with a
+Terraform `check` block and the Ansible `assert` equivalent, and
+`TestLivenessGate_CatchesEveryStagedStatus` pins the pattern: for every status a stage-only apply
+can leave behind (`draft`, `validated`, `applying`, `awaiting_confirm`, `rolled_back`, `""`) the
+gate's condition must be false, and for `applied` it must be true — or the gate is unsatisfiable
+and users will delete it rather than debug it.
+
+Deliberately a **unit** test, not an addition to `TestAccResources_StageOnly`: that suite needs
+`TF_ACC` and a running daemon, so it does not run in ordinary CI, and a guard whose correctness is
+only checked when someone remembers to stand up a stack is precisely the shape this project keeps
+finding green while it measures nothing.
+
+### One thing the ADR had to correct about its own directory
+
+`docs/adr/README.md` described itself as **"a publication step, not a decision-making step"** —
+true of 0001–0011, which extract decisions already locked in `docs/architecture.md` §10. ADR-0012
+is the first that *makes* one, so it carries no D-number and the preamble now says so. Left alone,
+that sentence would have quietly become false, and a reader would have taken a live decision for a
+summary of one.
+
+### AC3
+
+`planning/roadmap-open-source.md`'s T-4002 and T-4003 rows now cite ADR-0012 and say explicitly not
+to re-derive an answer; `docs/api.md`'s runbook-prepare route cites the ADR instead of this card's
+"interim answer".

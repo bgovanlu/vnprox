@@ -2,11 +2,18 @@
 
 This directory publishes vnprox's eleven load-bearing architecture decisions — referred to
 throughout the codebase and docs as **D1 through D11** — as numbered ADRs (Architecture Decision
-Records) a newcomer can actually read. It is a **publication step, not a decision-making step**:
-every decision here already existed, locked, in `docs/architecture.md` §10 ("Key decisions
-(locked)") before this directory existed. Nothing here is re-litigated; each ADR extracts and
-expands the existing table row plus the prose justification scattered through the surrounding
-sections, and cites the task/report that made or amended the call.
+Records) a newcomer can actually read. For 0001–0011 this was a **publication step, not a
+decision-making step**: every one of those already existed, locked, in `docs/architecture.md` §10
+("Key decisions (locked)") before this directory existed. Nothing in them is re-litigated; each
+extracts and expands the existing table row plus the prose justification scattered through the
+surrounding sections, and cites the task/report that made or amended the call.
+
+**From 0012 onward that is no longer the whole story.** ADR-0012 is the first record here that
+*makes* a decision rather than publishing one — T-4016 was opened to take it, and it binds three
+integrations that have no shared code. Such an ADR carries **no D-number**, because the D-series is
+the eleven architecture decisions and this is not one of them; the `D#` column reads `—`. The
+distinction is worth keeping visible: a reader who assumes everything here was settled elsewhere
+would take a live decision for a summary of one.
 
 ## Index
 
@@ -23,6 +30,7 @@ sections, and cites the task/report that made or amended the call.
 | [0009](0009-target-pve-8-2-plus-and-9-x.md) | D9 | Target PVE 8.2+ and 9.x, with a forward target for each new major | Accepted, revised each phase |
 | [0010](0010-platform-api-freeze-at-v3-0.md) | D10 | Platform API freeze at v3.0 (MCP manifest, plugin SDK v1, WS events envelope) | Accepted |
 | [0011](0011-peer-wire-protocol-not-frozen-stays-at-version-2.md) | D11 | Peer wire protocol is explicitly **not** part of the platform freeze; stays at version 2 | Accepted |
+| [0012](0012-stage-only-integrations-never-imply-liveness.md) | — | A stage-only integration reports intent recorded, never network converged | Accepted |
 
 `docs/architecture.md` §10's decisions table links to each ADR directly (see that section);
 this index is the canonical entry point for reading them as a set.
