@@ -213,7 +213,7 @@ The design rule is **redacted by construction, not by review**:
   same statement.
 - **The API response path strips secrets per op type, and that list is a maintenance burden by
   design.** `redactOpSecrets` covers `wg.peer.add`'s preshared key (plaintext and sealed),
-  `sdn.dns.zone.create`/`.update`'s PowerDNS API key, and `sdn.ipam.create`/`.update`'s IPAM token.
+  `sdn.dns.server.create`/`.update`'s PowerDNS API key (named `sdn.dns.zone.*` before T-4114; the retired spelling is still accepted on input and redaction is keyed on the decoded params type, not the op string, so a changeset using it is redacted identically), and `sdn.ipam.create`/`.update`'s IPAM token.
   The last of those was **unredacted until T-4112**: it had been echoed back on every changeset read
   since the op family shipped, while `docs/features/sdn.md` told operators PVE never echoes a token
   back — vnprox did. It was fixed with the DNS key rather than filed, because it is the same shape,

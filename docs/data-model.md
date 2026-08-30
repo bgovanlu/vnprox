@@ -104,6 +104,27 @@ inventory snapshot's `SdnZone` entities — a capability a Fabric-style "not in 
 would not support. It is still, like a fabric, not rendered on the topology map (`topology.layerOf`
 has no case for it) — it gets its own status view (`web/src/sdn/controllers/`) instead.
 
+**The three DNS kinds are three different objects, and two of them were one kind until T-4114.**
+
+- `sdn-dns-zone` — a DNS **domain** (`lab.example.`). Live-polled. It is *derived*, not configured
+  directly: a forward domain exists because an SDN zone carries `dnszone`, and the reverse domains
+  are computed from that zone's subnets' CIDRs. There is deliberately **no op family that manages
+  one** — `sdn.zone.create`/`.update` do not yet carry `dnszone`/`dns`/`reversedns` (T-4115), so a
+  domain is currently read-only as far as the change engine is concerned.
+- `sdn-dns-record` — one A/AAAA/PTR/CNAME/TXT rrset inside a domain, id `<zone>/<name>/<type>`.
+  Live-polled from the PowerDNS server itself, because PVE has no record API (T-4112).
+- `sdn-dns-server` (T-4114) — one `/cluster/sdn/dns` entry: a **PowerDNS server connection**
+  (url, key, ttl, fingerprint). It is the only one of the three with a managing op family
+  (`sdn.dns.server.*`). No collector produces it; it exists as a projection-only entity so a
+  changeset preview can describe what one of those ops will do.
+
+The first and third shared `sdn-dns-zone` between T-1204 and T-4114. Their ids can never collide — a
+domain's is a DNS name, a connection's is PVE's dotless SDN object pattern — and that near-miss is
+exactly what let the conflation survive: every index lookup happened to return the right thing, so
+nothing failed. What did break was the check that needed the two to be *distinguishable*:
+`internal/change`'s DNS deletion guard keyed on connection ids and compared them against domain
+names, so it silently never fired.
+
 `SdnIpam` (T-3104) follows `SdnController`'s pattern for the identical reason: `sdn.ipam.delete` must be blockable when a zone's own `ipam` field still names it (`checkSdnIpamDeletable`), which needs the live inventory snapshot's `SdnZone.ipam` field to scan — populated from a live poll only as of this task (`internal/pve.SDNZone.IPAM` existed nowhere before it; `SdnZone.ipam` was documented in this table and carried by `SdnZoneCreateParams`/`SdnZoneUpdateParams` beforehand, but a changeset's chosen ipam plugin was silently dropped before ever reaching PVE, and a live poll never populated it either — a pre-existing gap this task found and closed, not a new field it invented). It is likewise not rendered on the topology map — it gets its own view in the SDN cockpit's IPAM plugins tab (`web/src/ipam/IpamPluginsView.tsx`) instead.
 
 T-401 adds the identical `pending` field (same `""`\|`"new"`\|`"changed"`\|`"deleted"` marker, `pve-sdn`-sourced) to `SdnZone`/`SdnVnet`/`SdnSubnet`, for the same reason: PVE stages SDN edits until `PUT /cluster/sdn` applies them. It is structural/badge-only on these entities (topology map painting, `GET /sdn` tree rows) — the authoritative, field-level staged-vs-running diff `GET /sdn` renders (docs/api.md's `PendingDiff`) is computed live against PVE by `internal/sdn.Service`, not read off this field, since a diff view must never be stale relative to what an apply would actually do.

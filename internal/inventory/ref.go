@@ -37,6 +37,24 @@ const (
 	// (docs/features/sdn.md §6), not as a node of its own.
 	KindSDNDnsZone   Kind = "sdn-dns-zone"
 	KindSDNDnsRecord Kind = "sdn-dns-record"
+	// KindSDNDnsServer (T-4114) names one /cluster/sdn/dns entry: a PowerDNS
+	// server connection (url, key, ttl, fingerprint), cluster-scoped like
+	// every other sdn-* kind. It is emphatically NOT KindSDNDnsZone above:
+	// T-4112 established that /cluster/sdn/dns lists server connections and
+	// that DNS *domains* live on the SDN zone (`dnszone`/`dns`/`reversedns`),
+	// so the two are different objects that were one Kind until now.
+	//
+	// The two ids cannot collide, which is what made the conflation survive
+	// so long: a domain's id is a DNS name and a connection's id is PVE's SDN
+	// object pattern (`[a-zA-Z][a-zA-Z0-9]*[a-zA-Z0-9]`, no dots). Nothing
+	// ever indexed one and got the other, so every check passed — while the
+	// deletion guard in validate_safety.go silently never fired, because it
+	// compared connection ids against domain names.
+	//
+	// A changeset written before T-4114 targets these ops with
+	// KindSDNDnsZone; change.Op's decoder rewrites that to this kind for the
+	// three sdn.dns.server.* ops, so a saved changeset stays replayable.
+	KindSDNDnsServer Kind = "sdn-dns-server"
 	// KindSDNFabric (T-3101: SDN Fabrics — PVE 9's underlay-routing object
 	// family, /cluster/sdn/fabrics) names one fabric: a cluster-scoped
 	// (Node empty, like every other sdn-* kind) underlay routing config
@@ -207,7 +225,7 @@ var knownKinds = map[Kind]bool{
 	KindWgTunnel: true, KindWgPeer: true,
 	KindNatRule: true, KindStaticRoute: true, KindVF: true, KindCephOSD: true,
 	KindPBSHost:    true,
-	KindSDNDnsZone: true, KindSDNDnsRecord: true,
+	KindSDNDnsZone: true, KindSDNDnsRecord: true, KindSDNDnsServer: true,
 	KindSwitchPort:    true,
 	KindSDNFabric:     true,
 	KindSDNController: true,

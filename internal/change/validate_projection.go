@@ -90,7 +90,7 @@ type projection struct {
 	// dnsPlugins indexes /cluster/sdn/dns server connections created by this
 	// changeset. It is seeded empty and never from inventory: a connection
 	// has no inventory entity (T-4112 — inventory's SdnDnsZone is a DNS
-	// domain). See existsRef's KindSDNDnsZone case.
+	// domain). See existsRef's KindSDNDnsServer case.
 	dnsPlugins map[string]inventory.Ref
 	dnsRecords map[string]inventory.Ref
 
@@ -366,20 +366,19 @@ func (p *projection) exists(ref inventory.Ref) bool {
 		_, ok := p.subnetNames[ref.ID]
 		return ok
 	case inventory.KindSDNDnsZone:
-		// Two different things share this kind (T-4112, filed as T-4114).
-		// dnsZones indexes DNS DOMAINS, which is what inventory holds and
-		// what a record op's Zone refers to. dnsPlugins indexes the
-		// /cluster/sdn/dns server CONNECTIONS that sdn.dns.zone.* actually
-		// manages, which have no inventory entity at all — so a connection
-		// is only known here if this changeset created it.
-		//
-		// Existence accepts either, because both are legitimately addressed
-		// through this kind today. The record check below deliberately does
-		// NOT: it asks dnsZones alone, so a connection id can never satisfy
-		// "does this record's zone exist".
-		if _, ok := p.dnsZones[ref.ID]; ok {
-			return true
-		}
+		// A DNS DOMAIN, which is what inventory holds and what a record op's
+		// Zone refers to. Server connections used to be addressed through
+		// this kind too (T-4112 documented the overlap, T-4114 ended it by
+		// giving them KindSDNDnsServer below) — and while the ids could never
+		// collide, sharing the kind is precisely what let the deletion guard
+		// in validate_safety.go compare connection ids against domain names
+		// and silently never fire. Two objects, two kinds.
+		_, ok := p.dnsZones[ref.ID]
+		return ok
+	case inventory.KindSDNDnsServer:
+		// A /cluster/sdn/dns server connection. These have no inventory
+		// entity at all — no collector produces one — so a connection is
+		// known here only if this changeset created it.
 		_, ok := p.dnsPlugins[ref.ID]
 		return ok
 	case inventory.KindSDNDnsRecord:
@@ -572,7 +571,7 @@ func (p *projection) fold(op Op) {
 			p.subnetsByVnet[vnet] = kept
 		}
 
-	case *SdnDnsZoneCreateParams:
+	case *SdnDnsServerCreateParams:
 		// Into dnsPlugins, not dnsZones: this op creates a PowerDNS server
 		// connection. Putting it in dnsZones fabricated a DNS domain named
 		// after the connection, which the record check below would then
@@ -580,7 +579,7 @@ func (p *projection) fold(op Op) {
 		// wrote records to a domain that does not exist.
 		p.dnsPlugins[op.Target.ID] = op.Target
 
-	case *SdnDnsZoneDeleteParams:
+	case *SdnDnsServerDeleteParams:
 		delete(p.dnsPlugins, op.Target.ID)
 
 	case *SdnDnsRecordCreateParams:

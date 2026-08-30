@@ -112,6 +112,16 @@ func resolveSubnetVnet(ops []Op, uptoIdx int, snap inventory.Snapshot, cidr stri
 type sdnRestoreOp struct {
 	op   Op
 	vnet string
+	// blocked, when non-empty, says why this inverse op cannot be issued.
+	// restoreSDN reports it as a rollback failure rather than staging the op
+	// (T-4114). It exists because some inverse ops are knowable but not
+	// executable — recreating a deleted PowerDNS connection needs the API
+	// key, and PVE never echoes one back on a read, so no snapshot can hold
+	// it. Reporting "this cannot be restored, and here is why" is the point:
+	// the alternative is a rollback that either silently skips the object or
+	// sends PVE a request guaranteed to 400 with a message that does not say
+	// what is actually missing.
+	blocked string
 }
 
 // sdnRestoreOps computes the inverse zone/vnet/subnet ops that transform
@@ -402,56 +412,105 @@ func ipamMapOf(is []SDNIpamConfig) map[string]SDNIpamConfig {
 	return m
 }
 
-// sdnDnsRestoreOps computes the inverse DNS ops (T-1204) that transform
-// current back into pre, split into removals (issued before the zone/vnet/
-// subnet removals so a record is gone before its zone) and recreations
-// (issued after the zone/vnet/subnet recreations so a zone exists before its
-// records). Field-only changes to a surviving zone/record are emitted with
-// the recreations. Mirrors the zone/vnet/subnet dependency-ordering the rest
-// of sdnRestoreOps uses.
+// sdnDnsRestoreOps computes the inverse DNS ops (T-1204, corrected by
+// T-4114) that transform current back into pre, split into removals (issued
+// before the zone/vnet/subnet removals) and recreations (issued after the
+// recreations). Field-only changes to a survivor are emitted with the
+// recreations, mirroring the dependency-ordering the rest of sdnRestoreOps
+// uses.
+//
+// Two things this deliberately does NOT do, both of which it used to:
+//
+// It does not emit create/update/delete ops for DNS *domains*. A domain is
+// not an object PVE has an API for — it exists because an SDN zone carries
+// `dnszone` — so an op targeting one is unappliable by construction. Until
+// T-4114 this function reconciled pre.DnsZones with what are now the server
+// ops, producing a create whose target id was a dotted domain name (PVE's id
+// pattern forbids dots) carrying none of the type/url/key PVE requires: four
+// schema violations in one op, on the rollback path, where a failure is
+// least affordable. Restoring a domain means restoring its SDN zone's
+// `dnszone` field, which is the zone half's job — see T-4115, since
+// SdnZoneCreateParams does not carry that field yet.
+//
+// It does not diff records in a domain either snapshot could not read.
+// pre.DnsUnreadable names the domains whose PowerDNS server was unreachable
+// when the snapshot was taken, so "pre had no records there" means "unknown",
+// not "none" — and treating unknown as none turns a rollback into a mass
+// record deletion nobody asked for. current is read fresh at rollback time
+// and can be unreadable for the same reason, which is just as disqualifying:
+// diffing against an empty live side would recreate every record the
+// snapshot holds, on top of records that may still be there.
 func sdnDnsRestoreOps(pre, current SDNConfig) (removals, recreations []sdnRestoreOp) {
-	preZones, curZones := dnsZoneMapOf(pre.DnsZones), dnsZoneMapOf(current.DnsZones)
+	preSrv, curSrv := dnsServerMapOf(pre.DnsServers), dnsServerMapOf(current.DnsServers)
 	preRecs, curRecs := dnsRecordMapOf(pre.DnsRecords), dnsRecordMapOf(current.DnsRecords)
 
-	// Removals: records current added, then zones current added (deepest
-	// first).
+	// Domains neither side can vouch for. A record is skipped when EITHER
+	// side is blind to its domain: the pre side because absence there means
+	// "not captured", the current side because absence there means "not
+	// observed".
+	skip := map[string]bool{}
+	for _, u := range pre.DnsUnreadable {
+		skip[u.ID] = true
+	}
+	for _, u := range current.DnsUnreadable {
+		skip[u.ID] = true
+	}
+	readable := func(rec SDNDnsRecordConfig) bool { return !skip[rec.Zone] }
+
+	// Removals: records current added, then server connections current added.
 	for _, id := range sortedKeys(curRecs) {
 		if _, ok := preRecs[id]; ok {
 			continue
 		}
+		if !readable(curRecs[id]) {
+			continue
+		}
 		removals = append(removals, sdnRestoreOp{op: Op{Type: OpSdnDnsRecordDelete, Target: inventory.Ref{Kind: inventory.KindSDNDnsRecord, ID: id}, Params: &SdnDnsRecordDeleteParams{}}})
 	}
-	for _, id := range sortedKeys(curZones) {
-		if _, ok := preZones[id]; ok {
+	for _, id := range sortedKeys(curSrv) {
+		if _, ok := preSrv[id]; ok {
 			continue
 		}
-		removals = append(removals, sdnRestoreOp{op: Op{Type: OpSdnDnsZoneDelete, Target: inventory.Ref{Kind: inventory.KindSDNDnsZone, ID: id}, Params: &SdnDnsZoneDeleteParams{}}})
+		removals = append(removals, sdnRestoreOp{op: Op{Type: OpSdnDnsServerDelete, Target: inventory.Ref{Kind: inventory.KindSDNDnsServer, ID: id}, Params: &SdnDnsServerDeleteParams{}}})
 	}
 
-	// Recreations: zones pre had that current removed (shallowest first),
-	// then records, then field updates on survivors.
-	for _, id := range sortedKeys(preZones) {
-		if _, ok := curZones[id]; ok {
+	// Recreations: server connections first (a record's domain is served by
+	// one), then records, then field updates on survivors.
+	for _, id := range sortedKeys(preSrv) {
+		if _, ok := curSrv[id]; ok {
 			continue
 		}
-		z := preZones[id]
-		recreations = append(recreations, sdnRestoreOp{op: Op{Type: OpSdnDnsZoneCreate, Target: inventory.Ref{Kind: inventory.KindSDNDnsZone, ID: id}, Params: &SdnDnsZoneCreateParams{DNS: z.DNS, TTL: z.TTL}}})
+		s := preSrv[id]
+		recreations = append(recreations, sdnRestoreOp{
+			op: Op{Type: OpSdnDnsServerCreate, Target: inventory.Ref{Kind: inventory.KindSDNDnsServer, ID: id}, Params: &SdnDnsServerCreateParams{
+				Type: s.Type, URL: s.URL, Fingerprint: s.Fingerprint, TTL: s.TTL, ReverseMaskV6: s.ReverseMaskV6,
+			}},
+			blocked: fmt.Sprintf(
+				"cannot recreate PowerDNS connection %q: PVE never returns a connection's API key on a read, "+
+					"so the pre-apply snapshot could not capture one and %q requires it — "+
+					"recreate it manually with its key, then re-run the rollback", id, OpSdnDnsServerCreate),
+		})
 	}
 	for _, id := range sortedKeys(preRecs) {
 		if _, ok := curRecs[id]; ok {
 			continue
 		}
 		r := preRecs[id]
-		recreations = append(recreations, sdnRestoreOp{op: Op{Type: OpSdnDnsRecordCreate, Target: inventory.Ref{Kind: inventory.KindSDNDnsRecord, ID: id}, Params: &SdnDnsRecordCreateParams{Zone: r.Zone, Name: r.Name, Type: r.Type, Value: r.Value, TTL: r.TTL}}})
-	}
-	for _, id := range sortedKeys(preZones) {
-		cz, ok := curZones[id]
-		if !ok || reflect.DeepEqual(preZones[id], cz) {
+		if !readable(r) {
 			continue
 		}
-		z := preZones[id]
-		dns, ttl := z.DNS, z.TTL
-		recreations = append(recreations, sdnRestoreOp{op: Op{Type: OpSdnDnsZoneUpdate, Target: inventory.Ref{Kind: inventory.KindSDNDnsZone, ID: id}, Params: &SdnDnsZoneUpdateParams{DNS: &dns, TTL: &ttl}}})
+		recreations = append(recreations, sdnRestoreOp{op: Op{Type: OpSdnDnsRecordCreate, Target: inventory.Ref{Kind: inventory.KindSDNDnsRecord, ID: id}, Params: &SdnDnsRecordCreateParams{Zone: r.Zone, Name: r.Name, Type: r.Type, Value: r.Value, TTL: r.TTL}}})
+	}
+	for _, id := range sortedKeys(preSrv) {
+		cs, ok := curSrv[id]
+		if !ok || reflect.DeepEqual(preSrv[id], cs) {
+			continue
+		}
+		s := preSrv[id]
+		typ, url, fp, ttl, mask := s.Type, s.URL, s.Fingerprint, s.TTL, s.ReverseMaskV6
+		recreations = append(recreations, sdnRestoreOp{op: Op{Type: OpSdnDnsServerUpdate, Target: inventory.Ref{Kind: inventory.KindSDNDnsServer, ID: id}, Params: &SdnDnsServerUpdateParams{
+			Type: &typ, URL: &url, Fingerprint: &fp, TTL: &ttl, ReverseMaskV6: &mask,
+		}}})
 	}
 	for _, id := range sortedKeys(preRecs) {
 		cr, ok := curRecs[id]
@@ -459,16 +518,19 @@ func sdnDnsRestoreOps(pre, current SDNConfig) (removals, recreations []sdnRestor
 			continue
 		}
 		r := preRecs[id]
+		if !readable(r) {
+			continue
+		}
 		value, ttl := r.Value, r.TTL
 		recreations = append(recreations, sdnRestoreOp{op: Op{Type: OpSdnDnsRecordUpdate, Target: inventory.Ref{Kind: inventory.KindSDNDnsRecord, ID: id}, Params: &SdnDnsRecordUpdateParams{Value: &value, TTL: &ttl}}})
 	}
 	return removals, recreations
 }
 
-func dnsZoneMapOf(zs []SDNDnsZoneConfig) map[string]SDNDnsZoneConfig {
-	m := make(map[string]SDNDnsZoneConfig, len(zs))
-	for _, z := range zs {
-		m[z.ID] = z
+func dnsServerMapOf(ss []SDNDnsServerConfig) map[string]SDNDnsServerConfig {
+	m := make(map[string]SDNDnsServerConfig, len(ss))
+	for _, s := range ss {
+		m[s.ID] = s
 	}
 	return m
 }
@@ -555,6 +617,12 @@ func (s *Service) restoreSDN(ctx context.Context, pveGW PVEGateway, pre SDNConfi
 	inverse := sdnRestoreOps(pre, current)
 	var failures []string
 	for _, ro := range inverse {
+		// An inverse op the snapshot knows about but cannot execute is
+		// reported, never skipped: silence here reads as "restored" (T-4114).
+		if ro.blocked != "" {
+			failures = append(failures, ro.blocked)
+			continue
+		}
 		if err := pveGW.SDNStageOp(ctx, ro.op, ro.vnet); err != nil {
 			failures = append(failures, fmt.Sprintf("%s %s: %v", ro.op.Type, ro.op.Target.ID, err))
 		}

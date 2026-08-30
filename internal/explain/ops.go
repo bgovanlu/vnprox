@@ -106,18 +106,28 @@ var opNouns = map[string]string{
 	"sdn":             "the pending SDN configuration",
 	"sdn.controller":  "an SDN controller",
 	"sdn.dns.record":  "an SDN DNS record",
-	"sdn.dns.zone":    "an SDN DNS zone",
-	"sdn.fabric":      "an SDN fabric",
-	"sdn.ipam":        "an SDN IPAM plugin instance",
-	"sdn.subnet":      "an SDN subnet",
-	"sdn.vnet":        "an SDN VNet",
-	"sdn.zone":        "an SDN zone",
-	"switch.port":     "a managed switch port's configuration",
-	"tc.mirror":       "a traffic-mirror session",
-	"vf":              "an SR-IOV virtual function",
-	"vlan":            "a VLAN",
-	"wg.peer":         "a WireGuard peer",
-	"wg.tunnel":       "a WireGuard tunnel",
+	// A /cluster/sdn/dns entry is a PowerDNS server connection, so that is
+	// what an operator is told (T-4114). This said "an SDN DNS zone" until
+	// the rename, which is the defect: a preview line reading "delete SDN DNS
+	// zone pdns1" describes destroying a domain's records when what will
+	// actually happen is that a server connection is removed.
+	"sdn.dns.server": "a PowerDNS server connection",
+	// The retired spelling. change.OpType.Canonical rewrites it at decode, so
+	// nothing should reach here with it; it stays mapped because this package
+	// also explains ops read straight from historical audit records, which
+	// were written before the rename and never pass through that decoder.
+	"sdn.dns.zone": "a PowerDNS server connection",
+	"sdn.fabric":   "an SDN fabric",
+	"sdn.ipam":     "an SDN IPAM plugin instance",
+	"sdn.subnet":   "an SDN subnet",
+	"sdn.vnet":     "an SDN VNet",
+	"sdn.zone":     "an SDN zone",
+	"switch.port":  "a managed switch port's configuration",
+	"tc.mirror":    "a traffic-mirror session",
+	"vf":           "an SR-IOV virtual function",
+	"vlan":         "a VLAN",
+	"wg.peer":      "a WireGuard peer",
+	"wg.tunnel":    "a WireGuard tunnel",
 }
 
 // decomposeOpType splits t on its final '.' into a verb segment (looked up

@@ -59,18 +59,42 @@ const (
 	OpSdnSubnetUpdate OpType = "sdn.subnet.update"
 	OpSdnSubnetDelete OpType = "sdn.subnet.delete"
 
-	// SDN DNS op family (T-1204). PVE stages and applies the DNS plugin
-	// config exactly like zones/vnets/subnets, so these route through the
-	// same StepSDNStage/StepSDNApply plan (apply_plan.go's sdnStageOpTypes),
-	// not a separate apply path. A DNS zone target is Ref{KindSDNDnsZone, ID:
-	// domain}; a record target is Ref{KindSDNDnsRecord, ID:
-	// "<zone>/<name>/<type>"}.
-	OpSdnDnsZoneCreate   OpType = "sdn.dns.zone.create"
-	OpSdnDnsZoneUpdate   OpType = "sdn.dns.zone.update"
-	OpSdnDnsZoneDelete   OpType = "sdn.dns.zone.delete"
+	// SDN DNS op family (T-1204, renamed by T-4114). PVE stages and applies
+	// the DNS plugin config exactly like zones/vnets/subnets, so the server
+	// ops route through the same StepSDNStage/StepSDNApply plan
+	// (apply_plan.go's sdnStageOpTypes), not a separate apply path.
+	//
+	// The two halves of this family manage different objects, which is the
+	// whole point of T-4114's rename:
+	//
+	//   - sdn.dns.server.* manages one /cluster/sdn/dns entry — a PowerDNS
+	//     server connection (url, key, ttl, fingerprint). Target is
+	//     Ref{KindSDNDnsServer, ID: connection id}. These were called
+	//     sdn.dns.zone.* until T-4114 and named nothing they managed: an
+	//     operator reading "create DNS zone pdns1" was told something false,
+	//     and the dotless id pattern PVE enforces means the op called "zone"
+	//     rejects every domain name.
+	//
+	//   - sdn.dns.record.* manages records inside a DNS domain, which live in
+	//     the PowerDNS server itself and not in PVE at all (T-4112). Target is
+	//     Ref{KindSDNDnsRecord, ID: "<zone>/<name>/<type>"}, where <zone> is a
+	//     DNS domain.
+	//
+	// There is deliberately no op that creates a DNS *domain*: a domain exists
+	// because an SDN zone carries `dnszone`, so it is a consequence of zone
+	// config rather than an object of its own. See sdnDnsRestoreOps.
+	OpSdnDnsServerCreate OpType = "sdn.dns.server.create"
+	OpSdnDnsServerUpdate OpType = "sdn.dns.server.update"
+	OpSdnDnsServerDelete OpType = "sdn.dns.server.delete"
 	OpSdnDnsRecordCreate OpType = "sdn.dns.record.create"
 	OpSdnDnsRecordUpdate OpType = "sdn.dns.record.update"
 	OpSdnDnsRecordDelete OpType = "sdn.dns.record.delete"
+
+	// Deprecated op type strings, accepted on decode and never emitted. See
+	// deprecatedOpTypes.
+	OpSdnDnsZoneCreateDeprecated OpType = "sdn.dns.zone.create"
+	OpSdnDnsZoneUpdateDeprecated OpType = "sdn.dns.zone.update"
+	OpSdnDnsZoneDeleteDeprecated OpType = "sdn.dns.zone.delete"
 
 	// SDN Fabric op family (T-3101). Fabrics stage and apply through the
 	// exact same PUT /cluster/sdn commit every other sdn.* op uses
@@ -278,9 +302,9 @@ var paramFactories = map[OpType]func() Params{
 	OpSdnSubnetUpdate: func() Params { return &SdnSubnetUpdateParams{} },
 	OpSdnSubnetDelete: func() Params { return &SdnSubnetDeleteParams{} },
 
-	OpSdnDnsZoneCreate:   func() Params { return &SdnDnsZoneCreateParams{} },
-	OpSdnDnsZoneUpdate:   func() Params { return &SdnDnsZoneUpdateParams{} },
-	OpSdnDnsZoneDelete:   func() Params { return &SdnDnsZoneDeleteParams{} },
+	OpSdnDnsServerCreate: func() Params { return &SdnDnsServerCreateParams{} },
+	OpSdnDnsServerUpdate: func() Params { return &SdnDnsServerUpdateParams{} },
+	OpSdnDnsServerDelete: func() Params { return &SdnDnsServerDeleteParams{} },
 	OpSdnDnsRecordCreate: func() Params { return &SdnDnsRecordCreateParams{} },
 	OpSdnDnsRecordUpdate: func() Params { return &SdnDnsRecordUpdateParams{} },
 	OpSdnDnsRecordDelete: func() Params { return &SdnDnsRecordDeleteParams{} },
@@ -344,9 +368,70 @@ var paramFactories = map[OpType]func() Params{
 	OpTcMirrorDelete: func() Params { return &TcMirrorDeleteParams{} },
 }
 
+// deprecatedOpTypes maps a retired op type string to the one that replaced
+// it. Every entry is accepted on decode and none is ever emitted: Canonical
+// rewrites the old string to the new one before the params factory is looked
+// up, so the rest of the package only ever sees canonical types and no
+// switch anywhere needs a second case.
+//
+// This exists because an op type string is a wire contract. A changeset an
+// operator saved, or one a Terraform/Ansible integration builds from a
+// pinned constant, must not become unreplayable because vnprox corrected a
+// name — so renames get a migration, not a flag day (T-4114).
+//
+// The renamed family is sdn.dns.zone.* -> sdn.dns.server.*: T-4112
+// established that the ops manage a PowerDNS server connection, never a DNS
+// zone. Note the asymmetry with the target ref, handled in UnmarshalJSON:
+// the old *kind* (sdn-dns-zone) is still a live kind naming a real, different
+// object (a DNS domain), so it can only be rewritten for these three ops and
+// never globally.
+var deprecatedOpTypes = map[OpType]OpType{
+	OpSdnDnsZoneCreateDeprecated: OpSdnDnsServerCreate,
+	OpSdnDnsZoneUpdateDeprecated: OpSdnDnsServerUpdate,
+	OpSdnDnsZoneDeleteDeprecated: OpSdnDnsServerDelete,
+}
+
+// dnsServerOps is the set of ops whose target is a PowerDNS server
+// connection, used to scope the deprecated-kind rewrite in UnmarshalJSON.
+var dnsServerOps = map[OpType]bool{
+	OpSdnDnsServerCreate: true,
+	OpSdnDnsServerUpdate: true,
+	OpSdnDnsServerDelete: true,
+}
+
+// Canonical returns the current name for t, resolving any deprecated alias.
+// An unknown or already-current type is returned unchanged.
+func (t OpType) Canonical() OpType {
+	if canon, ok := deprecatedOpTypes[t]; ok {
+		return canon
+	}
+	return t
+}
+
+// Deprecated reports whether t is a retired spelling that Canonical will
+// rewrite. Callers that want to warn an operator that their changeset uses
+// an old name (rather than silently accepting it) ask this.
+func (t OpType) Deprecated() bool {
+	_, ok := deprecatedOpTypes[t]
+	return ok
+}
+
+// DeprecatedOpTypes returns the retired op type strings and their
+// replacements, so docs/api.md's deprecation table and its test have one
+// source rather than two that can drift.
+func DeprecatedOpTypes() map[OpType]OpType {
+	out := make(map[OpType]OpType, len(deprecatedOpTypes))
+	for k, v := range deprecatedOpTypes {
+		out[k] = v
+	}
+	return out
+}
+
 // KnownOpTypes returns every OpType this package can decode, for tests
 // (op_test.go) and for callers (e.g. a future frontend-facing "what ops
 // exist" endpoint) that want the canonical list rather than re-deriving it.
+// Deprecated aliases are deliberately absent: they decode, but they are not
+// part of the vocabulary vnprox advertises or emits.
 func KnownOpTypes() []OpType {
 	out := make([]OpType, 0, len(paramFactories))
 	for t := range paramFactories {
@@ -445,6 +530,11 @@ func (o *Op) UnmarshalJSON(data []byte) error {
 	if env.Op == "" {
 		return &OpDecodeError{Path: "op", Message: "op type is required"}
 	}
+	// Resolve any deprecated spelling before anything else looks at the type,
+	// so exactly one canonical form reaches the factory, the validators, the
+	// preview and the apply path (T-4114).
+	env.Op = env.Op.Canonical()
+
 	factory, known := paramFactories[env.Op]
 	if !known {
 		return &OpDecodeError{Path: "op", Message: fmt.Sprintf("unknown op type %q", env.Op)}
@@ -459,6 +549,14 @@ func (o *Op) UnmarshalJSON(data []byte) error {
 		ref, err := inventory.ParseRef(*env.Target)
 		if err != nil {
 			return &OpDecodeError{Path: "target", Message: err.Error()}
+		}
+		// A changeset written before T-4114 targets a server op with
+		// KindSDNDnsZone, because the two objects shared one kind. Rewrite it
+		// for these three ops only: sdn-dns-zone is still a live kind naming a
+		// DNS domain, and a record op that names one must keep meaning a
+		// domain. Scoping by op type is what makes this safe.
+		if dnsServerOps[env.Op] && ref.Kind == inventory.KindSDNDnsZone {
+			ref.Kind = inventory.KindSDNDnsServer
 		}
 		target = ref
 	}

@@ -302,25 +302,54 @@ func vnetDeletionGuardFindings(ops []Op, snap inventory.Snapshot) []Finding {
 // closed out here once T-405 gave this package a live IPAM data feed to
 // check against) ------------------------------------------------------------
 
-// dnsZoneDeletionGuardFindings flags every sdn.dns.zone.delete op whose
-// target zone still has one or more DNS records that this same changeset
-// does not also delete (T-1204 acceptance criterion 3). Deleting the zone
-// would orphan those records in PowerDNS, so the changeset must cascade a
-// sdn.dns.record.delete for each. Net-effect-aware exactly like the subnet/
-// vnet deletion guards: a record removed elsewhere in the same changeset
-// clears it from the count, so "delete every record, then delete the
-// now-empty zone" validates clean in one changeset. Records live in the
-// inventory snapshot (SdnDnsRecord entities, ingested by the SDN poll), the
-// same authoritative source the referential/projection checks read.
+// dnsZoneDeletionGuardFindings flags every sdn.dns.server.delete op whose
+// connection still serves one or more DNS domains holding records that this
+// same changeset does not also delete (T-1204 acceptance criterion 3).
+// Removing the connection strands those records: PVE loses the only route it
+// has to the PowerDNS server holding them, so nothing can read or clean them
+// up afterwards. The changeset must cascade a sdn.dns.record.delete for each.
+//
+// Net-effect-aware exactly like the subnet/vnet deletion guards: a record
+// removed elsewhere in the same changeset clears it from the count, so
+// "delete every record, then delete the now-unused connection" validates
+// clean in one changeset.
+//
+// # Why this took a rewrite in T-4114
+//
+// It used to key deletedZones by op.Target.ID and compare that against
+// rec.Zone. After T-4112 those are different namespaces — a target id is a
+// PowerDNS connection id (dotless, PVE's SDN object pattern) and rec.Zone is
+// a DNS domain — so the lookup could never hit and the guard never fired for
+// any input. It was a passing check measuring nothing, and no test caught it
+// because the fixtures used one string for both.
+//
+// The join that makes it work is SdnDnsZone.DNS, the domain entity's pointer
+// at the connection serving it: connection -> its domains -> their records.
 func dnsZoneDeletionGuardFindings(ops []Op, snap inventory.Snapshot) []Finding {
-	// deletedZones: domain -> index of its (last) sdn.dns.zone.delete op.
-	deletedZones := map[string]int{}
+	// deletedServers: connection id -> index of its (last) delete op.
+	deletedServers := map[string]int{}
 	for i, op := range ops {
-		if op.Type == OpSdnDnsZoneDelete {
-			deletedZones[op.Target.ID] = i
+		if op.Type == OpSdnDnsServerDelete {
+			deletedServers[op.Target.ID] = i
 		}
 	}
-	if len(deletedZones) == 0 {
+	if len(deletedServers) == 0 {
+		return nil
+	}
+
+	// domainOwner: DNS domain -> the op index deleting the connection that
+	// serves it. This is the hop the old code was missing.
+	domainOwner := map[string]int{}
+	for _, e := range snap.All() {
+		zone, ok := e.(*inventory.SdnDnsZone)
+		if !ok {
+			continue
+		}
+		if opIdx, ok := deletedServers[zone.DNS]; ok {
+			domainOwner[zone.ID] = opIdx
+		}
+	}
+	if len(domainOwner) == 0 {
 		return nil
 	}
 
@@ -333,22 +362,23 @@ func dnsZoneDeletionGuardFindings(ops []Op, snap inventory.Snapshot) []Finding {
 		}
 	}
 
-	// remaining: op index -> the still-present records blocking that zone's
-	// delete.
+	// remaining: op index -> the still-present records blocking that
+	// connection's delete, labelled by domain since one connection can serve
+	// several and "web/A" alone would not say where.
 	remaining := map[int][]string{}
 	for _, e := range snap.All() {
 		rec, ok := e.(*inventory.SdnDnsRecord)
 		if !ok {
 			continue
 		}
-		opIdx, ok := deletedZones[rec.Zone]
+		opIdx, ok := domainOwner[rec.Zone]
 		if !ok {
 			continue
 		}
 		if deletedRecords[rec.GetRef().ID] {
 			continue
 		}
-		remaining[opIdx] = append(remaining[opIdx], rec.Name+"/"+rec.Type)
+		remaining[opIdx] = append(remaining[opIdx], rec.Zone+" "+rec.Name+"/"+rec.Type)
 	}
 
 	var out []Finding
@@ -363,7 +393,7 @@ func dnsZoneDeletionGuardFindings(ops []Op, snap inventory.Snapshot) []Finding {
 			examples = examples[:3]
 		}
 		out = append(out, errorf(codeDNSZoneHasRecords, refOf(op),
-			"dns zone %s still has %d record(s), for example: %s — delete them (sdn.dns.record.delete) in this changeset before deleting the zone",
+			"powerdns connection %s still serves %d record(s), for example: %s — delete them (sdn.dns.record.delete) in this changeset before deleting the connection",
 			op.Target.ID, len(hits), strings.Join(examples, ", ")))
 	}
 	return out

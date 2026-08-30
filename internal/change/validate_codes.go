@@ -202,7 +202,7 @@ const (
 	codeVnetNotFound         = "referential.vnet_not_found"
 	// codeDNSZoneNotFound (T-1204) flags a sdn.dns.record.* op whose owning
 	// DNS zone does not exist — neither in the base snapshot nor created by
-	// an earlier sdn.dns.zone.create in the same changeset (net-effect fold).
+	// an earlier sdn.dns.server.create in the same changeset (net-effect fold).
 	codeDNSZoneNotFound      = "referential.dns_zone_not_found"
 	codeNodeNotFound         = "referential.node_not_found"
 	codeBridgeOrVnetNotFound = "referential.bridge_or_vnet_not_found"

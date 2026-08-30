@@ -81,7 +81,7 @@ func (srv *Server) handleSDNDnsZoneCreate(w http.ResponseWriter, r *http.Request
 	}
 	// PVE declares dns, type, url and key non-optional on create
 	// (`pvesh usage /cluster/sdn/dns` in the evidence transcript). This mock
-	// enforces them because vnprox's own sdn.dns.zone.create op carried only
+	// enforces them because vnprox's own sdn.dns.server.create op carried only
 	// dns and ttl until T-4112 — it had never been applied against anything
 	// that would reject it, and so had never failed.
 	if z.ID == "" {

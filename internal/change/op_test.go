@@ -25,7 +25,7 @@ var allOpTypeConstants = []OpType{
 	OpSdnZoneCreate, OpSdnZoneUpdate, OpSdnZoneDelete,
 	OpSdnVnetCreate, OpSdnVnetUpdate, OpSdnVnetDelete,
 	OpSdnSubnetCreate, OpSdnSubnetUpdate, OpSdnSubnetDelete,
-	OpSdnDnsZoneCreate, OpSdnDnsZoneUpdate, OpSdnDnsZoneDelete,
+	OpSdnDnsServerCreate, OpSdnDnsServerUpdate, OpSdnDnsServerDelete,
 	OpSdnDnsRecordCreate, OpSdnDnsRecordUpdate, OpSdnDnsRecordDelete,
 	OpSdnFabricCreate, OpSdnFabricUpdate, OpSdnFabricDelete,
 	OpSdnControllerCreate, OpSdnControllerUpdate, OpSdnControllerDelete,
@@ -227,20 +227,24 @@ func opRoundTripCases() []opRoundTripCase {
 			target: ref(inventory.KindSDNSubnet, "", "10.10.0.0/24"),
 			params: &SdnSubnetDeleteParams{},
 		},
+		// The target is a PowerDNS connection id, not a domain: dotless, per
+		// PVE's SDN object pattern. "example.com" here until T-4114 was the
+		// conflation in miniature — a value the real API rejects, in the
+		// fixture that was supposed to prove the op round-trips.
 		{
-			name: "sdn.dns.zone.create", opType: OpSdnDnsZoneCreate,
-			target: ref(inventory.KindSDNDnsZone, "", "example.com"),
-			params: &SdnDnsZoneCreateParams{DNS: "powerdns", TTL: 3600},
+			name: "sdn.dns.server.create", opType: OpSdnDnsServerCreate,
+			target: ref(inventory.KindSDNDnsServer, "", "pdns1"),
+			params: &SdnDnsServerCreateParams{Type: "powerdns", URL: "https://ns1.example:8081/api/v1/servers/localhost", Key: "k", TTL: 3600},
 		},
 		{
-			name: "sdn.dns.zone.update", opType: OpSdnDnsZoneUpdate,
-			target: ref(inventory.KindSDNDnsZone, "", "example.com"),
-			params: &SdnDnsZoneUpdateParams{TTL: i(7200)},
+			name: "sdn.dns.server.update", opType: OpSdnDnsServerUpdate,
+			target: ref(inventory.KindSDNDnsServer, "", "pdns1"),
+			params: &SdnDnsServerUpdateParams{TTL: i(7200)},
 		},
 		{
-			name: "sdn.dns.zone.delete", opType: OpSdnDnsZoneDelete,
-			target: ref(inventory.KindSDNDnsZone, "", "example.com"),
-			params: &SdnDnsZoneDeleteParams{},
+			name: "sdn.dns.server.delete", opType: OpSdnDnsServerDelete,
+			target: ref(inventory.KindSDNDnsServer, "", "pdns1"),
+			params: &SdnDnsServerDeleteParams{},
 		},
 		{
 			name: "sdn.dns.record.create", opType: OpSdnDnsRecordCreate,

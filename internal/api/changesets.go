@@ -266,7 +266,7 @@ func toChangesetResponse(c change.Changeset) changesetResponse {
 //   - wg.peer.add's preshared key, both the write-only plaintext PresharedKey
 //     and the sealed-at-rest PresharedKeyEnc (Finding 1 / docs/security.md's
 //     WireGuard credential-storage note). This was the original case.
-//   - sdn.dns.zone.create/update's PowerDNS API key (T-4112). It is a new
+//   - sdn.dns.server.create/update's PowerDNS API key (T-4112). It is a new
 //     param, added because the op could not be applied without it — PVE
 //     declares `key` non-optional — so it is covered from the start.
 //   - sdn.ipam.create/update's IPAM token. **This was already unredacted
@@ -299,7 +299,7 @@ func redactOpSecrets(ops []change.Op) []change.Op {
 			clone.PresharedKey = ""
 			clone.PresharedKeyEnc = nil
 			out[i].Params = &clone
-		case *change.SdnDnsZoneCreateParams:
+		case *change.SdnDnsServerCreateParams:
 			if p.Key == "" {
 				continue
 			}
@@ -307,7 +307,7 @@ func redactOpSecrets(ops []change.Op) []change.Op {
 			clone := *p
 			clone.Key = ""
 			out[i].Params = &clone
-		case *change.SdnDnsZoneUpdateParams:
+		case *change.SdnDnsServerUpdateParams:
 			if p.Key == nil {
 				continue
 			}

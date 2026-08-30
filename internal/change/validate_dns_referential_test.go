@@ -28,13 +28,13 @@ func validateReferentialForTest(t *testing.T, ops []Op, entities ...inventory.En
 // exist. The two indexes are separate now, so the record op is rejected at
 // stage time with a message naming the zone.
 //
-// The op family's target still carries KindSDNDnsZone; T-4114 renames it.
+// The op family's target carries KindSDNDnsServer (T-4114).
 func TestReferential_ARecordCannotUseAServerConnectionAsItsZone(t *testing.T) {
-	server := inventory.Ref{Kind: inventory.KindSDNDnsZone, ID: "pdns1"}
+	server := inventory.Ref{Kind: inventory.KindSDNDnsServer, ID: "pdns1"}
 	record := inventory.Ref{Kind: inventory.KindSDNDnsRecord, ID: "pdns1/web/A"}
 
 	findings := validateReferentialForTest(t, []Op{
-		mkOp(OpSdnDnsZoneCreate, server, &SdnDnsZoneCreateParams{
+		mkOp(OpSdnDnsServerCreate, server, &SdnDnsServerCreateParams{
 			Type: "powerdns", URL: "https://pdns:8081/api/v1/servers/localhost", Key: "k",
 		}),
 		mkOp(OpSdnDnsRecordCreate, record, &SdnDnsRecordCreateParams{
@@ -78,13 +78,13 @@ func TestReferential_ARecordInARealDomainStillValidates(t *testing.T) {
 // still resolve — the connection has no inventory entity, so existence can
 // only come from the changeset itself.
 func TestReferential_AServerConnectionCreatedHereCanBeUpdated(t *testing.T) {
-	server := inventory.Ref{Kind: inventory.KindSDNDnsZone, ID: "pdns1"}
+	server := inventory.Ref{Kind: inventory.KindSDNDnsServer, ID: "pdns1"}
 
 	findings := validateReferentialForTest(t, []Op{
-		mkOp(OpSdnDnsZoneCreate, server, &SdnDnsZoneCreateParams{
+		mkOp(OpSdnDnsServerCreate, server, &SdnDnsServerCreateParams{
 			Type: "powerdns", URL: "https://pdns:8081/api/v1/servers/localhost", Key: "k",
 		}),
-		mkOp(OpSdnDnsZoneUpdate, server, &SdnDnsZoneUpdateParams{TTL: intPtr(120)}),
+		mkOp(OpSdnDnsServerUpdate, server, &SdnDnsServerUpdateParams{TTL: intPtr(120)}),
 	})
 
 	for _, f := range findings {

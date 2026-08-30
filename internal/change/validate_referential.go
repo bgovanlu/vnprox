@@ -260,17 +260,17 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 			out = append(out, errorf(codeTargetNotFound, ref, "sdn subnet %s does not exist", op.Target))
 		}
 
-	case *SdnDnsZoneCreateParams:
+	case *SdnDnsServerCreateParams:
 		if p.exists(op.Target) {
 			out = append(out, errorf(codeAlreadyExists, ref, "an sdn dns zone named %q already exists", op.Target.ID))
 		}
 
-	case *SdnDnsZoneUpdateParams:
+	case *SdnDnsServerUpdateParams:
 		if !p.exists(op.Target) {
 			out = append(out, errorf(codeTargetNotFound, ref, "sdn dns zone %s does not exist", op.Target))
 		}
 
-	case *SdnDnsZoneDeleteParams:
+	case *SdnDnsServerDeleteParams:
 		if !p.exists(op.Target) {
 			out = append(out, errorf(codeTargetNotFound, ref, "sdn dns zone %s does not exist", op.Target))
 		}

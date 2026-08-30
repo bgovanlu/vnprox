@@ -71,18 +71,19 @@ func (r *SdnDnsRecord) fieldMap() map[string]string {
 // were the same type until T-4112 found that `/cluster/sdn/dns` lists
 // connections rather than domains.
 //
-// No collector produces this entity and it has no Kind of its own. It exists
-// so `internal/change`'s preview can show what a `sdn.dns.zone.*` op will do
-// without fabricating a DNS domain named after a server — which is what it
-// did before, and which let a record op naming that fake domain validate
-// clean and fail at apply. The op family's target still carries
-// `KindSDNDnsZone`; **T-4114** renames the ops and the kind together, because
-// the op type string is a wire contract the Terraform and Ansible
-// integrations depend on and is not renamed unilaterally.
+// No collector produces this entity: it is projection-only, carrying
+// KindSDNDnsServer (T-4114). It exists so `internal/change`'s preview can
+// show what a `sdn.dns.server.*` op will do without fabricating a DNS domain
+// named after a server — which is what it did before, and which let a record
+// op naming that fake domain validate clean and fail at apply.
 //
-// The two never collide in the projection despite sharing a kind: a domain's
-// id is a DNS name and a connection's id is PVE's SDN object pattern
-// (`[a-zA-Z][a-zA-Z0-9]*[a-zA-Z0-9]`, no dots), which are disjoint.
+// T-4112 gave this type its own identity while leaving it under
+// KindSDNDnsZone, on the reasoning that the two ids are disjoint (a domain's
+// id is a DNS name, a connection's is PVE's dotless SDN object pattern) so
+// nothing could confuse them. That was true of the projection and false of
+// everything else: sharing a Kind is exactly what let validate_safety.go's
+// deletion guard key on connection ids and compare them against domain
+// names, so it never fired. T-4114 splits the Kind.
 //
 // Key is deliberately absent. The API key is in the op's params, where
 // internal/api's redactOpSecrets strips it from every changeset read; there

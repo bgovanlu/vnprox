@@ -847,7 +847,7 @@ func schemaValidateOp(op Op) []Finding {
 	case *SdnIpamDeleteParams:
 		// no params to validate.
 
-	case *SdnDnsZoneCreateParams:
+	case *SdnDnsServerCreateParams:
 		// T-4112: the target is a /cluster/sdn/dns instance id, not a domain.
 		// It used to be checked with validDNSName, which accepted
 		// "example.com" — a string PVE rejects, since the id pattern is
@@ -864,16 +864,16 @@ func schemaValidateOp(op Op) []Finding {
 		// what this op did until T-4112, because nothing it was ever applied
 		// against enforced them.
 		if p.Type == "" {
-			out = append(out, errorf(codeRequiredFieldMissing, ref, "sdn.dns.zone.create requires type"))
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "sdn.dns.server.create requires type"))
 		} else if p.Type != "powerdns" {
 			out = append(out, errorf(codeDNSPluginTypeInvalid, ref,
 				"dns plugin type %q is not supported (PVE 9.2.4 has only \"powerdns\")", p.Type))
 		}
 		if p.URL == "" {
-			out = append(out, errorf(codeRequiredFieldMissing, ref, "sdn.dns.zone.create requires url"))
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "sdn.dns.server.create requires url"))
 		}
 		if p.Key == "" {
-			out = append(out, errorf(codeRequiredFieldMissing, ref, "sdn.dns.zone.create requires key"))
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "sdn.dns.server.create requires key"))
 		}
 		schemaDNSFingerprint(p.Fingerprint, ref, &out)
 		if p.TTL < 0 {
@@ -881,7 +881,7 @@ func schemaValidateOp(op Op) []Finding {
 		}
 		schemaReverseMaskV6(p.ReverseMaskV6, ref, &out)
 
-	case *SdnDnsZoneUpdateParams:
+	case *SdnDnsServerUpdateParams:
 		if p.Type != nil && *p.Type != "powerdns" {
 			out = append(out, errorf(codeDNSPluginTypeInvalid, ref,
 				"dns plugin type %q is not supported (PVE 9.2.4 has only \"powerdns\")", *p.Type))
@@ -902,7 +902,7 @@ func schemaValidateOp(op Op) []Finding {
 			schemaReverseMaskV6(*p.ReverseMaskV6, ref, &out)
 		}
 
-	case *SdnDnsZoneDeleteParams:
+	case *SdnDnsServerDeleteParams:
 		// no params to validate.
 
 	case *SdnDnsRecordCreateParams:

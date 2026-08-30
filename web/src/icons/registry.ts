@@ -15,7 +15,7 @@
 // guest-nic — that map is gone (T-4302 moved kind onto this set), but the
 // kind it surfaced was real and is still drawn. It deliberately excludes the model's more niche app-owned/
 // infra Kinds not named by the card (qos-shape, nat-rule, vf, ceph-osd,
-// pbs-host, sdn-controller, sdn-ipam, sdn-dns-zone/record, tc-mirror) —
+// pbs-host, sdn-controller, sdn-ipam, sdn-dns-zone/record/server, tc-mirror) —
 // extending this map for one of those is a small, additive change for
 // whichever later card adopts it, following the same pattern.
 //

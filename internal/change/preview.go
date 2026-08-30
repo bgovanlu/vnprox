@@ -321,7 +321,7 @@ func (p *entityProjection) projectOp(op Op) string {
 	case *SdnSubnetDeleteParams:
 		p.remove(op.Target)
 
-	// sdn.dns.zone.* projects an inventory.SdnDnsServer, not an
+	// sdn.dns.server.* projects an inventory.SdnDnsServer, not an
 	// inventory.SdnDnsZone (T-4112). These three ops manage a
 	// /cluster/sdn/dns entry, which is a PowerDNS server CONNECTION; an
 	// SdnDnsZone is a DNS DOMAIN, derived from an SDN zone's dnszone field
@@ -333,17 +333,17 @@ func (p *entityProjection) projectOp(op Op) string {
 	// the fabrication let a record op targeting a non-existent domain
 	// validate clean and then fail at apply.
 	//
-	// The target ref still carries KindSDNDnsZone; T-4114 renames the op
-	// family and the kind together. See inventory.SdnDnsServer's comment for
-	// why the two cannot collide in the meantime.
-	case *SdnDnsZoneCreateParams:
+	// T-4114 finished the split: the ops are sdn.dns.server.*, the target
+	// kind is KindSDNDnsServer, and the projection files them under their own
+	// index rather than the DNS-domain one.
+	case *SdnDnsServerCreateParams:
 		p.put(&inventory.SdnDnsServer{
 			Ref: op.Target, ID: op.Target.ID, Type: params.Type, URL: params.URL,
 			Fingerprint: params.Fingerprint, TTL: params.TTL, ReverseMaskV6: params.ReverseMaskV6,
 		})
-	case *SdnDnsZoneUpdateParams:
+	case *SdnDnsServerUpdateParams:
 		p.sdnDnsServerUpdate(op.Target, params)
-	case *SdnDnsZoneDeleteParams:
+	case *SdnDnsServerDeleteParams:
 		p.remove(op.Target)
 	case *SdnDnsRecordCreateParams:
 		p.put(&inventory.SdnDnsRecord{
@@ -715,7 +715,7 @@ func (p *entityProjection) sdnSubnetUpdate(ref inventory.Ref, params *SdnSubnetU
 	p.put(&cp)
 }
 
-func (p *entityProjection) sdnDnsServerUpdate(ref inventory.Ref, params *SdnDnsZoneUpdateParams) {
+func (p *entityProjection) sdnDnsServerUpdate(ref inventory.Ref, params *SdnDnsServerUpdateParams) {
 	s, ok := p.ents[ref].(*inventory.SdnDnsServer)
 	if !ok {
 		return

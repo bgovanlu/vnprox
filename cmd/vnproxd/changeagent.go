@@ -442,7 +442,7 @@ func (g *pveGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet st
 
 	// T-1204 SDN DNS ops, re-pointed by T-4112 at the surfaces that exist.
 	//
-	// sdn.dns.zone.* manages a /cluster/sdn/dns entry, which is a PowerDNS
+	// sdn.dns.server.* manages a /cluster/sdn/dns entry, which is a PowerDNS
 	// server connection rather than a DNS zone — see
 	// change/params_sdn_dns.go's comment for why the op keeps its name and
 	// what was broken about its params.
@@ -453,7 +453,7 @@ func (g *pveGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet st
 	// every PVE. The record target's Ref.ID is the "<zone>/<name>/<type>"
 	// composite — the params carry those fields explicitly for create;
 	// update/delete recover them from the target id.
-	case *change.SdnDnsZoneCreateParams:
+	case *change.SdnDnsServerCreateParams:
 		id := op.Target.ID
 		if p.DNS != "" {
 			id = p.DNS
@@ -462,7 +462,7 @@ func (g *pveGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet st
 			ID: id, Type: p.Type, URL: p.URL, Key: p.Key,
 			Fingerprint: p.Fingerprint, TTL: p.TTL, ReverseMaskV6: p.ReverseMaskV6,
 		})
-	case *change.SdnDnsZoneUpdateParams:
+	case *change.SdnDnsServerUpdateParams:
 		z := pve.SDNDnsPlugin{ID: op.Target.ID}
 		if p.Type != nil {
 			z.Type = *p.Type
@@ -483,7 +483,7 @@ func (g *pveGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet st
 			z.ReverseMaskV6 = *p.ReverseMaskV6
 		}
 		return g.client.UpdateSDNDnsPlugin(ctx, op.Target.ID, z)
-	case *change.SdnDnsZoneDeleteParams:
+	case *change.SdnDnsServerDeleteParams:
 		return g.client.DeleteSDNDnsPlugin(ctx, op.Target.ID)
 
 	case *change.SdnDnsRecordCreateParams:
@@ -828,6 +828,24 @@ func (g *pveGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error) {
 	// unreadable domains are named in the snapshot rather than silently
 	// omitted, and DnsUnreadable is what tells a restore that its DNS view
 	// was partial.
+	// The PowerDNS server connections themselves (T-4114). These are the
+	// objects sdn.dns.server.* manages and the only part of the DNS snapshot
+	// a rollback can emit ops against — the domain list below is derived
+	// state with no API of its own. Unlike the per-domain record reads, this
+	// is a single PVE call on the same cluster API every other line in this
+	// function uses, so a failure here is a hard failure like the rest.
+	dnsServers, err := g.client.ListSDNDnsPlugins(ctx)
+	if err != nil {
+		return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn dns server connections: %w", err)
+	}
+	for _, s := range dnsServers {
+		// Key is not captured: PVE does not return it. See SDNDnsServerConfig.
+		cfg.DnsServers = append(cfg.DnsServers, change.SDNDnsServerConfig{
+			ID: s.ID, Type: s.Type, URL: s.URL, Fingerprint: s.Fingerprint,
+			TTL: s.TTL, ReverseMaskV6: s.ReverseMaskV6,
+		})
+	}
+
 	dnsSvc, _ := g.dnsSeams()
 	dnsZones, dnsSkipped, err := dnsSvc.Zones(ctx)
 	if err != nil {

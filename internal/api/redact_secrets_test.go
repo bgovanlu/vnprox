@@ -21,8 +21,8 @@ const secretSentinel = "SECRET-DO-NOT-ECHO"
 func opsWithEverySecret() []change.Op {
 	return []change.Op{
 		{Params: &change.WgPeerAddParams{PresharedKey: secretSentinel, PresharedKeyEnc: []byte(secretSentinel)}},
-		{Params: &change.SdnDnsZoneCreateParams{Type: "powerdns", URL: "https://pdns:8081", Key: secretSentinel}},
-		{Params: &change.SdnDnsZoneUpdateParams{Key: strPtr(secretSentinel)}},
+		{Params: &change.SdnDnsServerCreateParams{Type: "powerdns", URL: "https://pdns:8081", Key: secretSentinel}},
+		{Params: &change.SdnDnsServerUpdateParams{Key: strPtr(secretSentinel)}},
 		{Params: &change.SdnIpamCreateParams{Type: "netbox", URL: "https://netbox", Token: secretSentinel}},
 		{Params: &change.SdnIpamUpdateParams{Token: strPtr(secretSentinel)}},
 	}
@@ -60,7 +60,7 @@ func TestRedactOpSecrets_LeavesTheStoredOpsIntact(t *testing.T) {
 	ops := opsWithEverySecret()
 	_ = redactOpSecrets(ops)
 
-	dns, ok := ops[1].Params.(*change.SdnDnsZoneCreateParams)
+	dns, ok := ops[1].Params.(*change.SdnDnsServerCreateParams)
 	if !ok {
 		t.Fatal("test fixture changed shape")
 	}
@@ -82,7 +82,7 @@ func TestRedactOpSecrets_LeavesTheStoredOpsIntact(t *testing.T) {
 func TestRedactOpSecrets_KeepsEverythingElse(t *testing.T) {
 	got := redactOpSecrets(opsWithEverySecret())
 
-	dns, ok := got[1].Params.(*change.SdnDnsZoneCreateParams)
+	dns, ok := got[1].Params.(*change.SdnDnsServerCreateParams)
 	if !ok {
 		t.Fatal("redaction changed the params type")
 	}
@@ -98,11 +98,51 @@ func TestRedactOpSecrets_KeepsEverythingElse(t *testing.T) {
 // slice must come back — the function is called on every changeset read.
 func TestRedactOpSecrets_NoSecretIsTheSameSlice(t *testing.T) {
 	ops := []change.Op{
-		{Params: &change.SdnDnsZoneCreateParams{Type: "powerdns", URL: "https://pdns:8081"}},
+		{Params: &change.SdnDnsServerCreateParams{Type: "powerdns", URL: "https://pdns:8081"}},
 		{Params: &change.SdnIpamCreateParams{Type: "pve"}},
 	}
 	got := redactOpSecrets(ops)
 	if len(got) != len(ops) || &got[0] != &ops[0] {
 		t.Error("redaction copied a slice with nothing to redact")
+	}
+}
+
+// A changeset using the RETIRED op spelling must be redacted identically
+// (T-4114). docs/security.md now states this, and the reason it holds is that
+// redactOpSecrets switches on the decoded params type rather than the op
+// string — but "the reason it holds" is exactly the kind of claim that stops
+// being true when someone adds an op-string switch later, so it is asserted
+// here rather than merely documented.
+//
+// The op arrives as JSON, not as a struct literal, because that is the only
+// path on which the old spelling exists at all: change.Op's decoder
+// canonicalizes it.
+func TestRedactOpSecrets_ADeprecatedOpNameIsRedactedIdentically(t *testing.T) {
+	const saved = `{
+		"op": "sdn.dns.zone.create",
+		"target": "sdn-dns-zone::pdns1",
+		"params": {"type": "powerdns", "url": "https://pdns:8081", "key": "` + secretSentinel + `"}
+	}`
+
+	var op change.Op
+	if err := json.Unmarshal([]byte(saved), &op); err != nil {
+		t.Fatalf("a pre-rename changeset no longer decodes: %v", err)
+	}
+
+	// Non-vacuity: the secret really is in there before redaction.
+	before, err := json.Marshal([]change.Op{op})
+	if err != nil {
+		t.Fatalf("marshalling: %v", err)
+	}
+	if !strings.Contains(string(before), secretSentinel) {
+		t.Fatal("fixture never carried the secret, so redacting it proves nothing")
+	}
+
+	after, err := json.Marshal(redactOpSecrets([]change.Op{op}))
+	if err != nil {
+		t.Fatalf("marshalling redacted: %v", err)
+	}
+	if strings.Contains(string(after), secretSentinel) {
+		t.Errorf("a changeset using the retired op name echoed its API key: %s", after)
 	}
 }

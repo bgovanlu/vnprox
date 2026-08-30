@@ -186,3 +186,57 @@ func TestExplainChangeset_EmptyChangesetRendersNoOps(t *testing.T) {
 		t.Errorf("len = %d, want 0", len(got))
 	}
 }
+
+// T-4114 acceptance criterion 3. The defect being fixed is a wording one:
+// /cluster/sdn/dns holds PowerDNS server connections, and an operator reading
+// "delete an SDN DNS zone pdns1" in a changeset preview is being told that a
+// domain and its records are about to go away. What actually happens is that
+// a server connection is removed. The two have very different blast radii, so
+// the sentence has to name the right object.
+func TestExplainOp_ADnsServerOpNamesAConnectionNotAZone(t *testing.T) {
+	exp := ExplainOp(change.Op{
+		Type:   change.OpSdnDnsServerDelete,
+		Target: inventory.Ref{Kind: inventory.KindSDNDnsServer, ID: "pdns1"},
+	})
+
+	if strings.Contains(exp.Summary, "zone") {
+		t.Errorf("summary %q still calls a server connection a zone", exp.Summary)
+	}
+	if !strings.Contains(exp.Summary, "PowerDNS server connection") {
+		t.Errorf("summary %q does not name what is actually being deleted", exp.Summary)
+	}
+	if !strings.Contains(exp.Summary, "pdns1") {
+		t.Errorf("summary %q does not name the target", exp.Summary)
+	}
+}
+
+// A record op still talks about records in a DNS zone — the rename was scoped
+// to the server family, and over-correcting the vocabulary would make the
+// record wording wrong in the opposite direction.
+func TestExplainOp_ADnsRecordOpStillTalksAboutRecords(t *testing.T) {
+	exp := ExplainOp(change.Op{
+		Type:   change.OpSdnDnsRecordCreate,
+		Target: inventory.Ref{Kind: inventory.KindSDNDnsRecord, ID: "lab.example./web/A"},
+	})
+	if !strings.Contains(exp.Summary, "DNS record") {
+		t.Errorf("summary %q no longer describes a record", exp.Summary)
+	}
+}
+
+// Historical audit records were written before the rename and never pass
+// through the decoder that canonicalizes op types, so this package still has
+// to render the retired spelling — and must render it with the CORRECTED
+// noun, since the whole point is that the old name described the wrong
+// object.
+func TestExplainOp_ARetiredDnsOpNameStillRendersAndIsCorrected(t *testing.T) {
+	exp := ExplainOp(change.Op{
+		Type:   change.OpSdnDnsZoneDeleteDeprecated,
+		Target: inventory.Ref{Kind: inventory.KindSDNDnsServer, ID: "pdns1"},
+	})
+	if strings.Contains(exp.Summary, "no plain-language description") {
+		t.Errorf("an op type from an old audit record renders as unknown: %q", exp.Summary)
+	}
+	if !strings.Contains(exp.Summary, "PowerDNS server connection") {
+		t.Errorf("summary %q does not correct the retired name's wrong noun", exp.Summary)
+	}
+}

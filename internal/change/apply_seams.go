@@ -434,6 +434,18 @@ type SDNConfig struct {
 	Subnets    []SDNSubnetConfig    `json:"subnets"`
 	DnsZones   []SDNDnsZoneConfig   `json:"dnsZones,omitempty"`
 	DnsRecords []SDNDnsRecordConfig `json:"dnsRecords,omitempty"`
+	// DnsServers (T-4114) is the /cluster/sdn/dns server-connection set: the
+	// objects sdn.dns.server.* actually manages, and therefore the only part
+	// of the DNS snapshot a rollback can emit create/update/delete ops for.
+	//
+	// DnsZones above is NOT that set — it is the derived DNS *domain* list,
+	// and a domain has no op family at all (it exists because an SDN zone
+	// carries `dnszone`). Until T-4114 the rollback reconciled DnsZones with
+	// what are now the server ops, which produced ops that could not validate
+	// on four counts at once: a dotted id where PVE's pattern forbids dots,
+	// and no type/url/key. It is kept in the snapshot because record restore
+	// is scoped by domain and because DnsUnreadable is keyed by one.
+	DnsServers []SDNDnsServerConfig `json:"dnsServers,omitempty"`
 	// DnsUnreadable names the DNS domains this snapshot could NOT capture
 	// records for, with the reason (T-4112). It exists because a snapshot is
 	// what a rollback restores from, and a rollback that silently restores
@@ -471,12 +483,32 @@ type SDNConfig struct {
 	Ipams []SDNIpamConfig `json:"ipams,omitempty"`
 }
 
-// SDNDnsZoneConfig mirrors SdnDnsZoneCreateParams' field set plus the zone's
-// own domain id (T-1204).
+// SDNDnsZoneConfig is one DNS domain in the snapshot (T-1204): ID is the
+// domain, DNS the id of the PowerDNS connection serving it, TTL its default
+// record TTL. It is context for the record half of the snapshot and for
+// DnsUnreadable — no op family manages a domain, so nothing reconciles this
+// list into ops (T-4114).
 type SDNDnsZoneConfig struct {
 	ID  string `json:"id"`
 	DNS string `json:"dns,omitempty"`
 	TTL int    `json:"ttl,omitempty"`
+}
+
+// SDNDnsServerConfig mirrors SdnDnsServerCreateParams' field set plus the
+// connection's own id (T-4114) — one /cluster/sdn/dns entry.
+//
+// Key is deliberately absent, and that is a real limitation rather than an
+// oversight: PVE never echoes the API key back on a read, so a snapshot
+// cannot capture one. A rollback can therefore recreate a deleted connection
+// with its url/ttl/fingerprint but not its credential, which
+// sdnDnsRestoreOps reports rather than papers over.
+type SDNDnsServerConfig struct {
+	ID            string `json:"id"`
+	Type          string `json:"type,omitempty"`
+	URL           string `json:"url,omitempty"`
+	Fingerprint   string `json:"fingerprint,omitempty"`
+	TTL           int    `json:"ttl,omitempty"`
+	ReverseMaskV6 int    `json:"reversemaskv6,omitempty"`
 }
 
 // SDNDnsUnreadable is one DNS domain a snapshot could not read, and why.

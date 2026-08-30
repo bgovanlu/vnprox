@@ -626,7 +626,7 @@ func TestPreview_PartialUpdatesFoldOnlyTheFieldsTheyCarry(t *testing.T) {
 	// fixture is a connection id (PVE's SDN object pattern, no dots), not a
 	// domain. The ref's kind string is still sdn-dns-zone until T-4114
 	// renames the family — see inventory.SdnDnsServer.
-	dnsServer := inventory.Ref{Kind: inventory.KindSDNDnsZone, ID: "pdns1"}
+	dnsServer := inventory.Ref{Kind: inventory.KindSDNDnsServer, ID: "pdns1"}
 	dnsRec := inventory.Ref{Kind: inventory.KindSDNDnsRecord, ID: "lab.example/web/A"}
 	bond0 := testRef(inventory.KindBond, "pve1", "bond0")
 	vlan := testRef(inventory.KindVlan, "pve1", "vmbr0.20")
@@ -662,8 +662,8 @@ func TestPreview_PartialUpdatesFoldOnlyTheFieldsTheyCarry(t *testing.T) {
 		{"vnet alias", mkOp(OpSdnVnetUpdate, vnet, &SdnVnetUpdateParams{Alias: strPtr("lab")}), vnet, "Alias", "lab"},
 		{"subnet gateway", mkOp(OpSdnSubnetUpdate, subnet, &SdnSubnetUpdateParams{Gateway: strPtr("10.7.0.254")}), subnet, "Gateway", "10.7.0.254"},
 		{"subnet dhcp ranges", mkOp(OpSdnSubnetUpdate, subnet, &SdnSubnetUpdateParams{DHCPRanges: strsPtr("10.7.0.100-10.7.0.200")}), subnet, "DHCPRanges", "10.7.0.100-10.7.0.200"},
-		{"dns server ttl", mkOp(OpSdnDnsZoneUpdate, dnsServer, &SdnDnsZoneUpdateParams{TTL: intPtr(120)}), dnsServer, "TTL", "120"},
-		{"dns server url", mkOp(OpSdnDnsZoneUpdate, dnsServer, &SdnDnsZoneUpdateParams{URL: strPtr("https://pdns2:8081/api/v1/servers/localhost")}), dnsServer, "URL", "https://pdns2:8081/api/v1/servers/localhost"},
+		{"dns server ttl", mkOp(OpSdnDnsServerUpdate, dnsServer, &SdnDnsServerUpdateParams{TTL: intPtr(120)}), dnsServer, "TTL", "120"},
+		{"dns server url", mkOp(OpSdnDnsServerUpdate, dnsServer, &SdnDnsServerUpdateParams{URL: strPtr("https://pdns2:8081/api/v1/servers/localhost")}), dnsServer, "URL", "https://pdns2:8081/api/v1/servers/localhost"},
 		{"dns record value", mkOp(OpSdnDnsRecordUpdate, dnsRec, &SdnDnsRecordUpdateParams{Value: strPtr("10.7.0.6")}), dnsRec, "Value", "10.7.0.6"},
 		{"dns record ttl", mkOp(OpSdnDnsRecordUpdate, dnsRec, &SdnDnsRecordUpdateParams{TTL: intPtr(30)}), dnsRec, "TTL", "30"},
 	}
@@ -701,7 +701,7 @@ func TestPreview_EverySupportedDeleteMarksItsEntityRemoved(t *testing.T) {
 	zone := inventory.Ref{Kind: inventory.KindSDNZone, ID: "zone1"}
 	vnet := inventory.Ref{Kind: inventory.KindSDNVnet, ID: "vnet1"}
 	subnet := inventory.Ref{Kind: inventory.KindSDNSubnet, ID: "10.7.0.0/24"}
-	dnsServer := inventory.Ref{Kind: inventory.KindSDNDnsZone, ID: "pdns1"}
+	dnsServer := inventory.Ref{Kind: inventory.KindSDNDnsServer, ID: "pdns1"}
 	dnsRec := inventory.Ref{Kind: inventory.KindSDNDnsRecord, ID: "lab.example/web/A"}
 	bond0 := testRef(inventory.KindBond, "pve1", "bond0")
 	vlan := testRef(inventory.KindVlan, "pve1", "vmbr0.20")
@@ -725,7 +725,7 @@ func TestPreview_EverySupportedDeleteMarksItsEntityRemoved(t *testing.T) {
 		mkOp(OpSdnVnetDelete, vnet, &SdnVnetDeleteParams{}),
 		mkOp(OpSdnZoneDelete, zone, &SdnZoneDeleteParams{}),
 		mkOp(OpSdnDnsRecordDelete, dnsRec, &SdnDnsRecordDeleteParams{}),
-		mkOp(OpSdnDnsZoneDelete, dnsServer, &SdnDnsZoneDeleteParams{}),
+		mkOp(OpSdnDnsServerDelete, dnsServer, &SdnDnsServerDeleteParams{}),
 	}
 	preview, err := ComputePreview(ops, snap)
 	if err != nil {
