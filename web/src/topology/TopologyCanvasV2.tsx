@@ -502,6 +502,7 @@ export function TopologyCanvasV2({
         dragTopLeft,
         dashOffset: flowDashOffset,
         selectedId: selectedFlowEdgeId,
+        theme: sceneTheme,
       });
     }
 

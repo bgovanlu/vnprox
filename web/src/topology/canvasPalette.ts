@@ -82,6 +82,21 @@ const ROLE: Record<keyof SceneTheme, string> = {
   findingInfoFill: "--color-status-info-soft",
   findingInfoText: "--color-status-info",
 
+  // T-4306: three roles that used to be private literals in canvasDraw.ts,
+  // each carrying a comment claiming it was "distinct from every colour
+  // already in use". Nothing measured that and the claims were false.
+  //
+  // `flowEdge` was cyan-500, 9deg from `info`. A flow edge is informational,
+  // so it resolves the informational token; what makes it findable is that it
+  // is the only animated thing on the map.
+  //
+  // `blastRadius*` were fuchsia-600 and a hard-coded white. They are neutral
+  // now — the overlay's scrim already isolates the focus set, which is why it
+  // is the overlay that could afford to leave a full hue circle.
+  flowEdge: "--color-status-info",
+  blastRadiusStroke: "--color-fg-body",
+  blastRadiusGlyphText: "--color-surface-page",
+
   // T-4301 leaves these two literal, on purpose, and they are the only pair
   // in this table that is not a role lookup.
   //
@@ -152,6 +167,9 @@ export function resolveSceneTheme(read: TokenReader, isDark: boolean): SceneThem
     findingWarningText: value("findingWarningText"),
     findingInfoFill: value("findingInfoFill"),
     findingInfoText: value("findingInfoText"),
+    flowEdge: value("flowEdge"),
+    blastRadiusStroke: value("blastRadiusStroke"),
+    blastRadiusGlyphText: value("blastRadiusGlyphText"),
   };
 
   // Named once, not per-token and not per-frame: a stylesheet either loaded

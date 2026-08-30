@@ -396,7 +396,9 @@ Several overlays can be on at once, so each owns a channel rather than competing
 | latency (RTT / loss) | edge **width**, plus a severity band | quantitative |
 | recency (age of change) | badge **hue + letter glyph** | ordinal, own ramp |
 | diff (added/removed/changed) | badge **hue + letter glyph** | **nominal**, own ramp |
-| blast radius, sim verdict, flows | stroke colour, drawn as a separate pass | nominal |
+| sim verdict | stroke colour, **resolving the status scale** — a `deny` is meant to read as an error | nominal |
+| flows | animated dash **motion**, colour resolving `--color-status-info` | nominal |
+| blast radius | **scrim** (everything else dimmed to 0.72), plus dash/width/glyph for role; neutral colour | nominal |
 
 **A quantity goes in width, not hue.** Traffic's ramp was five categorical hues running
 0.71 → 0.75 → 0.72 → 0.77 → 0.64 in lightness — up, down, up, down — so nothing about it told a
@@ -411,6 +413,31 @@ one screen could show an amber edge meaning "75% utilized, healthy" beside an am
 meaning "degraded". Rather than separating the hues or dimming one of them, the two were **made the
 same statement**: a traffic edge over 75% now resolves the very token the node border resolves, and
 both mean `degraded`. Same hue, same meaning, nothing to disambiguate.
+
+**When the hue circle is full, an overlay leaves it — that is now measured, not a judgement call.**
+Thirteen distinct hues were spent on the map at T-4306, and the best separation any *fourteenth*
+could achieve against all of them is **37.1deg**, against the 40deg floor the palette holds
+everywhere else. There is no hue left, so "pick a different colour" stopped being an available
+answer: any card that responds to an overlay collision by re-hueing is re-solving an unsatisfiable
+constraint. `web/src/topology/overlayHues.test.ts` asserts that arithmetic directly, so it is a fact
+the codebase checks rather than one each card rediscovers.
+
+The question to ask instead is *what else this overlay has*, and the answer differs per overlay,
+which is why the table above now names three where it used to name one:
+
+- **Blast radius has a scrim.** It dims every non-focused node to 0.72 alpha, so the focused
+  subgraph is the only thing on screen at full opacity. Isolation does what a distinctive hue would,
+  and the ring went neutral — freeing a hue rather than consuming one. This is the cheapest kind of
+  fix available here and the first place to look.
+- **Flows have motion.** A flow edge is the only animated thing on the map, so its colour was never
+  what made it findable; it stopped needing a private cyan and resolves the informational token.
+- **Sim verdicts had nothing of their own, and did not need it.** They were a fourth copy of the
+  status scale sitting 0.2-17deg off it, so they resolve it exactly.
+
+The counter-case is equally important: an overlay must not be moved onto a token that states
+something false. Blast radius was *not* given `--color-status-critical`, because an entity in a
+blast radius is at risk and not failed — the same objection that exempts recency below. Freeing a
+hue is not worth a lie about severity.
 
 **Nominal and ordinal scales are exempt, and saying so matters as much as the rule.** Recency is
 not severity — a thing changed a minute ago is not "critical", and painting it with that token

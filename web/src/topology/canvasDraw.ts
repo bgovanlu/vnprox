@@ -117,6 +117,45 @@ export interface SceneTheme {
   findingWarningText: string;
   findingInfoFill: string;
   findingInfoText: string;
+  /** T-4306: the Flows overlay's edge colour, `--color-status-info`.
+   *
+   * It was cyan-500, a private literal 9deg from `info` and from the accent —
+   * the census's one genuinely *unexamined* collision, because the flow
+   * overlay predates the status scale and nobody had asked what a flow edge
+   * means. It means "here is traffic", which is informational and not a
+   * health state, so it now IS the informational token rather than sitting
+   * just off it.
+   *
+   * What makes a flow edge findable was never its hue: it is the only thing
+   * on this map that MOVES (an animated `lineDashOffset`). Motion is the
+   * channel, and it is one nothing else competes for. */
+  flowEdge: string;
+  /** T-4306: the blast-radius lens's ring/badge, `--color-fg-body` — neutral,
+   * deliberately NOT a hue.
+   *
+   * The hue circle is full: thirteen distinct hues were spent on this map and
+   * the best separation any fourteenth could achieve is 37.1deg against a
+   * 40deg floor (overlayHues.test.ts asserts that arithmetic). So something
+   * had to leave the hue channel, and this overlay is the one that can: it
+   * already SCRIMS every non-focused node at 0.72 alpha, which means the
+   * focused subgraph is the only thing on screen at full opacity. Isolation
+   * is doing the work a distinctive hue would otherwise do, and role is
+   * already carried by dash, width and a corner glyph.
+   *
+   * `--color-status-critical` was the other candidate and is wrong: an entity
+   * in a blast radius is AT RISK, not failed, and painting it as failed
+   * states something false — the same objection T-4303 raised against giving
+   * `recency` the critical token. */
+  blastRadiusStroke: string;
+  /** T-4306: the blast-radius glyph badge's text, `--color-surface-page` —
+   * the inverse of `blastRadiusStroke`, which is what makes the pair legible
+   * without measuring anything new. `--color-fg-body` on `--color-surface-page`
+   * is the product's primary text pair and clears AA in both themes by
+   * construction; inverting a pair preserves its contrast ratio exactly. The
+   * badge previously hard-coded `#ffffff` on fuchsia-600 at 4.71, a value
+   * that had to be measured by hand and would have had to be re-measured on
+   * any re-hue. */
+  blastRadiusGlyphText: string;
 }
 
 export interface DrawSceneParams {
@@ -628,15 +667,19 @@ export interface DrawFlowOverlayParams {
    * look. 0 (reduced-motion callers) renders a static dashed line. */
   dashOffset?: number;
   /** The currently-selected flow edge (drill-down panel open for it), if
-   * any — rendered thicker/brighter than the rest. */
+   * any — rendered thicker and at full opacity, never in a second colour.
+   * T-4306: selection used to be a darker cyan AS WELL AS +1.5px, which
+   * spent a second hue on a distinction the width already carried. */
   selectedId?: string;
+  theme: SceneTheme;
 }
 
-const FLOW_EDGE_COLOR = "#06b6d4"; // cyan-500: distinct from every status/SIM_STROKE/heat-scale colour already in use
-const FLOW_EDGE_SELECTED_COLOR = "#0e7490"; // cyan-700
+/** Unselected flow edges sit slightly back so a selected one reads as
+ * forward without needing a hue of its own. */
+const FLOW_EDGE_ALPHA = 0.75;
 
 export function drawFlowOverlay(ctx: CanvasRenderingContext2D, params: DrawFlowOverlayParams): void {
-  const { nodes, edges, viewport: vp, nodeSize, dragTopLeft, dashOffset = 0, selectedId } = params;
+  const { nodes, edges, viewport: vp, nodeSize, dragTopLeft, dashOffset = 0, selectedId, theme } = params;
   if (edges.length === 0) return;
   const size = nodeSize.width > 0 ? nodeSize : DEFAULT_NODE_SIZE;
   const byId = new Map<string, FlowNode<EntityNodeData, "entity">>();
@@ -652,11 +695,11 @@ export function drawFlowOverlay(ctx: CanvasRenderingContext2D, params: DrawFlowO
     const b = nodeCenterScreen(to, vp, size, dragTopLeft);
     const selected = e.id === selectedId;
     ctx.save();
-    ctx.strokeStyle = selected ? FLOW_EDGE_SELECTED_COLOR : FLOW_EDGE_COLOR;
+    ctx.strokeStyle = theme.flowEdge;
     ctx.lineWidth = selected ? e.strokeWidth + 1.5 : e.strokeWidth;
     ctx.setLineDash([8, 6]);
     ctx.lineDashOffset = -dashOffset;
-    ctx.globalAlpha = 0.9;
+    ctx.globalAlpha = selected ? 1 : FLOW_EDGE_ALPHA;
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
@@ -926,9 +969,15 @@ export function drawRecencyOverlay(ctx: CanvasRenderingContext2D, params: DrawRe
 // carry a diff ring, a recency badge, AND a blast-radius badge at once
 // without any of the three drawing over another. The scrim (translucent
 // theme-background fill over every non-focused node, theme-background
-// restroke over every non-focused edge) and the solid accent-colored
-// path-edge stroke are the parts nothing else in this file does at all.
-const BLAST_RADIUS_COLOR = "#c026d3"; // fuchsia-600 — distinct from every status/SIM_STROKE/FLOW_EDGE_COLOR/diff/recency colour already in use (the KIND_ACCENT it also had to clear is gone, T-4302)
+// restroke over every non-focused edge) is the part nothing else in this file
+// does at all — and T-4306 made it the load-bearing one: with everything
+// outside the focus set at 0.72 alpha, the focused subgraph is the only thing
+// on screen at full opacity, so the ring does not need a hue to be found. It
+// is neutral now, and the map got a hue back.
+// T-4306: the ring/badge colour is `theme.blastRadiusStroke` — neutral, and
+// no longer a hue of its own. See SceneTheme.blastRadiusStroke for the
+// arithmetic that forced it off the circle and why the scrim below is what
+// makes that affordable.
 const BLAST_RADIUS_SCRIM_ALPHA = 0.72;
 const BLAST_RADIUS_ROLE_GLYPH: Record<BlastRadiusRole, string> = {
   target: "X",
@@ -976,7 +1025,7 @@ export function drawBlastRadiusOverlay(ctx: CanvasRenderingContext2D, params: Dr
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     if (focusEdgeIds.has(e.id)) {
-      ctx.strokeStyle = BLAST_RADIUS_COLOR;
+      ctx.strokeStyle = theme.blastRadiusStroke;
       ctx.lineWidth = 3;
     } else {
       ctx.strokeStyle = theme.background;
@@ -1012,7 +1061,7 @@ export function drawBlastRadiusOverlay(ctx: CanvasRenderingContext2D, params: Dr
     // so both rings can be active on the same node without sitting exactly
     // on top of one another.
     roundRectPath(ctx, tl.x - 2, tl.y - 2, w + 4, h + 4, 7);
-    ctx.strokeStyle = BLAST_RADIUS_COLOR;
+    ctx.strokeStyle = theme.blastRadiusStroke;
     ctx.lineWidth = role === "path" ? 1.5 : 2.5;
     ctx.setLineDash(role === "path" ? [3, 2] : []);
     ctx.stroke();
@@ -1023,14 +1072,15 @@ export function drawBlastRadiusOverlay(ctx: CanvasRenderingContext2D, params: Dr
     // named-affected one, * for a hop the path walk passed through that
     // neither source named directly.
     const glyph = BLAST_RADIUS_ROLE_GLYPH[role];
-    ctx.fillStyle = BLAST_RADIUS_COLOR;
+    ctx.fillStyle = theme.blastRadiusStroke;
     ctx.beginPath();
     ctx.arc(tl.x + w + 2, tl.y + h + 2, 8, 0, Math.PI * 2);
     ctx.fill();
-    // White is correct here and measured: 4.71 on fuchsia-600, which clears
-    // AA. Stated rather than assumed, because the sibling badges above did
-    // not and looked identical.
-    ctx.fillStyle = "#ffffff";
+    // The inverse of the badge fill, so its contrast is the primary text
+    // pair's by construction rather than a hand-measured value tied to one
+    // hue (T-4306 — this was `#ffffff` at 4.71 on fuchsia-600, correct but
+    // re-measurable on any change).
+    ctx.fillStyle = theme.blastRadiusGlyphText;
     const glyphWidth = ctx.measureText(glyph).width;
     ctx.fillText(glyph, tl.x + w + 2 - glyphWidth / 2, tl.y + h + 3);
   }

@@ -53,6 +53,9 @@ const THEME: SceneTheme = {
   findingWarningText: "role:findingWarningText",
   findingInfoFill: "role:findingInfoFill",
   findingInfoText: "role:findingInfoText",
+  flowEdge: "role:flowEdge",
+  blastRadiusStroke: "role:blastRadiusStroke",
+  blastRadiusGlyphText: "role:blastRadiusGlyphText",
 };
 
 const noop = (): void => undefined;

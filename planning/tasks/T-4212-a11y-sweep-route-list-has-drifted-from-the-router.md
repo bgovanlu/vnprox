@@ -1,6 +1,6 @@
 # T-4212 · The accessibility sweep's route list has drifted; two shipped pages have never been checked
 
-**Found by:** T-4210, while deriving the visual gate's route inventory, 2026-08-28 · **size:** S ·
+**Status:** done — see Outcome below. · **Found by:** T-4210, while deriving the visual gate's route inventory, 2026-08-28 · **size:** S ·
 **depends:** — · **affects:** `web/e2e/a11y.spec.ts`, and the two routes below in every theme
 
 ## The observation

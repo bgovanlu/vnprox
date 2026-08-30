@@ -1,10 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// The map's overlay literals carry comments asserting they are "distinct from
-// every status/SIM_STROKE/FLOW_EDGE_COLOR/diff/recency colour already in use".
-// Nothing measured that. This file does, and the claim is false: fifteen pairs
-// sit under the 40deg floor the palette holds everywhere else — and one of
-// them was introduced tonight, by T-4211, three commits before this file.
+// The map's overlay literals carried comments asserting they were "distinct
+// from every status/SIM_STROKE/FLOW_EDGE_COLOR/diff/recency colour already in
+// use". Nothing measured that. This file does, and the claims were false:
+// sixteen pairs sat under the 40deg floor the palette holds everywhere else —
+// and one of them was introduced by T-4211, three commits before this file.
+//
+// Four remain (T-4306). The other twelve are gone the only way AC1 allows:
+// because the colours themselves are gone. Three sim verdicts now resolve
+// `--color-status-*` rather than restating them 0.2-17deg away; the flow
+// overlay resolves `--color-status-info`, since traffic is informational and
+// a flow edge is findable by being the only animated thing on the map;
+// `flow-selected` was deleted outright, because +1.5px of width already said
+// "selected"; and the blast-radius ring went neutral, because its scrim
+// already isolates the focus set.
 //
 // T-4301's finding, in a new place. A comment promising a property is not a
 // mechanism for having it — that phase measured a hand-copied palette which
@@ -77,11 +86,21 @@ const OVERLAY = {
   // 0.2-17deg away. That removes three census pairs by a DESIGN change, which
   // is the only way this list is allowed to shrink (AC1). `indeterminate`
   // stays: "could not decide" is not a health state.
+  //
+  // `flow` and `flow-selected` are gone for the same reason, one card later.
+  // Cyan-500 sat 9deg from `info` and from the accent — the census's one
+  // genuinely UNEXAMINED collision, because the overlay predates the status
+  // scale. Asking what a flow edge means answered it: traffic is
+  // informational, so the edge resolves `--color-status-info` instead of
+  // sitting just off it. `flow-selected` is gone outright, not re-pointed:
+  // selection was already carried by +1.5px of width, and the second cyan was
+  // a whole hue spent restating it.
+  //
+  // `blast-radius` is gone because something had to leave the hue channel
+  // entirely — see the arithmetic below. Its ring is neutral now; the overlay
+  // scrims everything else to 0.72 alpha, so isolation does what a hue would.
   "sim/indeterminate": "#8b5cf6", // violet-500, the one verdict with no status equivalent
-  "flow": "#06b6d4",
-  "flow-selected": "#0e7490",
   "stp-blocking": "#c2410c",
-  "blast-radius": "#c026d3",
 } as const;
 
 const FLOOR = 40;
@@ -122,24 +141,16 @@ describe("map overlay hues (found while closing T-4302)", () => {
     // a SIXTEENTH appearing without anyone noticing, which is how
     // `accent(demo) | blast-radius` got here.
     expect(collisions()).toEqual([
-      // Flow edges reading as "selected" / "informational". Unexamined rather
-      // than chosen — the flow overlay predates the status scale.
-      "accent(base) | flow",
-      "accent(base) | flow-selected",
       // Deliberate: T-4204 made `info` converge with the accent (0.2deg).
       "accent(base) | status/info",
-      // **Introduced tonight**, by T-4211's re-hue, at 2.9deg. See the header.
-      "accent(demo) | blast-radius",
+      // Not deliberate, and not yet addressed: 27.3deg. It is the last pair
+      // here that nobody has ruled on. `indeterminate` keeps a private hue
+      // because "could not decide" is not a health state, and the demo accent
+      // has nowhere left to go — so closing it needs the same kind of answer
+      // blast-radius got (leave the hue channel), not a re-hue.
       "accent(demo) | sim/indeterminate",
-      "blast-radius | sim/indeterminate",
-      // One ramp, two shades — 7.9deg apart is the point of them.
-      "flow | flow-selected",
-      "flow | status/info",
-      "flow-selected | status/info",
-      // Deliberate: SIM_STROKE maps a simulator verdict onto severity, and
-      // EntityEdge.tsx says so — a `deny` SHOULD look like an error.
-      // T-3901 chose a burnt orange deliberately near, but not equal to,
-      // "down"/"deny", so a cut port never reads as either.
+      // Deliberate: T-3901 chose a burnt orange deliberately near, but not
+      // equal to, "down"/"deny", so a cut port never reads as either.
       "status/critical | stp-blocking",
       "status/degraded | stp-blocking",
     ]);
@@ -154,17 +165,19 @@ describe("map overlay hues (found while closing T-4302)", () => {
     // longer exists.
     const draw = readFileSync(resolve(__dirname, "canvasDraw.ts"), "utf8");
     const edge = readFileSync(resolve(__dirname, "EntityEdge.tsx"), "utf8");
-    const expected: [string, string][] = [
-      ["flow", `const FLOW_EDGE_COLOR = "${OVERLAY.flow}"`],
-      ["flow-selected", `const FLOW_EDGE_SELECTED_COLOR = "${OVERLAY["flow-selected"]}"`],
-      ["blast-radius", `const BLAST_RADIUS_COLOR = "${OVERLAY["blast-radius"]}"`],
-    ];
-    for (const [name, needle] of expected) {
-      expect(draw, `${name} has moved in canvasDraw.ts — update OVERLAY above`).toContain(needle);
-    }
     expect(edge, "stp-blocking has moved in EntityEdge.tsx").toContain(
       `const STP_BLOCKING_STROKE = "${OVERLAY["stp-blocking"]}"`,
     );
+    // T-4306: canvasDraw.ts no longer defines a colour of its own. Both of
+    // its literals became SceneTheme roles, so the check that used to
+    // re-read them is now the opposite assertion — that they are not there.
+    // Reintroducing either as a hex would put a hue back on the map outside
+    // the palette, which is precisely what this file exists to notice.
+    for (const gone of ["FLOW_EDGE_COLOR", "FLOW_EDGE_SELECTED_COLOR", "BLAST_RADIUS_COLOR"]) {
+      expect(draw, `${gone} is back in canvasDraw.ts — overlay colours resolve through canvasPalette now`).not.toContain(
+        `const ${gone} =`,
+      );
+    }
     // T-4306 left exactly one sim literal, and it moved out of canvasDraw.ts
     // into the shared mapping. Re-read from there — the other three are no
     // longer literals anywhere, which is the point.

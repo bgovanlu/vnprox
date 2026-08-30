@@ -1,7 +1,7 @@
 # T-4306 — The overlay vocabulary has run out of hue circle, and one collision was added tonight
 
 **Phase:** 43 (Canvas rendering)
-**Status:** partly done — the `SIM_STROKE` consolidation landed. `blast-radius` and `flow` remain.
+**Status:** done. Census 16 pairs -> 4; the twelve went by design, and the map got two hues back.
 **Found by:** closing out T-4302's "what this card did not fix" note, 2026-08-30 · **size:** M
 **Depends on:** T-4211 (landed), T-4302 (landed)
 **Related:** T-4302 proved the same arithmetic for entity *kind* and moved it to shape
@@ -162,12 +162,66 @@ resolves utilities by scanning source text and an interpolated `ring-${tone}` is
 Not hypothetical — `NoticeStack` shipped exactly that bug during T-4303 and carries a test
 forbidding it.
 
-## Still open
+## Done: `flow` and `blast-radius` (7 more census pairs removed by design)
 
-- **`blast-radius` ↔ `accent(demo)`** (2.9deg, introduced by T-4211). The analysis above stands:
-  the dash channel is taken by the overlay's own role encoding, `--color-status-critical` would
-  state something false, and no re-hue can clear the floor. The scrim is the thread to pull.
-- **`flow` / `flow-selected` ↔ `info` / `accent(base)`** — the one genuinely *unexamined*
-  collision. Needs a decision about what a flow edge means, not a colour.
-- The four "distinct from every colour" comments still overclaim; two of the four modules they sit
-  in no longer have a private palette at all.
+The card asked for two decisions, not two colours, and in both cases the code had already answered
+the question — the overlay was carrying a distinguishing channel that nobody had counted.
+
+**`flow` means "here is traffic", which is informational.** So the edge resolves
+`--color-status-info` rather than sitting 9deg off it in a private cyan. What makes a flow edge
+findable was never its hue: it is the only thing on this map that **moves** (`drawFlowOverlay`
+animates `lineDashOffset`). Motion is a channel nothing else competes for.
+
+**`flow-selected` was deleted outright rather than re-pointed.** Selection was *already* encoded as
+`+1.5px` of stroke width in the same function; the second cyan was a whole hue spent restating it.
+It is width plus full opacity now, against 0.75 for the rest.
+
+**`blast-radius` went neutral — and this is the one that answers the card's real question.** The
+scrim was the thread, exactly as written: the overlay already dims every non-focused node to 0.72
+alpha, so the focused subgraph is the only thing on screen at full opacity. **Isolation does what a
+distinctive hue would**, which means this overlay could *give a hue back* to a full circle instead
+of consuming one. Role stays on dash, width and the corner glyph, untouched. The badge's white-on-
+fuchsia (4.71, hand-measured) became `--color-surface-page` on `--color-fg-body` — an inverted pair,
+so its contrast is the product's primary text pair's by construction and survives any future change
+to either token.
+
+`--color-status-critical` was rejected for the reason the card gives: an entity in a blast radius is
+*at risk*, not failed.
+
+| census | before | after |
+|---|---|---|
+| pairs under the 40deg floor | 16 | **4** |
+| overlay literals in `canvasDraw.ts` | 3 | **0** |
+| distinct tokens in the canvas palette | 16 | **16** (three new roles, zero new tokens) |
+
+The four remaining pairs are all ruled on: two are deliberate (`accent`≡`info` by T-4204;
+`stp-blocking` deliberately adjacent to "down"), and `accent(demo) ↔ sim/indeterminate` (27.3deg) is
+recorded as the one nobody has ruled on yet, with a note that closing it needs the same kind of
+answer blast-radius got rather than a re-hue.
+
+### Two things this turned up
+
+**The census shrink removed the only guard on the decisions it recorded.** Taking `flow` and
+`blast-radius` out of `overlayHues.test.ts` left nothing asserting *which* token they resolve —
+verified by repointing `flowEdge` at `--color-status-degraded`, which kept the palette's role and
+distinct counts identical and passed. `canvasPalette.test.ts` gained a meaning test, checked both
+ways: it fails on that repoint, and it fails on putting `blastRadiusStroke` back on
+`--color-accent-600`, which is the original T-4211 collision.
+
+**A vacuous assertion in `latencyMode.test.ts`, deleted.** "No `latencyColor` stop reuses a
+traffic-paint or flow-overlay hex" compared `latencyTone`'s return value against a set of hex
+strings — but T-4303 changed that function to return design-token *names*, so it could only ever
+pass. Its fixture also still transcribed the cyan flow literals this card deleted. The live contract
+(latency answers "how bad is this link?" in the same vocabulary traffic mode does) is asserted by
+the block below it, which is why the removal loses no coverage.
+
+### AC3: the comments
+
+All four now say something true. Three of the modules no longer own a colour, so their claims went
+with the literals. `STP_BLOCKING_STROKE` keeps its value and lost the false half of its sentence: it
+claimed the burnt orange "never reads as down or deny", when it measures 16.5deg from `critical` and
+31.9deg from `degraded` — both under the floor. That adjacency is deliberate (a blocked port *is*
+adjacent to "down"), and the **dash** is what separates them; the comment says that now.
+`latencyMode.ts` and `trafficMode.ts` had comments pointing at `FLOW_EDGE_COLOR` and
+`BLAST_RADIUS_COLOR`, neither of which still exists; both were rewritten to keep the reasoning and
+drop the dangling references.

@@ -45,6 +45,9 @@ const PALETTE = {
   findingWarningText: "role:findingWarningText",
   findingInfoFill: "role:findingInfoFill",
   findingInfoText: "role:findingInfoText",
+  flowEdge: "role:flowEdge",
+  blastRadiusStroke: "role:blastRadiusStroke",
+  blastRadiusGlyphText: "role:blastRadiusGlyphText",
 } satisfies SceneTheme;
 
 function node(id: string, overrides: Partial<EntityFlowNode["data"]> = {}, position = { x: 0, y: 0 }): EntityFlowNode {

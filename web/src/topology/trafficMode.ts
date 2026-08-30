@@ -41,8 +41,12 @@ export function computeUtilizationPct(bps: number, speedMbps: number | undefined
  * First, there is nowhere on the hue circle to put it. A ramp from a cool
  * neutral to red must pass through either green and amber — which are `ok`
  * and `degraded` — or through violet and magenta, where the derived
- * midpoints landed 3deg from `BLAST_RADIUS_COLOR` and 5deg from
- * `SIM_STROKE.indeterminate`. Holding the hue constant instead avoids every
+ * midpoints landed 3deg from the blast-radius overlay's then-fuchsia ring
+ * and 5deg from `SIM_STROKE.indeterminate`. (Both of those literals are gone
+ * now — T-4306 moved the ring off hue entirely and folded three of the four
+ * sim verdicts onto the status scale — but the conclusion is unchanged and
+ * the arithmetic that produced it is in overlayHues.test.ts.) Holding the
+ * hue constant instead avoids every
  * collision and tints every IDLE link faintly red, which is worse: idle is
  * the majority state on any healthy map.
  *

@@ -72,13 +72,21 @@ const STATUS_STROKE: Record<EntityStatus, string> = {
 // simVerdict.ts now; `var()` resolves it here because this is the DOM.
 
 // T-3901: the loop-breaking blocked port — "the first question in any L2
-// loop hunt" — gets its own distinct stroke (a burnt orange, not reused
-// from STATUS_STROKE/SIM_STROKE's red/amber/emerald/violet vocabulary, so
-// it never reads as "down" or "deny") and a short, tight dash pattern
+// loop hunt" — gets its own stroke (a burnt orange) and a short, tight dash
+// pattern
 // visually distinct from the "open finding"/"unknown status" dashing below
 // (which is a longer, looser dash) — the two should not be confused: one
 // means "STP intentionally cut this to prevent a loop", the other "vnprox
 // isn't sure what's going on here".
+//
+// T-4306 corrected this comment. It used to claim the orange was "not reused
+// from STATUS_STROKE/SIM_STROKE's vocabulary, so it never reads as down or
+// deny". Measured, it is 16.5deg from `critical` and 31.9deg from
+// `degraded` — both under the palette's 40deg floor, so at a glance it CAN
+// read as either. That is the deliberate part of T-3901's choice, not an
+// accident: a blocked port is adjacent to "down" in meaning, and the DASH is
+// what separates them. The value stays; only the false half of the sentence
+// is gone. overlayHues.test.ts pins both pairs.
 const STP_BLOCKING_STROKE = "#c2410c"; // orange-700
 
 export function EntityEdge({

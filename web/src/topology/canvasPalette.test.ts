@@ -198,7 +198,69 @@ describe("canvasPalette (T-4301)", () => {
     // is drawn neutral because health is the absence of a signal; the path
     // simulator's `allow` verdict is an answer to a question the operator
     // asked, so it says yes in green. Two roles, two tokens, on purpose.
-    expect(reads).toHaveLength(20);
+    //
+    // T-4306 added three more roles and **zero new tokens**, which is the
+    // number worth reading here. All three were private hexes in
+    // canvasDraw.ts, each carrying a comment claiming it was distinct from
+    // every colour already on the map; each now resolves a token the table
+    // already held:
+    //
+    //   flowEdge             --color-status-info    (with findingInfoText)
+    //   blastRadiusStroke    --color-fg-body        (with nodeText)
+    //   blastRadiusGlyphText --color-surface-page   (with background)
+    //
+    // So the distinct count stays at 16 while the role count goes to 23. The
+    // three overlays did not need colours of their own — flows are findable
+    // by being the only animated thing on the map, and the blast-radius lens
+    // scrims everything else to 0.72 alpha — and the map got two hues back
+    // off a hue circle that overlayHues.test.ts proves is full.
+    expect(reads).toHaveLength(23);
     expect(new Set(reads).size).toBe(16);
+  });
+
+  // The count above is a shape check and deliberately not a meaning check:
+  // repointing `flowEdge` at `--color-status-degraded` keeps the role count
+  // at 23 and the distinct count at 16, and passes. Verified by doing it.
+  //
+  // That matters because T-4306 moved three overlays onto tokens for reasons
+  // that were arguments, not arithmetic, and then removed them from
+  // overlayHues.test.ts's census — so with only the count above, nothing in
+  // the tree would notice if the argument were quietly reversed. These are
+  // the three claims, pinned.
+  it("pins what the three overlay roles MEAN, not just that they exist (T-4306)", () => {
+    // Resolve with a reader that returns each token's own NAME, so the
+    // resulting SceneTheme is the role -> token mapping itself. Reading the
+    // real resolver rather than re-transcribing ROLE is the same reason
+    // overlayHues.test.ts re-reads its literals from source: this repo has
+    // been bitten by transcription twice.
+    const roles = resolveSceneTheme((name) => name, false);
+
+    // A flow edge shows traffic. Traffic is informational, not a health
+    // state — so this must be the informational token and not, say, a
+    // severity one, which would say a busy link is a sick link.
+    expect(roles.flowEdge).toBe("--color-status-info");
+
+    // The blast-radius ring must stay NEUTRAL. Two failure modes to prevent,
+    // and they pull in opposite directions:
+    //
+    //   - a status token would state something false (an entity in a blast
+    //     radius is at risk, not failed — the objection that also exempts
+    //     recency, docs/design-language.md 8.4);
+    //   - a fresh hue would put it back on a circle that is provably full
+    //     (overlayHues.test.ts: best fourteenth separation 37.1deg vs a
+    //     40deg floor), which is how it collided with the demo accent at
+    //     2.9deg in the first place.
+    //
+    // Neutral is affordable only because the overlay scrims everything else
+    // to 0.72 alpha. If that scrim is ever removed, this assertion is the
+    // thing that should be revisited — not quietly relaxed.
+    expect(roles.blastRadiusStroke).toMatch(/^--color-fg-/);
+    expect(roles.blastRadiusStroke).not.toMatch(/status|accent/);
+
+    // The badge's text is the ring's inverse, which is what makes its
+    // contrast the primary text pair's by construction rather than a
+    // hand-measured number tied to one hue.
+    expect(roles.blastRadiusGlyphText).toBe("--color-surface-page");
+    expect(roles.blastRadiusStroke).toBe("--color-fg-body");
   });
 });

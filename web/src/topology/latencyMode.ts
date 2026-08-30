@@ -22,12 +22,16 @@ import type { LatMeshLink } from "../api/types";
 export const LATENCY_WARN_MS = 80;
 export const LOSS_WARN_PCT = 2;
 
-/** A four-stop scale, deliberately a violet/fuchsia/pink family — chosen so
- * no hex value is shared with trafficMode.ts's blue/green/amber/red
- * HEAT_STOPS or canvasDraw.ts's FLOW_EDGE_COLOR/FLOW_EDGE_SELECTED_COLOR
- * cyan family (asserted directly in latencyMode.test.ts), so a map with
- * both a legend and this heatmap active never reads as "the same scale
- * twice." Stops are keyed on rttMs as a fraction of LATENCY_WARN_MS (25%/
+/** Historical note, kept because the reasoning it records was overturned
+ * twice: this was a four-stop violet/fuchsia/pink scale chosen so no hex was
+ * shared with trafficMode.ts's HEAT_STOPS or canvasDraw.ts's cyan flow
+ * literals. T-4303 replaced the ramp with status-token NAMES (see
+ * latencyTone below), and T-4306 deleted the flow literals it was avoiding —
+ * a flow edge resolves `--color-status-info` now. Avoiding every other
+ * colour on the map was the right contract for a private ramp and is the
+ * wrong one for a scale that should SHARE the status vocabulary, since both
+ * answer the same question. Stops are keyed on rttMs as a fraction of
+ * LATENCY_WARN_MS (25%/
  * 62.5%/100%), not fixed ms breakpoints, so the scale re-centers cleanly if
  * the server threshold constant is ever tuned without this file drifting
  * out of sync (a future improvement could fetch the live threshold; today

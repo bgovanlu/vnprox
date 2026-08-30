@@ -12,17 +12,21 @@ import {
 } from "./latencyMode";
 
 // Every color hex value known to already be in use elsewhere on the map,
-// so this file's own AC4 assertion ("confirms the color scale renders ...
-// without colliding with the existing traffic-paint legend") can check
-// latencyMode.ts's own palette against them directly, without importing
-// trafficMode.ts's private HEAT_STOPS/canvasDraw.ts's private FLOW_EDGE_*
-// constants (both are unexported — this list is the same "the codebase's
-// own colors, kept in sync by this test" contract flowEdges.ts's own
-// stroke-width comment already documents about not literally reusing
-// another module's formula).
-const TRAFFIC_PAINT_COLORS = ["#94a3b8", "#38bdf8", "#22c55e", "#f59e0b", "#ef4444"];
-const FLOW_OVERLAY_COLORS = ["#06b6d4", "#0e7490"];
-const EXISTING_MAP_COLORS = new Set([...TRAFFIC_PAINT_COLORS, ...FLOW_OVERLAY_COLORS]);
+// T-4306 removed this file's hand-transcribed colour fixture
+// (TRAFFIC_PAINT_COLORS / FLOW_OVERLAY_COLORS / EXISTING_MAP_COLORS) together
+// with the assertion that read it. Both had stopped measuring anything:
+// T-4303 changed `latencyTone` to return design-token NAMES ("outline",
+// "status-degraded"), so "no stop reuses an existing map hex" compared a
+// token name against a set of hex strings and could only ever pass. The
+// fixture also still listed cyan flow literals that no longer exist.
+//
+// A vacuous test is worse than no test, because it reports coverage of a
+// property nobody is checking — the same defect this phase found in the
+// status-scale gate (T-4212) and the a11y route list. What replaced it is
+// the `names the status scale rather than avoiding it` block below, which
+// asserts the contract that IS live: latency answers "how bad is this link?"
+// in the same vocabulary traffic mode does, deliberately sharing those
+// colours rather than dodging them.
 
 describe("latencyTone (T-4303)", () => {
   it.each([
@@ -75,14 +79,6 @@ describe("latencyStrokeWidth", () => {
 // --- AC4: color scale renders without colliding with the traffic legend ---
 
 describe("latency heatmap palette is visually distinct from every existing map color", () => {
-  it("no latencyColor stop reuses a traffic-paint or flow-overlay hex value", () => {
-    const sampled = [0, 10, 20, 21, 40, 50, 51, 65, 80, 81, 200];
-    for (const ms of sampled) {
-      const color = latencyTone(ms);
-      expect(EXISTING_MAP_COLORS.has(color)).toBe(false);
-    }
-  });
-
   it("names the status scale rather than avoiding it (T-4303)", () => {
     // This block used to assert the OPPOSITE: that latency's palette
     // collided with no colour already on the map. That was the right
