@@ -50,7 +50,7 @@ export function ClusterCapsule({ summary, onDrill, interconnect }: ClusterCapsul
       className={clsx(
         "flex w-56 flex-col gap-2 rounded-lg border p-4 text-left transition hover:border-accent-500 focus:border-accent-500 focus:outline-none",
         reachable
-          ? "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
+          ? "border-border-strong bg-white dark:bg-slate-900"
           : // T-4216: was `text-slate-400`, which measured 2.37:1 in light mode
             // and, multiplied by this branch's own opacity-70, left the
             // UNREACHABLE cluster as the least readable thing on the page —
@@ -65,7 +65,7 @@ export function ClusterCapsule({ summary, onDrill, interconnect }: ClusterCapsul
         <span className="truncate font-medium text-slate-800 dark:text-slate-100">{summary.clusterName}</span>
         {!reachable && (
           <span
-            className="shrink-0 rounded bg-slate-300 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-slate-700 dark:bg-slate-700 dark:text-slate-200"
+            className="shrink-0 rounded bg-slate-300 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-fg-body dark:bg-slate-700"
             title="This cluster was unreachable in the last aggregation pass"
           >
             unreachable
@@ -78,13 +78,13 @@ export function ClusterCapsule({ summary, onDrill, interconnect }: ClusterCapsul
           <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-fg-subtle">
             <div className="flex items-center justify-between">
               <dt>Nodes</dt>
-              <dd className="font-mono text-slate-700 dark:text-slate-200">
+              <dd className="font-mono text-fg-body">
                 {summary.nodesOnline}/{summary.nodes}
               </dd>
             </div>
             <div className="flex items-center justify-between">
               <dt>Guests</dt>
-              <dd className="font-mono text-slate-700 dark:text-slate-200">{summary.guests}</dd>
+              <dd className="font-mono text-fg-body">{summary.guests}</dd>
             </div>
           </dl>
           <div className="flex items-center gap-2 text-xs">

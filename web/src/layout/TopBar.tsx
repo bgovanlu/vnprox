@@ -70,7 +70,7 @@ export function TopBar({ onOpenHelp, onOpenPageHelp }: TopBarProps) {
     // "elevation by darkening" anti-pattern index.css's T-4203 comment
     // argues against — with no shadow to read in dark mode, a chrome bar
     // darker than the page it frames doesn't land as elevated at all.
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-surface-raised px-4 dark:border-slate-800">
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-surface-raised px-4">
       <button
         type="button"
         onClick={openSearch}
@@ -95,7 +95,7 @@ export function TopBar({ onOpenHelp, onOpenPageHelp }: TopBarProps) {
       >
         <Search aria-hidden className="h-4 w-4 shrink-0" />
         <span className="truncate">Search VMs, MACs, IPs…</span>
-        <kbd className="ml-auto shrink-0 rounded border border-slate-300 px-1 text-xs dark:border-slate-700">/</kbd>
+        <kbd className="ml-auto shrink-0 rounded border border-border-strong px-1 text-xs">/</kbd>
       </button>
 
       <div className="ml-auto flex items-center gap-1">
@@ -146,7 +146,7 @@ export function TopBar({ onOpenHelp, onOpenPageHelp }: TopBarProps) {
               align="end"
               sideOffset={6}
               // T-4203: a floating menu above the chrome — `surface-overlay`.
-              className="z-50 min-w-[10rem] rounded-lg border border-slate-200 bg-surface-overlay p-1 shadow-lg dark:border-slate-700"
+              className="z-50 min-w-[10rem] rounded-lg border border-border bg-surface-overlay p-1 shadow-lg"
             >
               {demoSession ? (
                 <div className="px-2 py-1.5 text-xs text-fg-subtle">demo mode</div>

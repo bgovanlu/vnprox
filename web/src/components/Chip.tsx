@@ -42,8 +42,8 @@ export interface ChipProps {
 }
 
 const TONE_CLASSES: Record<ChipTone, string> = {
-  neutral: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-  removed: "bg-slate-100 text-slate-600 line-through dark:bg-slate-800 dark:text-slate-400",
+  neutral: "bg-slate-100 text-fg-muted dark:bg-slate-800",
+  removed: "bg-slate-100 text-fg-muted line-through dark:bg-slate-800",
   accent: "border border-accent-500 bg-accent-soft text-accent-fg",
 };
 

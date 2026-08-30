@@ -67,7 +67,7 @@ export function KeyValue({ items, columns = 1, size = "sm", density, className }
     >
       {items.map((item) => (
         <div className="contents" key={item.key}>
-          <dt className="text-slate-600 dark:text-slate-400">{item.label}</dt>
+          <dt className="text-fg-muted">{item.label}</dt>
           <dd className={clsx("min-w-0 text-slate-800 dark:text-slate-100", item.mono && "font-mono tabular-nums")}>
             {item.value}
           </dd>

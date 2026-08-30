@@ -56,7 +56,7 @@ const STATUS_STYLE: Record<DoctorStatus | "unknown", { label: string; chip: stri
   },
   skip: {
     label: "SKIPPED",
-    chip: "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
+    chip: "bg-slate-200 text-fg-body dark:bg-slate-700",
     card: "border-dashed border-slate-400 dark:border-slate-600",
     gloss: "NOT checked. This is not a pass — the reason is below.",
   },
@@ -84,15 +84,15 @@ function CheckCard({ result }: { result: DoctorResult }) {
         >
           {style.label}
         </span>
-        <code className="text-xs font-medium text-slate-700 dark:text-slate-200">{result.check}</code>
+        <code className="text-xs font-medium text-fg-body">{result.check}</code>
         {status === "unknown" && (
           <code className="text-[10px] text-violet-700 dark:text-violet-300">reported &ldquo;{result.status}&rdquo;</code>
         )}
       </div>
-      <p className="mt-1 text-[11px] italic text-slate-600 dark:text-slate-400">{style.gloss}</p>
-      <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">{result.detail}</p>
+      <p className="mt-1 text-[11px] italic text-fg-muted">{style.gloss}</p>
+      <p className="mt-1 text-sm text-fg-body">{result.detail}</p>
       {result.remediation !== undefined && result.remediation !== "" && (
-        <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+        <p className="mt-1 text-xs text-fg-muted">
           <span className="font-semibold">Remediation: </span>
           {result.remediation}
         </p>
@@ -131,7 +131,7 @@ export function DoctorLiveSection() {
         </Button>
       }
     >
-      {query.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Running live checks…</p>}
+      {query.isLoading && <p className="text-sm text-fg-muted">Running live checks…</p>}
 
       {query.error !== null && (
         <RefusalNotice
@@ -157,13 +157,13 @@ export function DoctorLiveSection() {
           </ul>
 
           <div
-            className="mt-3 rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700"
+            className="mt-3 rounded-md border border-border p-3 text-sm"
             data-testid="doctor-summary"
           >
-            <p className="font-mono text-xs text-slate-600 dark:text-slate-300" data-testid="doctor-counts">
+            <p className="font-mono text-xs text-fg-muted" data-testid="doctor-counts">
               {doctorCountsLine(summary)}
             </p>
-            <p className="mt-1 text-slate-700 dark:text-slate-200" data-testid="doctor-verdict">
+            <p className="mt-1 text-fg-body" data-testid="doctor-verdict">
               {doctorVerdict(summary)}
             </p>
           </div>

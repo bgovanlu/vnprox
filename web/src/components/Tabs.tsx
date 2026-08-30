@@ -37,7 +37,7 @@ export type TabsTriggerProps = ComponentPropsWithoutRef<typeof RadixTabs.Trigger
 export function TabsList({ className, ...props }: TabsListProps) {
   return (
     <RadixTabs.List
-      className={clsx("flex items-center gap-1 border-b border-slate-200 dark:border-slate-800", className)}
+      className={clsx("flex items-center gap-1 border-b border-border", className)}
       {...props}
     />
   );

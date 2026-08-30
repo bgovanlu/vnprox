@@ -104,7 +104,7 @@ export function SegmentedControl<T extends string>({
       aria-label={ariaLabel}
       data-density={resolvedDensity}
       className={clsx(
-        "inline-flex gap-0.5 rounded-md border border-slate-200 bg-white/90 p-0.5 dark:border-slate-700 dark:bg-slate-900/90",
+        "inline-flex gap-0.5 rounded-md border border-border bg-white/90 p-0.5 dark:bg-slate-900/90",
         className,
       )}
     >
@@ -129,7 +129,7 @@ export function SegmentedControl<T extends string>({
               SIZE_CLASSES[size][resolvedDensity],
               active
                 ? "bg-accent-600 text-white"
-                : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+                : "text-fg-muted hover:bg-slate-100 dark:hover:bg-slate-800",
             )}
           >
             {option.label}

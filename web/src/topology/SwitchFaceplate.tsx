@@ -138,7 +138,7 @@ function NeighborTag({ neighbor }: { neighbor: SwitchPortNic["neighbor"] }) {
           value only clears AA against a dark card, which is what dark mode
           actually sits on. slate-600 in light mode clears it with margin
           (7.58:1) while leaving dark mode (6.78:1) untouched. */}
-      {neighbor.port && <span className="truncate text-slate-600 dark:text-slate-400">{neighbor.port}</span>}
+      {neighbor.port && <span className="truncate text-fg-muted">{neighbor.port}</span>}
     </span>
   );
 }
@@ -174,7 +174,7 @@ function PortCell({
             hardware. Absent — not "0", not a stale figure — when the link is
             down and the kernel reports no speed. */}
         {speed && (
-          <span className="text-[8px] font-semibold uppercase leading-none tracking-wider text-slate-600 dark:text-slate-400">
+          <span className="text-[8px] font-semibold uppercase leading-none tracking-wider text-fg-muted">
             {speed}
           </span>
         )}
@@ -211,7 +211,7 @@ function NicPort({
         onClick={() => {
           onExpandGroup(nic.ref);
         }}
-        className="flex w-[4.25rem] flex-col items-center gap-0.5 rounded border border-dashed border-slate-400 bg-slate-100 px-1 py-1 text-center text-slate-600 hover:border-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500"
+        className="flex w-[4.25rem] flex-col items-center gap-0.5 rounded border border-dashed border-slate-400 bg-slate-100 px-1 py-1 text-center text-fg-muted hover:border-slate-600 dark:border-slate-600 dark:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500"
       >
         <StatusLed status={nic.status} />
         <span className="text-sm font-semibold leading-none">+{nic.count ?? "…"}</span>
@@ -239,7 +239,7 @@ function NicPort({
         className={clsx(
           "flex w-[4.25rem] flex-col items-center rounded border bg-white px-1 py-1 text-center hover:border-accent-500 dark:bg-slate-900",
           "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500",
-          onMgmtPath ? "border-amber-400 dark:border-amber-700" : "border-slate-300 dark:border-slate-600",
+          onMgmtPath ? "border-amber-400 dark:border-amber-700" : "border-border-strong",
           // T-3501: a NIC directly named by an open finding gets the same
           // dashed-outline/severity-gated-pulse treatment as a bridge chassis
           // (below) — see findingBadges.ts's shouldPulse doc comment.
@@ -252,7 +252,7 @@ function NicPort({
           status={nic.status}
           speedMbps={nic.speedMbps}
           marking={
-            <span className="max-w-full truncate font-mono text-[10px] font-medium leading-tight text-slate-700 dark:text-slate-200">
+            <span className="max-w-full truncate font-mono text-[10px] font-medium leading-tight text-fg-body">
               {nic.label}
             </span>
           }
@@ -446,19 +446,19 @@ function AccessPort({
         className={clsx(
           "flex w-[4.25rem] flex-col items-center rounded border bg-white px-1 py-1 text-center hover:border-accent-500 dark:bg-slate-900",
           "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500",
-          selected ? "border-accent-600 ring-2 ring-accent-500" : "border-slate-300 dark:border-slate-600",
+          selected ? "border-accent-600 ring-2 ring-accent-500" : "border-border-strong",
           dimmed && "opacity-25",
         )}
       >
         <span className="flex w-full flex-col items-center gap-0.5">
           <span className="flex h-3 w-full items-center justify-center gap-1">
             <StatusLed status={port.status} />
-            <span className="font-mono text-[9px] font-semibold leading-none text-slate-700 dark:text-slate-200">
+            <span className="font-mono text-[9px] font-semibold leading-none text-fg-body">
               {port.vmid ?? "—"}
             </span>
           </span>
           <PortJack kind="virtual" status={port.status} />
-          <span className="max-w-full truncate text-[10px] leading-tight text-slate-700 dark:text-slate-200">
+          <span className="max-w-full truncate text-[10px] leading-tight text-fg-body">
             {guestName}
           </span>
           {/* T-2004: both spans here were sub-AA in light mode only —
@@ -467,7 +467,7 @@ function AccessPort({
               (4.4:1, just under the 4.5:1 floor). slate-600 (7.58:1) and
               violet-700 (7.3:1) clear both with margin; dark mode values
               (6.78:1 / 9.61:1) were already fine and are unchanged. */}
-          <span className="text-[9px] leading-tight text-slate-600 dark:text-slate-400">
+          <span className="text-[9px] leading-tight text-fg-muted">
             {nicKey}
             {port.vid !== undefined && <span className="ml-0.5 text-violet-700 dark:text-violet-300">·{port.vid}</span>}
           </span>
@@ -505,11 +505,11 @@ function AccessPort({
  * faceplate carries above each bank of ports. */
 function Bay({ label, note, children }: { label: string; note?: string; children: ReactNode }) {
   return (
-    <div className="border-t border-slate-200 px-3 py-2 dark:border-slate-800">
+    <div className="border-t border-border px-3 py-2">
       {/* T-2004: text-slate-400 dark:text-slate-400 (identical both themes)
           measured 2.63:1 against a white card — passes only in dark mode.
           slate-600 in light mode clears AA with margin (7.58:1). */}
-      <div className="mb-1.5 flex items-baseline gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+      <div className="mb-1.5 flex items-baseline gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-fg-muted">
         <span>{label}</span>
         {note && <span className="font-normal normal-case tracking-normal">{note}</span>}
       </div>
@@ -524,9 +524,9 @@ function Bay({ label, note, children }: { label: string; note?: string; children
  * rail on the left is the band's identity. */
 function OverlayBand({ label, rail, children }: { label: string; rail: string; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-2 border-t border-slate-200 px-3 py-1.5 dark:border-slate-800">
+    <div className="flex items-center gap-2 border-t border-border px-3 py-1.5">
       <span aria-hidden className={clsx("h-5 w-1 shrink-0 rounded-full", rail)} />
-      <span className="w-14 shrink-0 text-[9px] font-semibold uppercase leading-tight tracking-wider text-slate-600 dark:text-slate-400">
+      <span className="w-14 shrink-0 text-[9px] font-semibold uppercase leading-tight tracking-wider text-fg-muted">
         {label}
       </span>
       <span className="flex flex-wrap gap-1">{children}</span>
@@ -564,7 +564,7 @@ export function SwitchFaceplate({
       className={clsx(
         "flex flex-col overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-slate-900",
         reducedMotion ? "transition-none" : "transition-opacity",
-        selected ? "border-accent-600 ring-2 ring-accent-500" : "border-slate-300 dark:border-slate-700",
+        selected ? "border-accent-600 ring-2 ring-accent-500" : "border-border-strong",
         dimmed && "opacity-40",
         // Staleness is desaturation ONLY — deliberately no opacity. `opacity`
         // fades this faceplate's text along with its chrome, and its port /

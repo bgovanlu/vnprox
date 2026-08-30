@@ -25,7 +25,7 @@ const KIND_LABEL: Record<EntityHistoryEntry["kind"], string> = {
 
 const KIND_CLASSES: Record<EntityHistoryEntry["kind"], string> = {
   changeset: "bg-accent-soft text-accent-fg",
-  audit: "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
+  audit: "bg-slate-200 text-fg-body dark:bg-slate-700",
   snapshot: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100",
 };
 
@@ -40,7 +40,7 @@ export function EntityHistoryTab({ entityRef, enabled = true }: EntityHistoryTab
   const { data, isLoading, isError } = useEntityHistoryQuery(entityRef, enabled);
 
   if (isLoading) {
-    return <p className="text-xs text-slate-600 dark:text-slate-400">Loading history…</p>;
+    return <p className="text-xs text-fg-muted">Loading history…</p>;
   }
   // A failure must not render as "nothing has touched this" — that is a
   // conclusion, and it would be the wrong one.
@@ -73,7 +73,7 @@ export function EntityHistoryTab({ entityRef, enabled = true }: EntityHistoryTab
         {data.items.map((e, i) => (
           <li
             key={`${e.kind}:${String(e.at)}:${e.changesetId ?? ""}:${e.snapshotId ?? ""}:${String(i)}`}
-            className="rounded border border-slate-200 px-2 py-1.5 dark:border-slate-700"
+            className="rounded border border-border px-2 py-1.5"
           >
             <div className="flex flex-wrap items-baseline gap-2">
               <span className={clsx("rounded px-1 py-0.5 text-[10px] uppercase tracking-wide", KIND_CLASSES[e.kind])}>
@@ -82,10 +82,10 @@ export function EntityHistoryTab({ entityRef, enabled = true }: EntityHistoryTab
               <span className="text-fg-subtle">
                 {new Date(e.at * 1000).toLocaleString()}
               </span>
-              {e.actor && <span className="text-slate-600 dark:text-slate-300">{e.actor}</span>}
-              {e.result && <span className="text-slate-600 dark:text-slate-400">{e.result}</span>}
+              {e.actor && <span className="text-fg-muted">{e.actor}</span>}
+              {e.result && <span className="text-fg-muted">{e.result}</span>}
             </div>
-            <p className="mt-0.5 text-slate-700 dark:text-slate-200">{e.summary}</p>
+            <p className="mt-0.5 text-fg-body">{e.summary}</p>
             {e.changesetId && (
               <a
                 href={`/changesets/${encodeURIComponent(e.changesetId)}`}

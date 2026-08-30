@@ -55,7 +55,7 @@ function DeliveryHealth({ webhook }: { webhook: Webhook }) {
   // finding, so 0 before any attempt says nothing at all.
   if (webhook.lastAttemptAt === undefined) {
     return (
-      <span data-testid={`delivery-${webhook.id}`} data-delivery-state="unattempted" className="text-xs italic text-slate-600 dark:text-slate-400">
+      <span data-testid={`delivery-${webhook.id}`} data-delivery-state="unattempted" className="text-xs italic text-fg-muted">
         Never attempted — no event has matched this registration yet
       </span>
     );
@@ -149,7 +149,7 @@ export function WebhooksSection() {
         </>
       }
     >
-      {webhooksQuery.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading webhooks…</p>}
+      {webhooksQuery.isLoading && <p className="text-sm text-fg-muted">Loading webhooks…</p>}
 
       {listError !== null && (
         <RefusalNotice
@@ -178,17 +178,17 @@ export function WebhooksSection() {
 
       {reachable && (
         <>
-          <div className="mb-4 rounded-md border border-slate-200 p-3 dark:border-slate-700">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
+          <div className="mb-4 rounded-md border border-border p-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
               Register a target
             </h3>
-            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+            <p className="mt-1 text-xs text-fg-muted">
               The daemon decides whether a destination is permitted — at registration, and again against the resolved
               address at every delivery. Whatever it refuses, it says why.
             </p>
 
             <label className="mt-2 block text-sm">
-              <span className="text-slate-600 dark:text-slate-300">Destination URL</span>
+              <span className="text-fg-muted">Destination URL</span>
               <input
                 type="url"
                 value={url}
@@ -196,25 +196,25 @@ export function WebhooksSection() {
                   setUrl(e.target.value);
                 }}
                 placeholder="https://hooks.example.com/vnprox"
-                className="mt-1 block w-full rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900"
+                className="mt-1 block w-full rounded border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
               />
             </label>
 
             <label className="mt-2 block text-sm">
-              <span className="text-slate-600 dark:text-slate-300">Signing secret</span>
+              <span className="text-fg-muted">Signing secret</span>
               <input
                 type="password"
                 value={secret}
                 onChange={(e) => {
                   setSecret(e.target.value);
                 }}
-                className="mt-1 block w-full rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900"
+                className="mt-1 block w-full rounded border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
               />
             </label>
 
             <fieldset className="mt-3">
-              <legend className="text-sm text-slate-600 dark:text-slate-300">
-                Events <span className="text-xs text-slate-600 dark:text-slate-400">(none selected = every event)</span>
+              <legend className="text-sm text-fg-muted">
+                Events <span className="text-xs text-fg-muted">(none selected = every event)</span>
               </legend>
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
                 {WEBHOOK_EVENTS.map((name) => (
@@ -256,7 +256,7 @@ export function WebhooksSection() {
           </div>
 
           {webhooks.length === 0 ? (
-            <p className="text-sm text-slate-600 dark:text-slate-400" data-testid="webhooks-empty">
+            <p className="text-sm text-fg-muted" data-testid="webhooks-empty">
               No webhooks are registered.
             </p>
           ) : (
@@ -284,7 +284,7 @@ export function WebhooksSection() {
                     </TableCell>
                     <TableCell>
                       <UnixTime at={webhook.createdAt} />
-                      <span className="block text-[10px] text-slate-600 dark:text-slate-400">{webhook.createdBy}</span>
+                      <span className="block text-[10px] text-fg-muted">{webhook.createdBy}</span>
                     </TableCell>
                     <TableCell>
                       <Button
@@ -308,7 +308,7 @@ export function WebhooksSection() {
       )}
 
       {forbidden && (
-        <p className="mt-3 text-xs text-slate-600 dark:text-slate-400" data-testid="webhooks-no-form">
+        <p className="mt-3 text-xs text-fg-muted" data-testid="webhooks-no-form">
           The registration form is not shown because this session cannot reach the route it would post to. A control
           that could only ever produce a 403 is worse than no control.
         </p>

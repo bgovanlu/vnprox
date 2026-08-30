@@ -168,13 +168,13 @@ export function MicrosegPlanner({ guestRef }: MicrosegPlannerProps) {
       {proposal && (
         <div className="flex flex-col gap-4">
           {/* Coverage summary — stated plainly, never rounded to "everything". */}
-          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800" data-testid="coverage-summary">
+          <div className="rounded-lg border border-border p-3" data-testid="coverage-summary">
             <p className="text-sm">
               <span className="font-semibold">{proposal.rules.length}</span> rules cover{" "}
               <span className="font-semibold">{formatCoveragePct(proposal.coveragePct)}</span> of this guest&apos;s
               observed-good traffic ({proposal.observedGoodFlowCount.toLocaleString()} flows over the learning window).
             </p>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            <p className="mt-1 text-sm text-fg-muted">
               <span className="font-semibold tabular-nums">{proposal.uncoveredFlowCount.toLocaleString()}</span> observed-good
               flows fall in the deliberately-uncovered long tail (not covered by any proposed rule).
             </p>
@@ -204,7 +204,7 @@ export function MicrosegPlanner({ guestRef }: MicrosegPlannerProps) {
               type="button"
               onClick={() => { handleDryRun(false); }}
               disabled={dryRunMutation.isPending}
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium disabled:opacity-60 dark:border-slate-700"
+              className="rounded-md border border-border-strong px-3 py-1.5 text-sm font-medium disabled:opacity-60"
             >
               {dryRunMutation.isPending ? "Dry-running…" : "Run dry-run"}
             </button>
@@ -212,7 +212,7 @@ export function MicrosegPlanner({ guestRef }: MicrosegPlannerProps) {
               type="button"
               onClick={() => { handleDryRun(true); }}
               disabled={dryRunMutation.isPending}
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium disabled:opacity-60 dark:border-slate-700"
+              className="rounded-md border border-border-strong px-3 py-1.5 text-sm font-medium disabled:opacity-60"
             >
               Dry-run against held-out window
             </button>
@@ -221,7 +221,7 @@ export function MicrosegPlanner({ guestRef }: MicrosegPlannerProps) {
           {dryRun && <DryRunReport report={dryRun.report} heldOut={dryRun.heldOut} />}
 
           {/* Stage — gated on a dry-run having run for THIS proposal. */}
-          <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-3 dark:border-slate-800">
+          <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
             <button
               type="button"
               onClick={handleStage}

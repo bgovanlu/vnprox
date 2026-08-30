@@ -193,7 +193,7 @@ function NavItemLink({ item }: { item: NavItem }) {
           "flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
           isActive
             ? "bg-accent-soft text-accent-fg"
-            : "text-slate-600 hover:bg-slate-200/60 dark:text-slate-300 dark:hover:bg-slate-800/60",
+            : "text-fg-muted hover:bg-slate-200/60 dark:hover:bg-slate-800/60",
         )
       }
     >
@@ -283,7 +283,7 @@ function IdentityChip() {
       // than blending into its container (identical to `surface-raised` in
       // light mode, where the top two levels are both white; only dark
       // mode gets the extra lift).
-      className="mb-2 flex items-center gap-2 rounded-lg border border-slate-200 bg-surface-overlay px-2 py-2 dark:border-slate-800 sm:px-2.5"
+      className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-surface-overlay px-2 py-2 sm:px-2.5"
     >
       <span
         aria-hidden
@@ -334,7 +334,7 @@ export function Sidebar() {
       // `surface-raised`, matching TopBar.tsx (see that file's comment on
       // why "darker than the page" was the wrong direction for dark-mode
       // elevation).
-      className="relative z-50 flex w-16 shrink-0 flex-col border-r border-slate-200 bg-surface-raised py-3 dark:border-slate-800 sm:w-56 sm:items-stretch sm:px-2"
+      className="relative z-50 flex w-16 shrink-0 flex-col border-r border-border bg-surface-raised py-3 sm:w-56 sm:items-stretch sm:px-2"
     >
       <div className="px-1 sm:px-0">
         <IdentityChip />
@@ -360,7 +360,7 @@ export function Sidebar() {
        * narrow width, matching T-909's reachable-set filter exactly as
        * NavRail.tsx did (Settings is not in NARROW_REACHABLE_PATHS). */}
       {!narrow && (
-        <div className="mt-2 border-t border-slate-200 px-1 pt-2 dark:border-slate-800 sm:px-0">
+        <div className="mt-2 border-t border-border px-1 pt-2 sm:px-0">
           <NavItemLink item={SETTINGS_ITEM} />
         </div>
       )}

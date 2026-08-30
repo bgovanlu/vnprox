@@ -44,7 +44,7 @@ export function GlobalTopologyGate() {
   // unchanged page either way.
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-slate-600 dark:text-slate-400" aria-busy="true">
+      <div className="flex h-full items-center justify-center text-sm text-fg-muted" aria-busy="true">
         Loading…
       </div>
     );
@@ -69,7 +69,7 @@ export function GlobalTopologyGate() {
     data?.clusters.find((c) => c.clusterId === drilledClusterId)?.clusterName ?? drilledClusterId;
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-1.5 text-sm dark:border-slate-800">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-1.5 text-sm">
         <button
           type="button"
           onClick={backToGlobal}
@@ -77,8 +77,8 @@ export function GlobalTopologyGate() {
         >
           ← Global map
         </button>
-        <span className="text-slate-600 dark:text-slate-400">/</span>
-        <span className="font-medium text-slate-700 dark:text-slate-200">{drilledName}</span>
+        <span className="text-fg-muted">/</span>
+        <span className="font-medium text-fg-body">{drilledName}</span>
       </div>
       <div className="min-h-0 flex-1">
         <TopologyPage />

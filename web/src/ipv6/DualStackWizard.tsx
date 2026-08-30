@@ -157,7 +157,7 @@ export function DualStackWizard({ vnets, onInstantiated }: DualStackWizardProps)
         </p>
         <select
           id="dualstack-vnet"
-          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+          className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
           value={vnetId}
           onChange={(e) => {
             setVnetId(e.target.value);
@@ -241,7 +241,7 @@ function ObservedIPv6({
     return null;
   }
   if (loading) {
-    return <p className="text-xs text-slate-600 dark:text-slate-400">Checking what IPv6 is live on {vnetId}…</p>;
+    return <p className="text-xs text-fg-muted">Checking what IPv6 is live on {vnetId}…</p>;
   }
   if (failed) {
     return (
@@ -253,8 +253,8 @@ function ObservedIPv6({
   }
 
   return (
-    <div data-testid="dualstack-observed" className="rounded-md border border-slate-200 p-2 text-xs dark:border-slate-700">
-      <h4 className="font-medium text-slate-700 dark:text-slate-200">IPv6 observed on {vnetId} today</h4>
+    <div data-testid="dualstack-observed" className="rounded-md border border-border p-2 text-xs">
+      <h4 className="font-medium text-fg-body">IPv6 observed on {vnetId} today</h4>
       {segments.length === 0 ? (
         <p className="mt-1 text-fg-subtle">
           No router advertisement observed on this VNet — the ordinary starting point for a dual-stack rollout.
@@ -262,7 +262,7 @@ function ObservedIPv6({
       ) : (
         <ul className="mt-1 flex flex-col gap-0.5">
           {segments.map((s) => (
-            <li key={`${s.node}-${s.iface}`} className="text-slate-600 dark:text-slate-300">
+            <li key={`${s.node}-${s.iface}`} className="text-fg-muted">
               <span className="font-mono">
                 {s.node}/{s.iface}
               </span>

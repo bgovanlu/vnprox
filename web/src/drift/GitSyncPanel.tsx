@@ -23,7 +23,7 @@ import { instantLabel, type GitSyncState } from "./gitsyncState";
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <dt className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">{label}</dt>
+      <dt className="text-xs uppercase tracking-wide text-fg-muted">{label}</dt>
       <dd className="text-sm text-slate-800 dark:text-slate-100">{children}</dd>
     </div>
   );
@@ -32,7 +32,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 /** Text for a value the daemon omitted. Styled as absent so it can never be
  * mistaken for the value itself. */
 function Absent({ children }: { children: ReactNode }) {
-  return <span className="italic text-slate-600 dark:text-slate-400">{children}</span>;
+  return <span className="italic text-fg-muted">{children}</span>;
 }
 
 function StatusDetails({ status }: { status: GitSyncStatus }) {
@@ -94,7 +94,7 @@ function StatusDetails({ status }: { status: GitSyncStatus }) {
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <h3 className="text-sm font-semibold">Plan from the last cycle</h3>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+          <p className="mt-1 text-sm text-fg-muted">
             {status.planOpCount === 0
               ? "No operations — the document and the cluster agreed."
               : `${String(status.planOpCount)} operation${status.planOpCount === 1 ? "" : "s"} the document would make.`}
@@ -102,7 +102,7 @@ function StatusDetails({ status }: { status: GitSyncStatus }) {
           {status.plan !== undefined && status.plan.length > 0 && (
             <ul className="mt-2 flex flex-col gap-1">
               {status.plan.map((op) => (
-                <li key={op} className="font-mono text-xs text-slate-700 dark:text-slate-200">
+                <li key={op} className="font-mono text-xs text-fg-body">
                   {op}
                 </li>
               ))}
@@ -111,7 +111,7 @@ function StatusDetails({ status }: { status: GitSyncStatus }) {
         </div>
         <div>
           <h3 className="text-sm font-semibold">Not in the document</h3>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+          <p className="mt-1 text-sm text-fg-muted">
             {status.notInSpec === undefined || status.notInSpec.length === 0
               ? "Nothing — every managed entity on the cluster appears in the document."
               : `${String(status.notInSpec.length)} live entit${status.notInSpec.length === 1 ? "y is" : "ies are"} absent from the document. Reported, never deleted.`}
@@ -119,7 +119,7 @@ function StatusDetails({ status }: { status: GitSyncStatus }) {
           {status.notInSpec !== undefined && status.notInSpec.length > 0 && (
             <ul className="mt-2 flex flex-col gap-1">
               {status.notInSpec.map((ref) => (
-                <li key={ref} className="font-mono text-xs text-slate-700 dark:text-slate-200">
+                <li key={ref} className="font-mono text-xs text-fg-body">
                   {ref}
                 </li>
               ))}
@@ -129,9 +129,9 @@ function StatusDetails({ status }: { status: GitSyncStatus }) {
       </div>
 
       {status.openChangesetId !== undefined && status.openChangesetId !== "" && (
-        <div className="mt-4 rounded-md border border-slate-200 p-3 dark:border-slate-800">
+        <div className="mt-4 rounded-md border border-border p-3">
           <h3 className="text-sm font-semibold">The sync has a draft open</h3>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+          <p className="mt-1 text-sm text-fg-muted">
             {status.openChangesetReason ?? "The document and the cluster disagree."}
           </p>
           <Link
@@ -140,7 +140,7 @@ function StatusDetails({ status }: { status: GitSyncStatus }) {
           >
             Review the draft
           </Link>
-          <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+          <p className="mt-2 text-xs text-fg-muted">
             It is an ordinary changeset: vnprox staged it and applied nothing. Applying and confirming it are your
             own steps, in the ordinary review screen.
           </p>
@@ -154,8 +154,8 @@ function StatusDetails({ status }: { status: GitSyncStatus }) {
               key={`${issue.check}:${issue.detail}`}
               className="rounded-md border border-status-degraded bg-status-degraded-soft p-2 text-sm"
             >
-              <code className="font-mono text-xs text-slate-600 dark:text-slate-300">{issue.check}</code>{" "}
-              <span className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">
+              <code className="font-mono text-xs text-fg-muted">{issue.check}</code>{" "}
+              <span className="text-xs uppercase tracking-wide text-fg-muted">
                 {issue.severity}
               </span>
               <p className="mt-1 text-slate-800 dark:text-slate-100">{issue.detail}</p>
@@ -176,19 +176,19 @@ export function GitSyncPanel({ state }: { state: GitSyncState }) {
       </h2>
 
       {state.kind === "loading" && (
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Reading the git sync status…</p>
+        <p className="mt-1 text-sm text-fg-muted">Reading the git sync status…</p>
       )}
 
       {state.kind === "unreadable" && (
         <div
           role="alert"
-          className="mt-2 rounded-md border border-slate-300 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900"
+          className="mt-2 rounded-md border border-border-strong bg-slate-50 p-3 dark:bg-slate-900"
         >
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+          <p className="text-sm font-semibold text-fg">
             Could not read the git sync status
           </p>
-          <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">{state.message}</p>
-          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+          <p className="mt-1 text-sm text-fg-body">{state.message}</p>
+          <p className="mt-1 text-xs text-fg-muted">
             This is not the same as the sync being off — vnprox could not ask, so whatever the sync is doing, this
             screen cannot currently say.
           </p>
@@ -196,14 +196,14 @@ export function GitSyncPanel({ state }: { state: GitSyncState }) {
       )}
 
       {state.kind === "not-configured" && (
-        <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/60">
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Git sync is not configured</p>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+        <div className="mt-2 rounded-md border border-border bg-slate-50 p-3 dark:bg-slate-900/60">
+          <p className="text-sm font-semibold text-fg">Git sync is not configured</p>
+          <p className="mt-1 text-sm text-fg-muted">
             There is no <code className="font-mono text-xs">[gitsync]</code> section in this daemon&apos;s
             configuration. Nothing is fetched, no endpoint is contacted, and no draft is opened from a repository.
             The spec position below, if any, comes from the pinned document instead.
           </p>
-          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+          <p className="mt-1 text-xs text-fg-muted">
             Turning it on is a change to <code className="font-mono">vnprox.toml</code> on the node — there is
             deliberately no route that configures or triggers a sync from here.
           </p>
@@ -216,14 +216,14 @@ export function GitSyncPanel({ state }: { state: GitSyncState }) {
             role="alert"
             className="mt-2 rounded-md border border-status-critical bg-status-critical-soft p-3"
           >
-            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <p className="text-sm font-semibold text-fg">
               The last sync cycle failed
             </p>
             {/* The daemon's own message, verbatim. A bad ref, an unreachable
              * remote and an auth failure are different problems, and only
              * this string distinguishes them. */}
             <p className="mt-1 text-sm text-slate-800 dark:text-slate-100">{state.message}</p>
-            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+            <p className="mt-1 text-xs text-fg-muted">
               The sync retries on its next tick. A failing cycle stages nothing, so the details below are from the
               last cycle that got that far.
             </p>

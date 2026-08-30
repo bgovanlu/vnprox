@@ -42,7 +42,7 @@ function FwLogTabButton({ active, label, onClick }: { active: boolean; label: st
         "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
         active
           ? "bg-accent-soft text-accent-fg"
-          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/60",
+          : "text-fg-muted hover:bg-slate-100 dark:hover:bg-slate-800/60",
       )}
     >
       {label}
@@ -74,11 +74,11 @@ const STATUS_LABEL: Record<FwLogEntry["correlation"]["status"], string> = {
 
 const STATUS_BADGE_CLASS: Record<FwLogEntry["correlation"]["status"], string> = {
   rule: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
-  default_policy: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+  default_policy: "bg-slate-100 text-fg-muted dark:bg-slate-800",
   ambiguous: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
   unmatched: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
-  unknown_chain: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
-  no_guest_data: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+  unknown_chain: "bg-slate-100 text-fg-muted dark:bg-slate-800",
+  no_guest_data: "bg-slate-100 text-fg-muted dark:bg-slate-800",
 };
 
 function CorrelationCell({ entry }: { entry: FwLogEntry }) {
@@ -92,7 +92,7 @@ function CorrelationCell({ entry }: { entry: FwLogEntry }) {
     return (
       <Link to={ruleDeepLinkPath(correlation.rule)} className="flex items-center gap-1.5 hover:underline">
         {badge}
-        <span className="text-xs text-slate-600 dark:text-slate-400">view rule</span>
+        <span className="text-xs text-fg-muted">view rule</span>
       </Link>
     );
   }
@@ -113,20 +113,20 @@ function FilterBar({
         placeholder="node"
         value={filter.node}
         onChange={(e) => { onChange({ node: e.target.value }); }}
-        className="w-28 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-28 rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       />
       <input
         aria-label="Filter by guest vmid"
         placeholder="vmid"
         value={filter.vmid}
         onChange={(e) => { onChange({ vmid: e.target.value }); }}
-        className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-24 rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       />
       <select
         aria-label="Filter by direction"
         value={filter.direction}
         onChange={(e) => { onChange({ direction: e.target.value as FwLogFilterState["direction"] }); }}
-        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       >
         <option value="">any direction</option>
         <option value="in">in</option>
@@ -137,7 +137,7 @@ function FilterBar({
         placeholder="action (e.g. DROP)"
         value={filter.action}
         onChange={(e) => { onChange({ action: e.target.value }); }}
-        className="w-40 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-40 rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       />
     </div>
   );
@@ -184,7 +184,7 @@ export function FwLogViewer() {
             Firewall log
             <HelpAnchor topic="fwlog-viewer" />
           </h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
+          <p className="text-sm text-fg-muted">
             Cluster-wide pve-firewall log, live-following via WebSocket. Lines are correlated to the configured rule where
             determinable; ambiguous or unrecognized lines are labeled honestly rather than guessed (real pve-firewall log
             lines do not embed a rule position — see the completion report).
@@ -213,7 +213,7 @@ export function FwLogViewer() {
                 <button
                   type="button"
                   onClick={() => { dispatch({ type: "pause" }); }}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium dark:border-slate-700"
+                  className="rounded-md border border-border-strong px-3 py-1.5 text-sm font-medium"
                 >
                   Pause
                 </button>
@@ -221,7 +221,7 @@ export function FwLogViewer() {
               <button
                 type="button"
                 onClick={() => { dispatch({ type: "clear" }); }}
-                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium dark:border-slate-700"
+                className="rounded-md border border-border-strong px-3 py-1.5 text-sm font-medium"
               >
                 Clear
               </button>
@@ -235,12 +235,12 @@ export function FwLogViewer() {
             </p>
           )}
           {trimmedFromView > 0 && (
-            <p className="text-xs text-slate-600 dark:text-slate-400">
+            <p className="text-xs text-fg-muted">
               Showing the most recent {RENDER_CAP.toLocaleString()} of {visible.length.toLocaleString()} matching lines.
             </p>
           )}
 
-          {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
+          {isLoading && <p className="text-sm text-fg-muted">Loading…</p>}
           {error && (
             <EmptyState
               icon="fw-ruleset"

@@ -126,7 +126,7 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
       isValid: zoneId.trim().length > 0 && memberNodes.length > 0 && !sdnNameError(zoneId) && !peerListError,
       content: (
         <div className="space-y-3">
-          <p className="text-slate-600 dark:text-slate-300">{S.evpn.intro}</p>
+          <p className="text-fg-muted">{S.evpn.intro}</p>
           <SdnNameField label="Name" help={S.common.zoneNameHelp} value={zoneId} onChange={setZoneId} placeholder="dcevpn" />
           <NodeCheckboxList
             label="Member nodes"
@@ -162,9 +162,9 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
       isValid: true,
       content: (
         <div className="space-y-3">
-          <p className="text-slate-600 dark:text-slate-300">{S.evpn.exitNodesHelp}</p>
+          <p className="text-fg-muted">{S.evpn.exitNodesHelp}</p>
           <div className="flex flex-wrap gap-3">
-            {memberNodes.length === 0 && <p className="text-xs text-slate-600 dark:text-slate-400">Pick member nodes on the previous step first.</p>}
+            {memberNodes.length === 0 && <p className="text-xs text-fg-muted">Pick member nodes on the previous step first.</p>}
             {memberNodes.map((node) => (
               <label key={node} className="flex items-center gap-1.5 text-sm">
                 <input type="checkbox" checked={exitNodes.includes(node)} onChange={() => { toggleExitNode(node); }} />
@@ -172,11 +172,11 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
               </label>
             ))}
           </div>
-          {exitNodes.length > 0 && <p className="text-xs text-slate-600 dark:text-slate-400">{S.evpn.primaryExitHelp} ({exitNodes[0]})</p>}
+          {exitNodes.length > 0 && <p className="text-xs text-fg-muted">{S.evpn.primaryExitHelp} ({exitNodes[0]})</p>}
           <Field label="VRF VXLAN tag (optional)" help="Only needed for inter-VNet routing.">
             <input type="number" className={inputClass} value={vrfVxlan || ""} onChange={(e) => { setVrfVxlan(Number(e.target.value)); }} />
           </Field>
-          <p className="text-xs text-slate-600 dark:text-slate-400">{S.evpn.routeTargetExplain}</p>
+          <p className="text-xs text-fg-muted">{S.evpn.routeTargetExplain}</p>
         </div>
       ),
     },
@@ -203,9 +203,9 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
       isValid: !cap.denied,
       invalidReason: cap.reason,
       content: (
-        <div className="space-y-2 text-slate-600 dark:text-slate-300">
+        <div className="space-y-2 text-fg-muted">
           <div>
-            <h4 className="mb-1 text-xs font-medium text-slate-600 dark:text-slate-300">{S.evpn.sessionGraphHeading}</h4>
+            <h4 className="mb-1 text-xs font-medium text-fg-muted">{S.evpn.sessionGraphHeading}</h4>
             <p className="text-xs text-fg-subtle">{S.evpn.sessionGraphExplain}</p>
           </div>
           <p>This will draft:</p>

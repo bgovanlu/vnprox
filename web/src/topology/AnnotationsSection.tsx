@@ -67,13 +67,13 @@ export function AnnotationsSection({ entityRef }: AnnotationsSectionProps) {
 
   return (
     <div className="space-y-3 text-xs">
-      <p className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
+      <p className="flex items-center gap-1.5 text-fg-muted">
         <span>Sticky notes pinned to this entity — visible to every user, never a copy of any PVE config.</span>
         <HelpAnchor topic="map-annotations" />
       </p>
       <ul className="space-y-2">
         {notes.map((note) => (
-          <li key={note.id} className="rounded border border-slate-200 p-2 dark:border-slate-700">
+          <li key={note.id} className="rounded border border-border p-2">
             {note.orphaned && (
               <p className="mb-1 rounded bg-status-degraded-soft px-1 py-0.5 text-[10px] font-medium text-status-degraded">
                 {ORPHAN_BADGE}
@@ -82,8 +82,8 @@ export function AnnotationsSection({ entityRef }: AnnotationsSectionProps) {
             {/* The note text. Rendered as a text child, never as HTML: the
                 content is free text ANOTHER operator typed, and this is one
                 of the render paths T-2806 AC6 requires to escape it. */}
-            <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-200">{note.content}</p>
-            <div className="mt-1 flex items-center justify-between text-slate-600 dark:text-slate-400">
+            <p className="whitespace-pre-wrap text-fg-body">{note.content}</p>
+            <div className="mt-1 flex items-center justify-between text-fg-muted">
               <span>
                 {note.createdBy}
                 {note.expiresAt !== 0 && <span className="ml-2">{expiryLabel(note.expiresAt)}</span>}
@@ -101,7 +101,7 @@ export function AnnotationsSection({ entityRef }: AnnotationsSectionProps) {
             </div>
           </li>
         ))}
-        {notes.length === 0 && <li className="text-slate-600 dark:text-slate-400">No notes pinned to this entity yet.</li>}
+        {notes.length === 0 && <li className="text-fg-muted">No notes pinned to this entity yet.</li>}
       </ul>
       <div className="space-y-1.5">
         <label htmlFor="annotation-draft" className="sr-only">
@@ -116,7 +116,7 @@ export function AnnotationsSection({ entityRef }: AnnotationsSectionProps) {
           rows={2}
           maxLength={MAX_CONTENT_LENGTH}
           placeholder="Pin a note to this entity…"
-          className="w-full rounded border border-slate-200 bg-white p-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+          className="w-full rounded border border-border bg-white p-2 text-xs text-fg-body dark:bg-slate-900"
         />
         <div className="flex items-center gap-2">
           <label htmlFor="annotation-expiry" className="sr-only">
@@ -128,7 +128,7 @@ export function AnnotationsSection({ entityRef }: AnnotationsSectionProps) {
             onChange={(e) => {
               setExpiryDays(Number(e.target.value));
             }}
-            className="rounded border border-slate-200 bg-white p-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            className="rounded border border-border bg-white p-1 text-xs text-fg-body dark:bg-slate-900"
           >
             {EXPIRY_CHOICES.map((choice) => (
               <option key={choice.days} value={choice.days}>

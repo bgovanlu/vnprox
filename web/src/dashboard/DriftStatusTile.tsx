@@ -37,7 +37,7 @@ export function DriftStatusTile() {
       }}
       openLabel="Open findings"
     >
-      <p className="text-sm text-slate-700 dark:text-slate-200">
+      <p className="text-sm text-fg-body">
         <span className="font-semibold tabular-nums">{drift.length}</span>{" "}
         {drift.length === 1 ? "drift finding" : "drift findings"}
         {nodes.length > 0 ? ` across ${String(nodes.length)} ${nodes.length === 1 ? "node" : "nodes"}` : ""}

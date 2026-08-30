@@ -23,7 +23,7 @@ function UtilizationBar({ utilization, conflicts }: { utilization: number; confl
           style={{ width: `${String(pct)}%` }}
         />
       </div>
-      <span className="text-xs text-slate-600 dark:text-slate-400">{pct}%</span>
+      <span className="text-xs text-fg-muted">{pct}%</span>
     </div>
   );
 }
@@ -37,13 +37,13 @@ function SubnetRow({ subnet, selected, onSelect }: { subnet: IpamSubnet; selecte
         "flex w-full flex-col gap-1 rounded-lg border p-3 text-left transition-colors",
         selected
           ? "border-accent-500 bg-accent-soft/40"
-          : "border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800/60",
+          : "border-border bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60",
       )}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-sm font-medium">{subnet.cidr}</span>
         {subnet.readOnly && (
-          <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+          <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-fg-muted dark:bg-slate-700">
             read-only
           </span>
         )}
@@ -53,7 +53,7 @@ function SubnetRow({ subnet, selected, onSelect }: { subnet: IpamSubnet; selecte
           </span>
         )}
       </div>
-      <div className="text-xs text-slate-600 dark:text-slate-400">
+      <div className="text-xs text-fg-muted">
         {subnet.source === "sdn" ? `${subnet.zone ?? "?"} / ${subnet.vnet ?? "?"}` : subnet.node ? `bridge on ${subnet.node}` : "detected"}
         {subnet.gateway ? ` · gw ${subnet.gateway}` : ""}
         {subnet.dhcpEnabled ? " · DHCP" : ""}
@@ -78,14 +78,14 @@ function SubnetFacts({ subnet }: { subnet: IpamSubnet }) {
   facts.push({ label: "DHCP", value: subnet.dhcpEnabled ? "on" : "off" });
 
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
+    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-fg-muted">
       {facts.map((f) => (
         <span key={f.label}>
-          {f.label} <span className="font-medium text-slate-700 dark:text-slate-200">{f.value}</span>
+          {f.label} <span className="font-medium text-fg-body">{f.value}</span>
         </span>
       ))}
       {subnet.readOnly && (
-        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-fg-muted dark:bg-slate-700">
           read-only
         </span>
       )}
@@ -114,7 +114,7 @@ export function IpamPage() {
     <div className="flex h-full flex-col gap-3">
       <PageHeader title="IPAM" />
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading IPAM subnets…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading IPAM subnets…</p>}
       {isError && (
         <EmptyState
           icon="sdn-subnet"
@@ -144,12 +144,12 @@ export function IpamPage() {
 
       {!isLoading && !isError && data && data.items.length > 0 && (
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(240px,340px)_1fr] gap-3">
-          <div className="flex min-h-0 flex-col gap-2 overflow-y-auto rounded-lg border border-slate-200 p-2 dark:border-slate-800">
+          <div className="flex min-h-0 flex-col gap-2 overflow-y-auto rounded-lg border border-border p-2">
             {data.items.map((s) => (
               <SubnetRow key={s.cidr} subnet={s} selected={s.cidr === selected} onSelect={() => { setSelected(s.cidr); }} />
             ))}
           </div>
-          <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+          <div className="min-h-0 overflow-y-auto rounded-lg border border-border p-4">
             {!selectedSubnet && <EmptyState title="Nothing selected" description="Pick a subnet from the list." />}
             {selectedSubnet && (
               <div className="flex flex-col gap-4">

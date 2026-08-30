@@ -181,7 +181,7 @@ export function ConnectClustersWizard({ open, onOpenChange, initialSourceNode }:
       isValid: sourceNode.trim().length > 0 && ifName.trim().length > 0 && listenPort > 0 && listenPort < 65536 && localAddress.trim().length > 0,
       content: (
         <div className="space-y-3">
-          <p className="text-slate-600 dark:text-slate-300">{S.intro}</p>
+          <p className="text-fg-muted">{S.intro}</p>
           <Field label="Source node" help={S.sourceHelp.node}>
             <select
               className={inputClass}
@@ -234,7 +234,7 @@ export function ConnectClustersWizard({ open, onOpenChange, initialSourceNode }:
           : undefined,
       content: (
         <div className="space-y-3">
-          <p className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+          <p className="rounded border border-border bg-slate-50 p-2 text-xs text-fg-muted dark:bg-slate-900">
             {S.federationNote}
           </p>
           <Field label="Peer public key" help={S.peerHelp.publicKey}>
@@ -277,7 +277,7 @@ export function ConnectClustersWizard({ open, onOpenChange, initialSourceNode }:
       isValid: true,
       content: (
         <div className="space-y-3">
-          <p className="text-slate-600 dark:text-slate-300">
+          <p className="text-fg-muted">
             This will also add a firewall rule on {sourceNode || "the source node"} allowing UDP {listenPort || "?"} in — the tunnel doesn&apos;t
             work without it, so it is part of the same changeset as the tunnel itself, never a separate one.
           </p>
@@ -293,7 +293,7 @@ export function ConnectClustersWizard({ open, onOpenChange, initialSourceNode }:
       isValid: !capDenied && fwPos !== undefined,
       invalidReason: capReason,
       content: (
-        <div className="space-y-2 text-slate-600 dark:text-slate-300">
+        <div className="space-y-2 text-fg-muted">
           <p>This will draft:</p>
           <ul className="list-inside list-disc space-y-1">
             <li>

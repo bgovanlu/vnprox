@@ -51,7 +51,7 @@ export function ScopeToggle({ scope, target, enabled, node, guestLabel, vnetLabe
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded border border-slate-200 p-3 dark:border-slate-800">
+    <div className="flex flex-col gap-2 rounded border border-border p-3">
       <label className="flex items-center gap-2 text-sm font-medium">
         <input type="checkbox" checked={enabled} onChange={(e) => { requestToggle(e.target.checked); }} />
         {label} is {enabled ? "ON" : "OFF"}
@@ -63,7 +63,7 @@ export function ScopeToggle({ scope, target, enabled, node, guestLabel, vnetLabe
             <button type="button" onClick={confirmToggle} className="rounded bg-accent-600 px-2 py-1 font-medium text-white">
               Stage this change
             </button>
-            <button type="button" onClick={() => { setPendingEnable(undefined); }} className="rounded px-2 py-1 text-slate-600 dark:text-slate-300">
+            <button type="button" onClick={() => { setPendingEnable(undefined); }} className="rounded px-2 py-1 text-fg-muted">
               Cancel
             </button>
           </div>

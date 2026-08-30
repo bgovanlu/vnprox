@@ -9,11 +9,11 @@ import { HelpAnchor } from "../help/HelpAnchor";
 import { parseUnifiedDiff, type DiffLineKind } from "./parseDiff";
 
 const lineClasses: Record<DiffLineKind, string> = {
-  header: "text-slate-600 dark:text-slate-400 font-semibold",
+  header: "text-fg-muted font-semibold",
   hunk: "bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300",
   add: "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
   remove: "bg-red-50 text-red-800 dark:bg-red-950/60 dark:text-red-300",
-  context: "text-slate-600 dark:text-slate-300",
+  context: "text-fg-muted",
 };
 
 export interface DiffViewProps {
@@ -26,14 +26,14 @@ export function DiffView({ unified, className }: DiffViewProps) {
   const lines = parseUnifiedDiff(unified);
   if (lines.length === 0) {
     return (
-      <p className={clsx("text-sm text-slate-600 dark:text-slate-400", className)}>
+      <p className={clsx("text-sm text-fg-muted", className)}>
         No differences.
       </p>
     );
   }
   return (
     <div className={clsx("flex flex-col gap-1", className)}>
-      <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+      <div className="flex items-center gap-1.5 text-xs text-fg-muted">
         <span>Unified diff</span>
         <HelpAnchor topic="config-diff-view" />
       </div>

@@ -168,7 +168,7 @@ export function IncidentsPage() {
 
       <section aria-label="Open an incident" className="rounded border border-slate-700 p-3">
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col text-xs text-slate-600 dark:text-slate-400">
+          <label className="flex flex-col text-xs text-fg-muted">
             Title
             <input
               className="mt-1 w-64 rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-100"
@@ -179,7 +179,7 @@ export function IncidentsPage() {
               placeholder="vmbr0 down on pve2"
             />
           </label>
-          <label className="flex flex-col text-xs text-slate-600 dark:text-slate-400">
+          <label className="flex flex-col text-xs text-fg-muted">
             From (blank = now)
             <input
               type="datetime-local"
@@ -190,7 +190,7 @@ export function IncidentsPage() {
               }}
             />
           </label>
-          <label className="flex flex-col text-xs text-slate-600 dark:text-slate-400">
+          <label className="flex flex-col text-xs text-fg-muted">
             To (blank = still unfolding)
             <input
               type="datetime-local"
@@ -235,8 +235,8 @@ export function IncidentsPage() {
                     aria-current={incident.id === selectedId}
                     className="w-full border-b border-slate-100 px-3 py-2 text-left hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800"
                   >
-                    <span className="block text-sm text-slate-900 dark:text-slate-100">{incident.title}</span>
-                    <span className="block text-xs text-slate-600 dark:text-slate-400">
+                    <span className="block text-sm text-fg">{incident.title}</span>
+                    <span className="block text-xs text-fg-muted">
                       {incident.status === "open" ? "Open" : "Closed"} · {formatTime(incident.startedAt)}
                       {incident.retroactive ? " · retroactive" : ""}
                     </span>
@@ -251,7 +251,7 @@ export function IncidentsPage() {
           {!selectedId ? (
             <EmptyState title="Select an incident" description="Its timeline appears here." />
           ) : timelineQuery.isPending ? (
-            <p className="text-sm text-slate-600 dark:text-slate-400">Assembling the timeline…</p>
+            <p className="text-sm text-fg-muted">Assembling the timeline…</p>
           ) : timelineQuery.isError ? (
             <EmptyState
               icon="node"
@@ -268,8 +268,8 @@ export function IncidentsPage() {
             <div className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{timeline.incident.title}</h2>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">{windowLabel(timeline)}</p>
+                  <h2 className="text-lg font-semibold text-fg">{timeline.incident.title}</h2>
+                  <p className="text-xs text-fg-muted">{windowLabel(timeline)}</p>
                 </div>
                 <div className="flex gap-2">
                   {timeline.incident.status === "open" ? (
@@ -292,7 +292,7 @@ export function IncidentsPage() {
                     </Button>
                   )}
                   <a
-                    className="inline-flex items-center rounded border border-slate-300 px-3 py-1 text-sm text-slate-900 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800"
+                    className="inline-flex items-center rounded border border-border-strong px-3 py-1 text-sm text-fg hover:bg-slate-100 dark:hover:bg-slate-800"
                     href={incidentExportUrl(timeline.incident.id)}
                     download
                   >
@@ -306,7 +306,7 @@ export function IncidentsPage() {
                   data-testid="incident-diff"
                   className={
                     diff.available
-                      ? "rounded border border-slate-200 p-2 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300"
+                      ? "rounded border border-border p-2 text-sm text-fg-muted"
                       : "rounded border border-amber-300 p-2 text-sm text-amber-800 dark:border-amber-700 dark:text-amber-200"
                   }
                 >
@@ -325,7 +325,7 @@ export function IncidentsPage() {
               ) : null}
 
               {timeline.caveats.length > 0 ? (
-                <ul data-testid="incident-caveats" className="rounded border border-slate-200 p-2 text-xs text-slate-600 dark:border-slate-700 dark:text-slate-400">
+                <ul data-testid="incident-caveats" className="rounded border border-border p-2 text-xs text-fg-muted">
                   {timeline.caveats.map((caveat) => (
                     <li key={caveat}>{caveat}</li>
                   ))}
@@ -333,7 +333,7 @@ export function IncidentsPage() {
               ) : null}
 
               <div className="flex items-end gap-2">
-                <label className="flex flex-1 flex-col text-xs text-slate-600 dark:text-slate-400">
+                <label className="flex flex-1 flex-col text-xs text-fg-muted">
                   Add a note
                   <input
                     className="mt-1 rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-100"
@@ -366,14 +366,14 @@ export function IncidentsPage() {
                 <ol data-testid="incident-events" className="flex flex-col">
                   {events.map((event) => (
                     <li key={event.id} data-source={event.source} className="flex gap-3 border-b border-slate-100 py-1 text-sm dark:border-slate-800">
-                      <span className="w-40 shrink-0 text-xs text-slate-600 dark:text-slate-400">{formatTime(event.at)}</span>
+                      <span className="w-40 shrink-0 text-xs text-fg-muted">{formatTime(event.at)}</span>
                       <Tooltip content={sourceLabel(event.source)}>
-                        <span aria-label={sourceLabel(event.source)} className="w-5 shrink-0 text-slate-600 dark:text-slate-400">
+                        <span aria-label={sourceLabel(event.source)} className="w-5 shrink-0 text-fg-muted">
                           {sourceGlyph(event.source)}
                         </span>
                       </Tooltip>
-                      <span className="min-w-0 flex-1 text-slate-700 dark:text-slate-200">{event.summary}</span>
-                      {event.actor ? <span className="shrink-0 text-xs text-slate-600 dark:text-slate-400">{event.actor}</span> : null}
+                      <span className="min-w-0 flex-1 text-fg-body">{event.summary}</span>
+                      {event.actor ? <span className="shrink-0 text-xs text-fg-muted">{event.actor}</span> : null}
                     </li>
                   ))}
                 </ol>

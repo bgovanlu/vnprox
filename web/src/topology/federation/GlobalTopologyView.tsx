@@ -36,7 +36,7 @@ const INTERCONNECT_ICON: Record<InterconnectState, string> = { up: "●", down: 
 const INTERCONNECT_LIST_ITEM_CLASS: Record<InterconnectState, string> = {
   up: "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200",
   down: "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200",
-  unknown: "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  unknown: "border-border-strong bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
 };
 
 /** Every edge state's line paint, mirroring canvasDraw.ts's own statusBorder/
@@ -118,7 +118,7 @@ export function GlobalTopologyView({ clusters, partial, onDrill }: GlobalTopolog
             Global map
             <HelpAnchor topic="federation" />
           </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
+          <p className="text-sm text-fg-muted">
             {clusters.length} attached clusters — select one to open its topology.
           </p>
         </div>
@@ -156,7 +156,7 @@ export function GlobalTopologyView({ clusters, partial, onDrill }: GlobalTopolog
         </svg>
 
         <div
-          className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
+          className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full border border-border-strong bg-white px-2 py-1 text-xs font-medium text-fg-muted dark:bg-slate-900"
           style={{ left: `${String(HUB_POSITION.x)}%`, top: `${String(HUB_POSITION.y)}%` }}
           title="This vnprox instance — the WireGuard interconnect hub every linked tunnel originates from"
         >

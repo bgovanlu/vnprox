@@ -37,7 +37,7 @@ export function PlatformSection({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+    <section className="rounded-lg border border-border p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -45,7 +45,7 @@ export function PlatformSection({
             <HelpAnchor topic={helpTopic} />
           </h2>
           {description !== undefined && (
-            <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">{description}</p>
+            <p className="mt-0.5 text-xs text-fg-muted">{description}</p>
           )}
         </div>
         {actions}
@@ -145,7 +145,7 @@ export function RefusalNotice({
  * from a value that failed to load. */
 export function UnixTime({ at, absent = "—" }: { at: number | undefined; absent?: string }) {
   if (at === undefined) {
-    return <span className="text-slate-600 dark:text-slate-400">{absent}</span>;
+    return <span className="text-fg-muted">{absent}</span>;
   }
   const d = new Date(at * 1000);
   return <time dateTime={d.toISOString()}>{d.toLocaleString()}</time>;
@@ -158,8 +158,8 @@ export function ScopeChip({ name, tone = "neutral" }: { name: string; tone?: "ne
       className={clsx(
         "rounded px-1.5 py-0.5 font-mono text-[11px]",
         tone === "removed"
-          ? "bg-slate-100 text-slate-600 line-through dark:bg-slate-800 dark:text-slate-400"
-          : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+          ? "bg-slate-100 text-fg-muted line-through dark:bg-slate-800"
+          : "bg-slate-100 text-fg-muted dark:bg-slate-800",
       )}
     >
       {name}
@@ -171,7 +171,7 @@ export function ScopeChip({ name, tone = "neutral" }: { name: string; tone?: "ne
  * a fact and should read as one. */
 export function ScopeChips({ names, empty = "none" }: { names: readonly string[]; empty?: string }) {
   if (names.length === 0) {
-    return <span className="text-xs italic text-slate-600 dark:text-slate-400">{empty}</span>;
+    return <span className="text-xs italic text-fg-muted">{empty}</span>;
   }
   return (
     <span className="inline-flex flex-wrap gap-1">

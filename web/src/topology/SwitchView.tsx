@@ -51,7 +51,7 @@ function FreePort({
         onClick={() => {
           onExpandGroup(port.ref);
         }}
-        className="flex items-center gap-1.5 rounded border border-dashed border-slate-400 bg-slate-100 px-2 py-1 text-xs text-slate-600 hover:border-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+        className="flex items-center gap-1.5 rounded border border-dashed border-slate-400 bg-slate-100 px-2 py-1 text-xs text-fg-muted hover:border-slate-600 dark:border-slate-600 dark:bg-slate-800"
       >
         <StatusLed status="unknown" />
         <span className="font-mono">{port.label}</span>
@@ -74,15 +74,15 @@ function FreePort({
       onClick={() => {
         onSelect(port.ref);
       }}
-      className="flex items-center gap-1.5 rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:border-accent-500 dark:border-slate-600 dark:bg-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500"
+      className="flex items-center gap-1.5 rounded border border-border-strong bg-white px-2 py-1 text-xs hover:border-accent-500 dark:bg-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500"
     >
       <StatusLed status={port.status} />
       {!isBond && <PortJack kind={bodyForNic(member?.mediaPort)} status={port.status} />}
-      <span className="font-mono text-slate-700 dark:text-slate-200">{port.label}</span>
+      <span className="font-mono text-fg-body">{port.label}</span>
       {(() => {
         const speed = speedMarking(member?.speedMbps);
         return speed ? (
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+          <span className="text-[9px] font-semibold uppercase tracking-wider text-fg-muted">
             {speed}
           </span>
         ) : null;
@@ -92,7 +92,7 @@ function FreePort({
           against the dark:bg-slate-900 it happened to also render on,
           6.78:1). slate-600 dark:slate-400 clears both explicitly
           (7.58:1 / 6.78:1). */}
-      <span className="text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-400">
+      <span className="text-[10px] uppercase tracking-wide text-fg-muted">
         {isBond ? "bond" : "nic"}
       </span>
     </button>
@@ -134,13 +134,13 @@ export function SwitchView({
           return (
             <section key={group.node} aria-label={`node ${group.node}`}>
               <div className="mb-2 flex items-center gap-2">
-                <h2 className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-200">{group.node}</h2>
+                <h2 className="font-mono text-sm font-semibold text-fg-body">{group.node}</h2>
                 <HelpAnchor topic="switch-push" />
                 {/* T-2004: text-slate-400 dark:text-slate-400 (identical
                     both themes) measured 2.4:1 against this page's
                     bg-slate-100 — passes only in dark mode. slate-600
                     clears AA with margin (6.92:1). */}
-                <span className="text-xs text-slate-600 dark:text-slate-400">
+                <span className="text-xs text-fg-muted">
                   {group.switches.length} switch{group.switches.length === 1 ? "" : "es"}
                 </span>
                 {stale && (
@@ -175,12 +175,12 @@ export function SwitchView({
                 ))}
               </div>
               {activeLayers.has("phys") && group.freePorts.length > 0 && (
-                <div className="mt-2 rounded-lg border border-dashed border-slate-300 p-2 dark:border-slate-700">
+                <div className="mt-2 rounded-lg border border-dashed border-border-strong p-2">
                   {/* T-2004: text-slate-400 dark:text-slate-400 (identical
                       both themes) measured 2.4:1 against bg-slate-100 —
                       passes only in dark mode. slate-600 clears AA with
                       margin (6.92:1). */}
-                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-fg-muted">
                     Unattached ports
                   </div>
                   <div className="flex flex-wrap gap-1.5">

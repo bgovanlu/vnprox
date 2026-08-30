@@ -21,7 +21,7 @@ export function HelpText({ children }: HelpTextProps) {
         const key = `${String(i)}:${token.kind}`;
         if (token.kind === "bold") {
           return (
-            <strong key={key} className="font-semibold text-slate-900 dark:text-slate-100">
+            <strong key={key} className="font-semibold text-fg">
               {token.text}
             </strong>
           );

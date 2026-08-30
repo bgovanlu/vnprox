@@ -47,7 +47,7 @@ export function RecentAuditTile() {
       <ul className="flex flex-col gap-1.5">
         {items.map((entry) => (
           <li key={entry.id} className="flex items-center justify-between gap-2 text-sm">
-            <span className="truncate text-slate-700 dark:text-slate-200" title={describe(entry)}>
+            <span className="truncate text-fg-body" title={describe(entry)}>
               {describe(entry)}
             </span>
             <span className="shrink-0 text-xs text-fg-subtle" data-volatile-time>

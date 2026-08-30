@@ -128,7 +128,7 @@ export function Progress(props: SingleProgressProps | SegmentedProgressProps) {
           style={{ width: `${String(pct)}%` }}
         />
       </div>
-      {props.showValueText ? <span className="text-xs text-slate-600 dark:text-slate-400">{Math.round(pct)}%</span> : null}
+      {props.showValueText ? <span className="text-xs text-fg-muted">{Math.round(pct)}%</span> : null}
     </div>
   );
 }

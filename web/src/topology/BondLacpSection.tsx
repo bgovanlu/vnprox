@@ -71,12 +71,12 @@ export function BondLacpSection({ fields }: { fields: Record<string, unknown> })
   const slaves = allSlaves.filter((s) => s.LACPDetailSet);
 
   if (allSlaves.length === 0) {
-    return <p className="text-xs text-slate-600 dark:text-slate-400">No slave detail reported for this bond yet.</p>;
+    return <p className="text-xs text-fg-muted">No slave detail reported for this bond yet.</p>;
   }
 
   if (slaves.length === 0) {
     return (
-      <p className="text-xs text-slate-600 dark:text-slate-400">
+      <p className="text-xs text-fg-muted">
         No 802.3ad LACP negotiation detail available{mode ? ` (bond mode: ${mode})` : ""} — this bond may not be
         running LACP, or the kernel/driver on this node doesn&apos;t report actor/partner PDU detail.
       </p>
@@ -93,7 +93,7 @@ export function BondLacpSection({ fields }: { fields: Record<string, unknown> })
 
   return (
     <div className="space-y-3 text-xs">
-      <p className="flex items-center gap-1.5 font-medium text-slate-600 dark:text-slate-300">
+      <p className="flex items-center gap-1.5 font-medium text-fg-muted">
         Live LACP state
         <HelpAnchor topic="bond-lacp-state" />
       </p>
@@ -116,9 +116,9 @@ export function BondLacpSection({ fields }: { fields: Record<string, unknown> })
         {slaves.map((s) => {
           const ok = isNegotiated(s);
           return (
-            <li key={s.Name} className="rounded border border-slate-200 p-2 dark:border-slate-700">
+            <li key={s.Name} className="rounded border border-border p-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-slate-700 dark:text-slate-200">{s.Name}</span>
+                <span className="font-medium text-fg-body">{s.Name}</span>
                 <span
                   className={clsx(
                     "rounded px-1.5 py-0.5 text-[10px] font-medium",
@@ -132,11 +132,11 @@ export function BondLacpSection({ fields }: { fields: Record<string, unknown> })
               </div>
               <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-fg-subtle">
                 <dt>Actor system</dt>
-                <dd className="text-slate-700 dark:text-slate-200">
+                <dd className="text-fg-body">
                   {s.ActorSystemID} (priority {s.ActorSystemPriority}, key {s.ActorKey})
                 </dd>
                 <dt>Partner system</dt>
-                <dd className="text-slate-700 dark:text-slate-200">
+                <dd className="text-fg-body">
                   {s.PartnerSystemID} (priority {s.PartnerSystemPriority}, key {s.PartnerKey})
                 </dd>
                 <dt>State</dt>

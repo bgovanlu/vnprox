@@ -103,7 +103,7 @@ export default function MonacoRawEditor({ value, onChange, markers, readOnly = f
   return (
     <div
       ref={containerRef}
-      className="h-full min-h-[420px] w-full rounded-md border border-slate-300 dark:border-slate-700"
+      className="h-full min-h-[420px] w-full rounded-md border border-border-strong"
     />
   );
 }

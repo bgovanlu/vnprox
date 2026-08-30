@@ -43,7 +43,7 @@ export const VlanFilterInput = forwardRef<HTMLInputElement, VlanFilterInputProps
   }
 
   return (
-    <form onSubmit={submit} className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-white/90 px-2 py-1 shadow-sm dark:border-slate-700 dark:bg-slate-900/90">
+    <form onSubmit={submit} className="flex items-center gap-1.5 rounded-md border border-border bg-white/90 px-2 py-1 shadow-sm dark:bg-slate-900/90">
       <label htmlFor="vlan-filter-input" className="text-xs text-fg-subtle">
         VLAN
       </label>
@@ -57,7 +57,7 @@ export const VlanFilterInput = forwardRef<HTMLInputElement, VlanFilterInputProps
         onChange={(e) => {
           setDraft(e.target.value);
         }}
-        className="w-16 rounded border border-slate-200 bg-transparent px-1.5 py-0.5 text-xs outline-none focus:border-accent-500 dark:border-slate-700"
+        className="w-16 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs outline-none focus:border-accent-500"
       />
       <Button type="submit" size="sm" variant="ghost">
         Apply

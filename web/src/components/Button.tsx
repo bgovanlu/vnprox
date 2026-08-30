@@ -69,9 +69,9 @@ const variantClasses: Record<ButtonVariant, string> = {
   primary:
     "bg-accent-600 text-white hover:bg-accent-500 focus-visible:outline-accent-500 disabled:bg-accent-600/50",
   secondary:
-    "bg-slate-200 text-slate-900 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700",
+    "bg-slate-200 text-fg hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700",
   ghost:
-    "bg-transparent text-slate-700 hover:bg-slate-200/70 dark:text-slate-200 dark:hover:bg-slate-800/70",
+    "bg-transparent text-fg-body hover:bg-slate-200/70 dark:hover:bg-slate-800/70",
   destructive: "bg-red-600 text-white hover:bg-red-500 focus-visible:outline-red-500",
 };
 

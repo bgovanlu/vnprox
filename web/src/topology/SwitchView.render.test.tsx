@@ -275,9 +275,15 @@ describe("SwitchView / SwitchFaceplate — T-2004 contrast fixes", () => {
     renderView();
     const [label] = screen.getAllByText(/^\d+ switch(es)?$/);
     if (!label) throw new Error("expected a switch-count label");
-    expect(label.className).toContain("text-slate-600");
-    expect(label.className).toContain("dark:text-slate-400");
-    expect(label.className).not.toContain("text-slate-400 dark:text-slate-400");
+    // T-4215: was `text-slate-600 dark:text-slate-400` spelled out. That pair
+    // IS `--color-fg-muted` (#475569/#94a3b8, byte-identical in both themes),
+    // so the conversion changed no pixel — but it did change what this test
+    // should assert. Pinning the token rather than the two steps keeps the
+    // guard pointed at the property (this label is legible in light mode,
+    // where the old slate-400/slate-400 pairing measured 2.4:1) instead of at
+    // one spelling of it.
+    expect(label.className).toContain("text-fg-muted");
+    expect(label.className).not.toContain("text-slate-400");
   });
 
   // T-3503 rewrote the chassis header from a light `bg-indigo-50` bar into a
@@ -312,8 +318,8 @@ describe("SwitchView / SwitchFaceplate — T-2004 contrast fixes", () => {
     // nesting only made a faceplate redesign look like a contrast
     // regression.
     const nicKeySpan = within(port).getByText("net0");
-    expect(nicKeySpan.className).toContain("text-slate-600");
-    expect(nicKeySpan.className).not.toContain("text-slate-400 dark:text-slate-400");
+    expect(nicKeySpan.className).toContain("text-fg-muted"); // was text-slate-600, T-4215
+    expect(nicKeySpan.className).not.toContain("text-slate-400");
     const vidMarker = within(port).getByText("·100");
     expect(vidMarker.className).toContain("text-violet-700");
     expect(vidMarker.className).not.toContain("text-violet-500");
@@ -360,11 +366,10 @@ describe("SwitchView / SwitchFaceplate — T-2004 contrast fixes", () => {
       </div>,
     );
     const sectionLabel = screen.getByText("Unattached ports");
-    expect(sectionLabel.className).toContain("text-slate-600");
-    expect(sectionLabel.className).not.toContain("text-slate-400 dark:text-slate-400");
+    expect(sectionLabel.className).toContain("text-fg-muted"); // was text-slate-600, T-4215
+    expect(sectionLabel.className).not.toContain("text-slate-400");
 
     const tag = screen.getByText("nic");
-    expect(tag.className).toContain("text-slate-600");
-    expect(tag.className).toContain("dark:text-slate-400");
+    expect(tag.className).toContain("text-fg-muted"); // was the slate pair, T-4215
   });
 });

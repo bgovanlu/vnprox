@@ -30,14 +30,14 @@ function SeverityBadge({ severity }: { severity: string }) {
 function FreezeWindowRow({ w }: { w: FreezeWindowView }) {
   const summary = freezeWindowSummary(w);
   return (
-    <li className="rounded border border-slate-200 p-2 dark:border-slate-700" data-testid="freeze-window-row">
+    <li className="rounded border border-border p-2" data-testid="freeze-window-row">
       <div className="flex items-center gap-2">
         <span className="font-medium">{w.ruleId}</span>
         <SeverityBadge severity={w.severity} />
       </div>
-      <p className="text-slate-600 dark:text-slate-300">{w.description}</p>
+      <p className="text-fg-muted">{w.description}</p>
       {summary !== undefined ? (
-        <p className="mt-1 font-mono text-xs text-slate-700 dark:text-slate-200">{summary}</p>
+        <p className="mt-1 font-mono text-xs text-fg-body">{summary}</p>
       ) : (
         <p className="mt-1 text-xs italic text-fg-subtle">
           This window's time conditions are too irregular for the calendar to summarize — see the rule's own match
@@ -63,23 +63,23 @@ export function CalendarPanel() {
         <h2 className="text-base font-semibold">Change calendar</h2>
         <HelpAnchor topic="freeze-windows" />
       </div>
-      <p className="text-sm text-slate-600 dark:text-slate-300">
+      <p className="text-sm text-fg-muted">
         Every declared freeze window in the installed policy set, alongside every changeset currently scheduled to
         apply in a future maintenance window. Nothing on this page is the enforcement — a freeze blocks (or a
         schedule fires) inside the change engine, at validate/fire time, exactly as it would if this page did not
         exist.
       </p>
 
-      {query.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Reading the calendar…</p>}
+      {query.isLoading && <p className="text-sm text-fg-muted">Reading the calendar…</p>}
 
       {notConfigured && (
-        <p className="text-sm text-slate-600 dark:text-slate-300">
+        <p className="text-sm text-fg-muted">
           This daemon has no policy store wired, so there are no declared freeze windows to show. Pending schedules,
           if any, still render below.
         </p>
       )}
       {unreadable && (
-        <p className="text-sm text-slate-700 dark:text-slate-200" role="status">
+        <p className="text-sm text-fg-body" role="status">
           The calendar could not be read. The daemon said:{" "}
           {query.error instanceof Error ? query.error.message : "the read failed"}
         </p>
@@ -90,7 +90,7 @@ export function CalendarPanel() {
           <div>
             <h3 className="text-sm font-semibold">Declared freeze windows</h3>
             {windows.length === 0 ? (
-              <p className="text-sm text-slate-600 dark:text-slate-400">
+              <p className="text-sm text-fg-muted">
                 None declared. A freeze window is an ordinary policy rule tagged <code>freeze</code> — see the
                 Policies tab.
               </p>
@@ -106,7 +106,7 @@ export function CalendarPanel() {
           <div>
             <h3 className="text-sm font-semibold">Pending scheduled changesets</h3>
             {schedules.length === 0 ? (
-              <p className="text-sm text-slate-600 dark:text-slate-400">Nothing is currently scheduled.</p>
+              <p className="text-sm text-fg-muted">Nothing is currently scheduled.</p>
             ) : (
               <ul className="mt-1 flex flex-col gap-1.5 text-sm">
                 {schedules.map((s) => {
@@ -114,7 +114,7 @@ export function CalendarPanel() {
                   return (
                     <li
                       key={s.changesetId}
-                      className="rounded border border-slate-200 p-2 dark:border-slate-700"
+                      className="rounded border border-border p-2"
                       data-testid="pending-schedule-row"
                     >
                       <p>

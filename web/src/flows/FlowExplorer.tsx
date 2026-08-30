@@ -104,35 +104,35 @@ function FilterBar({ filter, onChange }: { filter: FlowFilterState; onChange: (p
         placeholder="guest ref"
         value={filter.guest}
         onChange={(e) => { onChange({ guest: e.target.value }); }}
-        className="w-48 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-48 rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       />
       <input
         aria-label="Filter by VLAN"
         placeholder="vlan"
         value={filter.vlan}
         onChange={(e) => { onChange({ vlan: e.target.value }); }}
-        className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-20 rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       />
       <input
         aria-label="Filter by subnet (CIDR)"
         placeholder="subnet (CIDR)"
         value={filter.subnet}
         onChange={(e) => { onChange({ subnet: e.target.value }); }}
-        className="w-36 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-36 rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       />
       <input
         aria-label="Filter by port"
         placeholder="port"
         value={filter.port}
         onChange={(e) => { onChange({ port: e.target.value }); }}
-        className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-20 rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       />
       <input
         aria-label="Filter by protocol"
         placeholder="protocol (e.g. tcp)"
         value={filter.protocol}
         onChange={(e) => { onChange({ protocol: e.target.value }); }}
-        className="w-36 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-36 rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       />
     </div>
   );
@@ -244,7 +244,7 @@ export function FlowExplorer() {
                 className={
                   state.view === v
                     ? "rounded-md bg-accent-soft px-3 py-1.5 text-sm font-medium text-accent-fg"
-                    : "rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/60"
+                    : "rounded-md px-3 py-1.5 text-sm font-medium text-fg-muted hover:bg-slate-100 dark:hover:bg-slate-800/60"
                 }
               >
                 {v === "raw" ? "Flows" : "Conversations"}
@@ -276,7 +276,7 @@ export function FlowExplorer() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <FilterBar filter={state.filter} onChange={(patch) => { dispatch({ type: "setFilter", filter: patch }); }} />
         <div className="flex items-center gap-2">
-          <label className="text-sm text-slate-600 dark:text-slate-400" htmlFor="flow-sort">
+          <label className="text-sm text-fg-muted" htmlFor="flow-sort">
             Sort
           </label>
           <select
@@ -284,7 +284,7 @@ export function FlowExplorer() {
             aria-label="Sort by"
             value={state.sort}
             onChange={(e) => { dispatch({ type: "setSort", sort: e.target.value as FlowSortKey }); }}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
           >
             <option value="recency">Most recent</option>
             <option value="bytes">Bytes</option>
@@ -293,7 +293,7 @@ export function FlowExplorer() {
           <button
             type="button"
             onClick={() => { dispatch({ type: "clear" }); }}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium dark:border-slate-700"
+            className="rounded-md border border-border-strong px-3 py-1.5 text-sm font-medium"
           >
             Clear buffer
           </button>
@@ -306,7 +306,7 @@ export function FlowExplorer() {
         </p>
       )}
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading…</p>}
       {error && (
         <EmptyState
           icon="port"
@@ -440,7 +440,7 @@ function FlowRow({ record, k8sIndex }: { record: FlowRecord; k8sIndex: K8sAttrib
       <TableCell>{record.vlan ?? "—"}</TableCell>
       <TableCell className="text-xs">{serviceClassLabel(record.serviceClass)}</TableCell>
       <TableCell className="text-xs">{k8sServiceLabel(k8sIndex, record)}</TableCell>
-      <TableCell className="text-xs text-slate-600 dark:text-slate-400">{record.source}</TableCell>
+      <TableCell className="text-xs text-fg-muted">{record.source}</TableCell>
     </TableRow>
   );
 }

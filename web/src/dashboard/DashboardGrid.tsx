@@ -88,10 +88,10 @@ export function DashboardGrid() {
             <RadixDropdown.Content
               align="end"
               sideOffset={6}
-              className="z-50 min-w-[14rem] rounded-md border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+              className="z-50 min-w-[14rem] rounded-md border border-border bg-white p-1 shadow-lg dark:bg-slate-900"
             >
               {addable.length === 0 ? (
-                <p className="px-2 py-1.5 text-xs text-slate-600 dark:text-slate-400">
+                <p className="px-2 py-1.5 text-xs text-fg-muted">
                   Every available tile is already on your dashboard.
                 </p>
               ) : (
@@ -113,8 +113,8 @@ export function DashboardGrid() {
       </div>
 
       {resolved.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 py-8 text-center dark:border-slate-700">
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">No tiles on your dashboard</span>
+        <div className="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border-strong py-8 text-center">
+          <span className="text-sm font-medium text-fg-body">No tiles on your dashboard</span>
           <span className="max-w-xs text-xs text-fg-subtle">
             Use "Add tile" above to bring one back.
           </span>
@@ -133,7 +133,7 @@ export function DashboardGrid() {
                     onClick={() => {
                       persist(moveTile(tiles, r.ref.id, "earlier"));
                     }}
-                    className="rounded p-1 text-xs leading-none text-slate-600 hover:bg-slate-200 disabled:pointer-events-none disabled:opacity-30 dark:text-slate-400 dark:hover:bg-slate-800"
+                    className="rounded p-1 text-xs leading-none text-fg-muted hover:bg-slate-200 disabled:pointer-events-none disabled:opacity-30 dark:hover:bg-slate-800"
                   >
                     <span aria-hidden>↑</span>
                   </button>
@@ -144,7 +144,7 @@ export function DashboardGrid() {
                     onClick={() => {
                       persist(moveTile(tiles, r.ref.id, "later"));
                     }}
-                    className="rounded p-1 text-xs leading-none text-slate-600 hover:bg-slate-200 disabled:pointer-events-none disabled:opacity-30 dark:text-slate-400 dark:hover:bg-slate-800"
+                    className="rounded p-1 text-xs leading-none text-fg-muted hover:bg-slate-200 disabled:pointer-events-none disabled:opacity-30 dark:hover:bg-slate-800"
                   >
                     <span aria-hidden>↓</span>
                   </button>
@@ -154,7 +154,7 @@ export function DashboardGrid() {
                     onClick={() => {
                       persist(removeTile(tiles, r.ref.id));
                     }}
-                    className="rounded p-1 text-xs leading-none text-slate-600 hover:bg-red-100 hover:text-red-600 dark:text-slate-400 dark:hover:bg-red-900/40 dark:hover:text-red-400"
+                    className="rounded p-1 text-xs leading-none text-fg-muted hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/40 dark:hover:text-red-400"
                   >
                     <span aria-hidden>✕</span>
                   </button>

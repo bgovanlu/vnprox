@@ -47,7 +47,7 @@ function severityBadgeClass(severity: Finding["severity"]): string {
     case "warning":
       return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
     default:
-      return "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300";
+      return "bg-slate-100 text-fg-muted dark:bg-slate-800";
   }
 }
 
@@ -160,7 +160,7 @@ export function ChangesetDrawer() {
           // original bottom-right-anchored max-w-sm box once there's room.
           "fixed inset-x-4 bottom-4 z-30 flex flex-col overflow-hidden rounded-lg border shadow-xl",
           "sm:inset-x-auto sm:left-auto sm:right-4 sm:w-full sm:max-w-sm",
-          "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900",
+          "border-border bg-white dark:bg-slate-900",
         )}
       >
         {/* The `?` is a sibling of the collapse toggle, not a child of it:
@@ -228,10 +228,10 @@ export function ChangesetDrawer() {
               </div>
             )}
 
-            {!changeset && <p className="text-xs text-slate-600 dark:text-slate-400">No active draft. Edit anything to start one.</p>}
+            {!changeset && <p className="text-xs text-fg-muted">No active draft. Edit anything to start one.</p>}
 
             {changeset && changeset.ops.length === 0 && (
-              <p className="text-xs text-slate-600 dark:text-slate-400">This draft has no ops yet.</p>
+              <p className="text-xs text-fg-muted">This draft has no ops yet.</p>
             )}
 
             {changeset && changeset.ops.length > 0 && (
@@ -239,20 +239,20 @@ export function ChangesetDrawer() {
                 {changeset.ops.map((op, i) => {
                   const opFindings = findingsForOp(changeset.findings, op);
                   return (
-                    <li key={`${op.op}-${op.target ?? "none"}-${String(i)}`} className="rounded border border-slate-200 p-2 dark:border-slate-700">
+                    <li key={`${op.op}-${op.target ?? "none"}-${String(i)}`} className="rounded border border-border p-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <span className="mr-1 shrink-0 rounded bg-slate-200/70 px-1 py-0.5 text-[10px] uppercase text-fg-muted dark:bg-slate-700/70 dark:text-slate-300">
                             {opKindLabel(op)}
                           </span>
-                          <span className="text-xs text-slate-700 dark:text-slate-200">{summarizeOp(op)}</span>
+                          <span className="text-xs text-fg-body">{summarizeOp(op)}</span>
                         </div>
                         {editUiEnabled && (
                           <div className="flex shrink-0 gap-0.5">
                             <button
                               type="button"
                               aria-label="Move up"
-                              className="px-1 text-slate-600 dark:text-slate-400 hover:text-slate-700 disabled:opacity-30 dark:hover:text-slate-200"
+                              className="px-1 text-fg-muted hover:text-slate-700 disabled:opacity-30 dark:hover:text-slate-200"
                               disabled={i === 0}
                               onClick={() => {
                                 moveOp(i, -1);
@@ -263,7 +263,7 @@ export function ChangesetDrawer() {
                             <button
                               type="button"
                               aria-label="Move down"
-                              className="px-1 text-slate-600 dark:text-slate-400 hover:text-slate-700 disabled:opacity-30 dark:hover:text-slate-200"
+                              className="px-1 text-fg-muted hover:text-slate-700 disabled:opacity-30 dark:hover:text-slate-200"
                               disabled={i === changeset.ops.length - 1}
                               onClick={() => {
                                 moveOp(i, 1);
@@ -310,7 +310,7 @@ export function ChangesetDrawer() {
              * part of the confirm/rollback ceremony this task must not
              * degrade), so "Review & apply" is deliberately NOT gated here. */}
             {narrow && changeset && changeset.ops.length > 0 && (
-              <p className="text-[11px] text-slate-600 dark:text-slate-400">
+              <p className="text-[11px] text-fg-muted">
                 Reorder, remove, or discard ops on desktop — review and apply this draft as-is from here.
               </p>
             )}

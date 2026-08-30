@@ -86,7 +86,7 @@ export function PendingChangesetsTile() {
                 onClick={() => {
                   setActiveId(cs.id);
                 }}
-                className="truncate text-left text-slate-700 underline-offset-2 hover:underline dark:text-slate-200"
+                className="truncate text-left text-fg-body underline-offset-2 hover:underline"
                 title={cs.title}
               >
                 {cs.title}

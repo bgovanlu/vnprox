@@ -373,7 +373,7 @@ export function FabricsView() {
   const gateTitle = canWrite ? undefined : missingCapTooltip(session, "", "sdnWrite");
 
   if (isLoading) {
-    return <p className="text-sm text-slate-600 dark:text-slate-400">Loading SDN fabrics…</p>;
+    return <p className="text-sm text-fg-muted">Loading SDN fabrics…</p>;
   }
   if (isError || !tree) {
     return (

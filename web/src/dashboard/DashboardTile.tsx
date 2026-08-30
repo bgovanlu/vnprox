@@ -58,7 +58,7 @@ export function DashboardTile({
       aria-label={title}
       // T-4203: a card sitting on the dashboard's page background —
       // `surface-raised`.
-      className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-surface-raised p-4 dark:border-slate-800"
+      className="flex flex-col gap-2 rounded-lg border border-border bg-surface-raised p-4"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -84,8 +84,8 @@ export function DashboardTile({
         ) : error ? (
           <p className="text-sm text-status-critical">{error}</p>
         ) : empty ? (
-          <div className="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 py-4 text-center dark:border-slate-700">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{empty.title}</span>
+          <div className="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border-strong py-4 text-center">
+            <span className="text-sm font-medium text-fg-body">{empty.title}</span>
             {empty.description ? (
               <span className="max-w-xs text-xs text-fg-subtle">{empty.description}</span>
             ) : null}

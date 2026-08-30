@@ -15,7 +15,7 @@ const LEGEND_BUCKETS: readonly RecencyBucket[] = ["justNow", "today", "thisWeek"
 export function RecencyLegend() {
   return (
     <div
-      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 print:hidden"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border-strong bg-slate-50 px-3 py-2 text-xs text-fg-body dark:bg-slate-900 print:hidden"
       aria-label="Recency overlay legend"
     >
       {LEGEND_BUCKETS.map((bucket) => (

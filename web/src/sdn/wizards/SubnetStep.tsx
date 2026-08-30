@@ -130,7 +130,7 @@ export function SubnetStep({ zoneType, value, onChange, evpnExitNodeCount }: Sub
 
   return (
     <div className="space-y-3">
-      <p className="text-slate-600 dark:text-slate-300">{S.common.subnetSkipHelp}</p>
+      <p className="text-fg-muted">{S.common.subnetSkipHelp}</p>
       <Field label="Address range (CIDR)" help={S.common.cidrHelp} errors={cidrErr ? [cidrErr] : undefined}>
         <input
           className={inputClass}

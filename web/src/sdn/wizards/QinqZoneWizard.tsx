@@ -96,7 +96,7 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
       isValid: zoneId.trim().length > 0 && bridgeName.trim().length > 0 && memberNodes.length > 0 && !sdnNameError(zoneId),
       content: (
         <div className="space-y-3">
-          <p className="text-slate-600 dark:text-slate-300">{S.qinq.intro}</p>
+          <p className="text-fg-muted">{S.qinq.intro}</p>
           <SdnNameField label="Name" help={S.common.zoneNameHelp} value={zoneId} onChange={setZoneId} placeholder="tenants" />
           <Field label="VLAN-aware bridge" help="Must exist, with this exact name, on every member node.">
             <input className={inputClass} value={bridgeName} onChange={(e) => { setBridgeName(e.target.value); }} placeholder="vmbr0" />
@@ -117,7 +117,7 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
       isValid: customerVid > 0 && customerVid < 4095 && vnetId.trim().length > 0 && !sdnNameError(vnetId),
       content: (
         <div className="space-y-3">
-          <h4 className="text-xs font-medium text-slate-600 dark:text-slate-300">{S.qinq.illustrationHeading}</h4>
+          <h4 className="text-xs font-medium text-fg-muted">{S.qinq.illustrationHeading}</h4>
           <p className="text-xs text-fg-subtle">{S.qinq.illustrationExplain}</p>
           <Field label="Service (outer) VLAN tag" help={S.qinq.serviceTagHelp}>
             <input
@@ -158,7 +158,7 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
       isValid: !cap.denied,
       invalidReason: cap.reason,
       content: (
-        <div className="space-y-2 text-slate-600 dark:text-slate-300">
+        <div className="space-y-2 text-fg-muted">
           <p>This will draft:</p>
           <ul className="list-inside list-disc space-y-1">
             <li>QinQ zone &quot;{zoneId}&quot; on bridge {bridgeName || "?"}, nodes {memberNodes.join(", ") || "none"}</li>
@@ -171,7 +171,7 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
             )}
           </ul>
           {serviceVid > 0 && (
-            <p className="text-xs text-slate-600 dark:text-slate-400">
+            <p className="text-xs text-fg-muted">
               Service tag {serviceVid} is shown for illustration only — set it directly in Proxmox&apos;s own SDN zone settings if not already configured (see this step&apos;s help text).
             </p>
           )}

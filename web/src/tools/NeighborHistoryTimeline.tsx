@@ -46,7 +46,7 @@ export function NeighborHistoryTimeline() {
     <div className="flex flex-col gap-3">
       <div>
         <h2 className="text-base font-semibold">Neighbor binding timeline</h2>
-        <p className="text-sm text-slate-600 dark:text-slate-400">
+        <p className="text-sm text-fg-muted">
           IP↔MAC binding history across the cluster — every recorded transition, not just the current snapshot.
           Bindings that flap (an IP rapidly changing MAC, or one MAC claiming many IPs) are called out separately
           from a single clean rebind. Bounded to a 24-hour window; see the{" "}
@@ -64,7 +64,7 @@ export function NeighborHistoryTimeline() {
           }}
           placeholder="Filter by IP"
           aria-label="Filter by IP address"
-          className="w-44 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-accent-500 dark:border-slate-700 dark:bg-slate-900"
+          className="w-44 rounded-md border border-border-strong bg-white px-2.5 py-1.5 text-sm outline-none focus:border-accent-500 dark:bg-slate-900"
         />
         <input
           type="text"
@@ -74,7 +74,7 @@ export function NeighborHistoryTimeline() {
           }}
           placeholder="Filter by MAC"
           aria-label="Filter by MAC address"
-          className="w-44 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-accent-500 dark:border-slate-700 dark:bg-slate-900"
+          className="w-44 rounded-md border border-border-strong bg-white px-2.5 py-1.5 text-sm outline-none focus:border-accent-500 dark:bg-slate-900"
         />
         <input
           type="text"
@@ -84,11 +84,11 @@ export function NeighborHistoryTimeline() {
           }}
           placeholder="Filter by node"
           aria-label="Filter by node"
-          className="w-36 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-accent-500 dark:border-slate-700 dark:bg-slate-900"
+          className="w-36 rounded-md border border-border-strong bg-white px-2.5 py-1.5 text-sm outline-none focus:border-accent-500 dark:bg-slate-900"
         />
       </div>
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading…</p>}
       {isError && (
         <EmptyState
           icon="lldp-neighbor"
@@ -155,12 +155,12 @@ export function NeighborHistoryTimeline() {
               className={
                 g.isFlapping
                   ? "rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40"
-                  : "rounded-md border border-slate-200 p-3 dark:border-slate-800"
+                  : "rounded-md border border-border p-3"
               }
             >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-sm font-medium">{g.ip}</span>
-                <span className="text-xs text-slate-600 dark:text-slate-400">on {g.node}</span>
+                <span className="text-xs text-fg-muted">on {g.node}</span>
                 {g.isFlapping && (
                   <span
                     className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/60 dark:text-amber-300"
@@ -169,14 +169,14 @@ export function NeighborHistoryTimeline() {
                     Flapping
                   </span>
                 )}
-                <span className="text-xs text-slate-600 dark:text-slate-400">
+                <span className="text-xs text-fg-muted">
                   {g.events.length} event{g.events.length > 1 ? "s" : ""}
                 </span>
               </div>
-              <ol className="mt-2 flex flex-col gap-1 border-l border-slate-200 pl-3 dark:border-slate-800">
+              <ol className="mt-2 flex flex-col gap-1 border-l border-border pl-3">
                 {g.events.map((e) => (
                   <li key={`${String(e.at)}-${e.mac}`} className="text-sm">
-                    <span className="text-xs text-slate-600 dark:text-slate-400">{formatAt(e.at)}</span>{" "}
+                    <span className="text-xs text-fg-muted">{formatAt(e.at)}</span>{" "}
                     {e.firstSeen ? (
                       <span>
                         first seen as <span className="font-mono">{e.mac}</span>
@@ -186,7 +186,7 @@ export function NeighborHistoryTimeline() {
                         <span className="font-mono">{e.prevMac}</span> → <span className="font-mono">{e.mac}</span>
                       </span>
                     )}
-                    {e.iface && <span className="text-xs text-slate-600 dark:text-slate-400"> on {e.iface}</span>}
+                    {e.iface && <span className="text-xs text-fg-muted"> on {e.iface}</span>}
                   </li>
                 ))}
               </ol>

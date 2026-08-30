@@ -179,10 +179,10 @@ function FilterCheckboxGroup<T extends string>({
 }) {
   return (
     <fieldset className="flex flex-col gap-1">
-      <legend className="text-xs font-medium text-slate-600 dark:text-slate-300">{label}</legend>
+      <legend className="text-xs font-medium text-fg-muted">{label}</legend>
       <div className="flex flex-wrap gap-2">
         {options.map((opt) => (
-          <label key={opt} className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300">
+          <label key={opt} className="flex items-center gap-1 text-xs text-fg-muted">
             <input
               type="checkbox"
               disabled={disabled}
@@ -195,7 +195,7 @@ function FilterCheckboxGroup<T extends string>({
           </label>
         ))}
       </div>
-      <p className="text-[11px] text-slate-600 dark:text-slate-400">None selected matches every value.</p>
+      <p className="text-[11px] text-fg-muted">None selected matches every value.</p>
     </fieldset>
   );
 }
@@ -328,7 +328,7 @@ export function AlertRules() {
       <div className="flex flex-1 gap-4 overflow-hidden">
         <div className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Rules</h2>
+            <h2 className="text-sm font-semibold text-fg-body">Rules</h2>
             <Tooltip content={writeDisabledReason}>
               <span>
                 <Button size="sm" variant="secondary" disabled={!canWrite} onClick={startCreate}>
@@ -339,7 +339,7 @@ export function AlertRules() {
           </div>
 
           {items.length === 0 ? (
-            <p className="text-sm text-slate-600 dark:text-slate-400">No alert rules configured yet.</p>
+            <p className="text-sm text-fg-muted">No alert rules configured yet.</p>
           ) : (
             <ul className="flex flex-col gap-1" data-testid="alert-rule-list">
               {items.map((rule) => (
@@ -357,7 +357,7 @@ export function AlertRules() {
                     }}
                   >
                     <span className="font-medium">{rule.name}</span>
-                    <span className="text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-400">
+                    <span className="text-[10px] uppercase tracking-wide text-fg-muted">
                       {rule.targetKind} · {rule.enabled ? "enabled" : "disabled"}
                     </span>
                   </button>
@@ -379,13 +379,13 @@ export function AlertRules() {
               }}
             >
               <div>
-                <label htmlFor="alert-rule-name" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                <label htmlFor="alert-rule-name" className="text-xs font-medium text-fg-muted">
                   Name
                 </label>
                 <input
                   id="alert-rule-name"
                   type="text"
-                  className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
                   value={form.name}
                   onChange={(e) => {
                     setForm({ ...form, name: e.target.value });
@@ -393,7 +393,7 @@ export function AlertRules() {
                 />
               </div>
 
-              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+              <label className="flex items-center gap-2 text-sm text-fg-body">
                 <input
                   type="checkbox"
                   checked={form.enabled}
@@ -422,22 +422,22 @@ export function AlertRules() {
                 }}
               />
 
-              <fieldset className="rounded-md border border-slate-200 p-2 dark:border-slate-700">
-                <legend className="px-1 text-xs font-medium text-slate-600 dark:text-slate-300">Delivery schedule</legend>
-                <p className="mb-2 text-xs text-slate-600 dark:text-slate-400">
+              <fieldset className="rounded-md border border-border p-2">
+                <legend className="px-1 text-xs font-medium text-fg-muted">Delivery schedule</legend>
+                <p className="mb-2 text-xs text-fg-muted">
                   Quiet hours defer deliveries — they are never dropped, and go out when the window ends. A digest window
                   coalesces everything arriving inside it into one message.
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label htmlFor="alert-rule-quiet-start" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    <label htmlFor="alert-rule-quiet-start" className="text-xs font-medium text-fg-muted">
                       Quiet from (HH:MM)
                     </label>
                     <input
                       id="alert-rule-quiet-start"
                       type="text"
                       placeholder="22:00"
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                      className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
                       value={form.quietStart}
                       onChange={(e) => {
                         setForm({ ...form, quietStart: e.target.value });
@@ -445,14 +445,14 @@ export function AlertRules() {
                     />
                   </div>
                   <div>
-                    <label htmlFor="alert-rule-quiet-end" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    <label htmlFor="alert-rule-quiet-end" className="text-xs font-medium text-fg-muted">
                       Quiet until (HH:MM)
                     </label>
                     <input
                       id="alert-rule-quiet-end"
                       type="text"
                       placeholder="06:00"
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                      className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
                       value={form.quietEnd}
                       onChange={(e) => {
                         setForm({ ...form, quietEnd: e.target.value });
@@ -460,14 +460,14 @@ export function AlertRules() {
                     />
                   </div>
                   <div>
-                    <label htmlFor="alert-rule-quiet-tz" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    <label htmlFor="alert-rule-quiet-tz" className="text-xs font-medium text-fg-muted">
                       Time zone
                     </label>
                     <input
                       id="alert-rule-quiet-tz"
                       type="text"
                       placeholder="the daemon's own"
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                      className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
                       value={form.quietTz}
                       onChange={(e) => {
                         setForm({ ...form, quietTz: e.target.value });
@@ -475,14 +475,14 @@ export function AlertRules() {
                     />
                   </div>
                   <div>
-                    <label htmlFor="alert-rule-digest" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    <label htmlFor="alert-rule-digest" className="text-xs font-medium text-fg-muted">
                       Digest window (minutes)
                     </label>
                     <input
                       id="alert-rule-digest"
                       type="text"
                       placeholder="0 — send each"
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                      className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
                       value={form.digestWindowMin}
                       onChange={(e) => {
                         setForm({ ...form, digestWindowMin: e.target.value });
@@ -490,7 +490,7 @@ export function AlertRules() {
                     />
                   </div>
                 </div>
-                <label className="mt-2 flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                <label className="mt-2 flex items-center gap-2 text-sm text-fg-body">
                   <input
                     type="checkbox"
                     checked={form.bypassQuietHoursOnError}
@@ -503,12 +503,12 @@ export function AlertRules() {
               </fieldset>
 
               <div>
-                <label htmlFor="alert-rule-target-kind" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                <label htmlFor="alert-rule-target-kind" className="text-xs font-medium text-fg-muted">
                   Target kind
                 </label>
                 <select
                   id="alert-rule-target-kind"
-                  className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
                   value={form.targetKind}
                   onChange={(e) => {
                     setForm({ ...form, targetKind: e.target.value as AlertTargetKind });
@@ -523,14 +523,14 @@ export function AlertRules() {
               </div>
 
               <div>
-                <label htmlFor="alert-rule-target-url" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                <label htmlFor="alert-rule-target-url" className="text-xs font-medium text-fg-muted">
                   Target URL
                 </label>
                 <input
                   id="alert-rule-target-url"
                   type="text"
                   placeholder="https://…"
-                  className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
                   value={form.targetUrl}
                   onChange={(e) => {
                     setForm({ ...form, targetUrl: e.target.value });
@@ -540,13 +540,13 @@ export function AlertRules() {
 
               {form.targetKind !== "slack" && (
                 <div>
-                  <label htmlFor="alert-rule-target-secret" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  <label htmlFor="alert-rule-target-secret" className="text-xs font-medium text-fg-muted">
                     Target secret {selected?.hasSecret && !form.secretTouched ? "(configured — leave blank to keep)" : ""}
                   </label>
                   <input
                     id="alert-rule-target-secret"
                     type="password"
-                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                    className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
                     value={form.targetSecret}
                     onChange={(e) => {
                       setForm({ ...form, targetSecret: e.target.value, secretTouched: true });
@@ -606,16 +606,16 @@ export function AlertRules() {
         </div>
       </div>
 
-      <section className="shrink-0 border-t border-slate-200 pt-3 dark:border-slate-800">
-        <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+      <section className="shrink-0 border-t border-border pt-3">
+        <h2 className="mb-2 text-sm font-semibold text-fg-body">
           Delivery log{selected ? ` — ${selected.name}` : ""}
         </h2>
         {!deliveriesData || deliveriesData.items.length === 0 ? (
-          <p className="text-sm text-slate-600 dark:text-slate-400">No deliveries logged yet.</p>
+          <p className="text-sm text-fg-muted">No deliveries logged yet.</p>
         ) : (
           <div className="max-h-48 overflow-y-auto">
             <table className="w-full text-left text-xs" data-testid="delivery-log">
-              <thead className="text-slate-600 dark:text-slate-400">
+              <thead className="text-fg-muted">
                 <tr>
                   <th className="py-1 pr-2">At</th>
                   <th className="py-1 pr-2">Rule</th>

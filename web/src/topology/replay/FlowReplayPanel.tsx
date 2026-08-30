@@ -323,7 +323,7 @@ export function FlowReplayPanel({
           Traffic replay
           <HelpAnchor topic="flow-replay" />
         </span>
-        <span className="text-xs text-slate-600 dark:text-slate-400">
+        <span className="text-xs text-fg-muted">
           Heat: last {formatReplayDuration(METRICS_RETENTION_SECONDS)} · Flow paths: last {formatReplayDuration(flowRetentionMinutes * 60)}
         </span>
       </div>
@@ -369,7 +369,7 @@ export function FlowReplayPanel({
           }}
           className="h-1 flex-1 accent-lime-600"
         />
-        <span className="whitespace-nowrap text-xs text-slate-600 dark:text-slate-400" aria-live="polite">
+        <span className="whitespace-nowrap text-xs text-fg-muted" aria-live="polite">
           {scrubbing ? formatAt(at) : "Live"}
         </span>
         {scrubbing && (
@@ -380,13 +380,13 @@ export function FlowReplayPanel({
       </div>
 
       {reducedMotion && (
-        <p className="text-xs text-slate-600 dark:text-slate-400">
+        <p className="text-xs text-fg-muted">
           Autoplay is off because this browser prefers reduced motion — Step and the scrubber above still reach every frame.
         </p>
       )}
 
       {scrubbing && (
-        <p className="text-xs text-slate-600 dark:text-slate-400" aria-live="polite">
+        <p className="text-xs text-fg-muted" aria-live="polite">
           {flowPathsFrameMessage(flowPathsState)}
         </p>
       )}

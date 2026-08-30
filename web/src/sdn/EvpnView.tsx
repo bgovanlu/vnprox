@@ -116,7 +116,7 @@ function PeeringMatrix({
                         )}
                       >
                         <StatusDot status={evpnStateEntityStatus(peer.state)} />
-                        <span className="text-xs text-slate-600 dark:text-slate-300">{peer.state}</span>
+                        <span className="text-xs text-fg-muted">{peer.state}</span>
                       </button>
                     ) : (
                       <span className="text-fg-subtle">—</span>
@@ -218,7 +218,7 @@ function ExitNodeHealth({ status }: { status: EvpnStatus }) {
           <span className={en.healthy ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
             {en.healthy ? "healthy" : "unhealthy"}
           </span>
-          {en.detail && <span className="text-xs text-slate-600 dark:text-slate-400">— {en.detail}</span>}
+          {en.detail && <span className="text-xs text-fg-muted">— {en.detail}</span>}
         </li>
       ))}
     </ul>
@@ -230,7 +230,7 @@ export function EvpnView({ enabled = true }: { enabled?: boolean }) {
   const [selection, setSelection] = useState<EvpnSelection | undefined>(undefined);
 
   if (isLoading) {
-    return <p className="text-sm text-slate-600 dark:text-slate-400">Loading EVPN/BGP status…</p>;
+    return <p className="text-sm text-fg-muted">Loading EVPN/BGP status…</p>;
   }
   if (isError || !status) {
     return (
@@ -269,7 +269,7 @@ export function EvpnView({ enabled = true }: { enabled?: boolean }) {
         </h2>
         <div className="grid min-h-0 grid-cols-1 gap-3 lg:grid-cols-[1fr_320px]">
           <PeeringMatrix status={status} selection={selection} onSelect={setSelection} />
-          <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+          <div className="rounded-lg border border-border p-4">
             <SessionDetail status={status} selection={selection} />
           </div>
         </div>

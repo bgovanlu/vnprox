@@ -28,7 +28,7 @@ const statusLabel: Record<ApprovalState["status"], string> = {
 };
 
 const statusClass: Record<ApprovalState["status"], string> = {
-  none: "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
+  none: "border-border-strong bg-slate-50 text-fg-body dark:bg-slate-800",
   approved:
     "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200",
   rejected: "border-red-300 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200",
@@ -126,7 +126,7 @@ export function ApprovalPanel({ changesetId, approval }: ApprovalPanelProps) {
             }}
             placeholder="Reason (optional)"
             aria-label="Rejection reason"
-            className="flex-1 rounded border border-slate-300 px-1.5 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-900"
+            className="flex-1 rounded border border-border-strong px-1.5 py-0.5 text-xs dark:bg-slate-900"
           />
           <Button variant="destructive" size="sm" onClick={() => void handleReject()}>
             Confirm reject

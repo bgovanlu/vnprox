@@ -39,13 +39,13 @@ export function AnalysisPage() {
       />
 
       <SpofPanel />
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-border" />
       <CapacityExportPanel />
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-border" />
       <QosShapesPanel />
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-border" />
       <PbsPanel />
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-border" />
       <IPv6SegmentsPanel />
     </div>
   );

@@ -68,10 +68,10 @@ function ComparePaneHeader({
   onClose: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-1.5 rounded border border-slate-200 p-1.5 dark:border-slate-700">
+    <div className="flex items-center justify-between gap-1.5 rounded border border-border p-1.5">
       <div className="min-w-0">
         <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{label}</div>
-        <div className="truncate text-[11px] text-slate-600 dark:text-slate-400">
+        <div className="truncate text-[11px] text-fg-muted">
           {kind} on {node || "cluster"}
         </div>
       </div>
@@ -173,7 +173,7 @@ export function InspectorCompareView({
       </div>
 
       <RadixTabs.Root defaultValue="fields" className="flex flex-1 flex-col">
-        <RadixTabs.List className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
+        <RadixTabs.List className="flex gap-1 border-b border-border">
           <RadixTabs.Trigger value="fields" className={tabTriggerClass}>
             Fields
           </RadixTabs.Trigger>
@@ -188,10 +188,10 @@ export function InspectorCompareView({
           <div className="grid grid-cols-[minmax(6rem,auto)_1fr_1fr] gap-x-3 gap-y-1.5 text-xs">
             {rows.map(([k, a, b]) => (
               <div className="contents" key={k}>
-                <dt className="text-slate-600 dark:text-slate-400">{k}</dt>
+                <dt className="text-fg-muted">{k}</dt>
                 <dd
                   className={clsx(
-                    "break-all text-slate-700 dark:text-slate-200",
+                    "break-all text-fg-body",
                     a !== b && "font-semibold text-amber-600 dark:text-amber-400",
                   )}
                 >
@@ -199,7 +199,7 @@ export function InspectorCompareView({
                 </dd>
                 <dd
                   className={clsx(
-                    "break-all text-slate-700 dark:text-slate-200",
+                    "break-all text-fg-body",
                     a !== b && "font-semibold text-amber-600 dark:text-amber-400",
                   )}
                 >
@@ -207,7 +207,7 @@ export function InspectorCompareView({
                 </dd>
               </div>
             ))}
-            {rows.length === 0 && <p className="col-span-3 text-slate-600 dark:text-slate-400">No fields to compare.</p>}
+            {rows.length === 0 && <p className="col-span-3 text-fg-muted">No fields to compare.</p>}
           </div>
         </RadixTabs.Content>
 

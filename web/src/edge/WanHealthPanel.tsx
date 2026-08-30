@@ -41,7 +41,7 @@ const VERDICT_CLASS: Readonly<Record<string, string>> = {
   healthy: "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-100",
   likely_isp: "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100",
   wan_degraded: "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100",
-  no_targets: "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300",
+  no_targets: "border-border-strong bg-slate-50 text-slate-700 dark:bg-slate-900 dark:text-slate-300",
 };
 
 const VERDICT_LABEL: Readonly<Record<string, string>> = {
@@ -77,7 +77,7 @@ export function WanHealthPanel() {
         switches an uplink; it is a diagnosis, not an actuator.
       </p>
 
-      {statusQuery.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
+      {statusQuery.isLoading && <p className="text-sm text-fg-muted">Loading…</p>}
       {statusQuery.error && (
         <EmptyState
           icon="gateway"
@@ -270,7 +270,7 @@ function TargetsEditor({ node, targets }: { node: string | undefined; targets: W
                 setUplink(e.target.value);
               }}
               disabled={!canWrite}
-              className="rounded border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+              className="rounded border border-border-strong bg-white px-2 py-1 text-xs dark:bg-slate-900"
             >
               {uplinkOptions.map((o) => (
                 <option key={o} value={o}>
@@ -287,7 +287,7 @@ function TargetsEditor({ node, targets }: { node: string | undefined; targets: W
               }}
               disabled={!canWrite}
               placeholder="vmbr0"
-              className="rounded border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+              className="rounded border border-border-strong bg-white px-2 py-1 text-xs dark:bg-slate-900"
             />
           )}
         </label>
@@ -301,7 +301,7 @@ function TargetsEditor({ node, targets }: { node: string | undefined; targets: W
             }}
             disabled={!canWrite}
             placeholder="1.1.1.1"
-            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+            className="rounded border border-border-strong bg-white px-2 py-1 text-xs dark:bg-slate-900"
           />
         </label>
         <Button type="submit" size="sm" disabled={!canWrite || host.trim() === "" || mutation.isPending} title={writeDisabledReason}>

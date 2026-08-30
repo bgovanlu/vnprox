@@ -69,7 +69,7 @@ export function RenameDialog({ open, onOpenChange, node, target, currentName }: 
       </Field>
 
       {newName.trim() && !nameErr && (
-        <p className="text-xs text-slate-600 dark:text-slate-300">
+        <p className="text-xs text-fg-muted">
           Will become{" "}
           <span className="font-medium">
             {newName.trim()}

@@ -76,8 +76,8 @@ export function LoginPage() {
        * someone type credentials at what they believed was their cluster. */}
       <DemoBanner />
       <div className="flex min-h-0 flex-1 items-center justify-center">
-      <div className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Sign in to vnprox</h1>
+      <div className="w-full max-w-sm rounded-lg border border-border bg-white p-6 shadow-sm dark:bg-slate-900">
+        <h1 className="text-lg font-semibold text-fg">Sign in to vnprox</h1>
         <p className="mt-1 text-sm text-fg-subtle">
           Use your Proxmox VE credentials — vnprox has no separate accounts.
         </p>
@@ -86,7 +86,7 @@ export function LoginPage() {
           <label className="flex flex-col gap-1 text-sm">
             Username
             <input
-              className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+              className="rounded-md border border-border-strong px-2.5 py-1.5 text-sm dark:bg-slate-800"
               value={username}
               onChange={(e) => { setUsername(e.target.value); }}
               autoComplete="username"
@@ -97,7 +97,7 @@ export function LoginPage() {
             Password
             <input
               type="password"
-              className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+              className="rounded-md border border-border-strong px-2.5 py-1.5 text-sm dark:bg-slate-800"
               value={password}
               onChange={(e) => { setPassword(e.target.value); }}
               autoComplete="current-password"
@@ -107,7 +107,7 @@ export function LoginPage() {
           <label className="flex flex-col gap-1 text-sm">
             Realm
             <input
-              className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+              className="rounded-md border border-border-strong px-2.5 py-1.5 text-sm dark:bg-slate-800"
               value={realm}
               onChange={(e) => { setRealm(e.target.value); }}
               required
@@ -116,7 +116,7 @@ export function LoginPage() {
           <label className="flex flex-col gap-1 text-sm">
             One-time password (if enabled)
             <input
-              className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+              className="rounded-md border border-border-strong px-2.5 py-1.5 text-sm dark:bg-slate-800"
               value={otp}
               onChange={(e) => { setOtp(e.target.value); }}
               autoComplete="one-time-code"
@@ -135,7 +135,7 @@ export function LoginPage() {
         </form>
 
         {AUTH_STUB_ENABLED ? (
-          <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <div className="mt-4 border-t border-border pt-4">
             <p className="mb-2 text-xs text-fg-subtle">
               Demo mode: explore the UI without a backend (client-side only).
             </p>

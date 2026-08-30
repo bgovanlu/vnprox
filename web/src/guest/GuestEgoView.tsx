@@ -100,7 +100,7 @@ function GuestPicker() {
         }
         description="Pick a guest to see its whole network story — NICs, path evaluation, firewall verdict, flows, and findings — on one screen."
       />
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading guests…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading guests…</p>}
       {!isLoading && guests.length === 0 && (
         <EmptyState
           icon="guest"
@@ -115,10 +115,10 @@ function GuestPicker() {
             <li key={g.ref}>
               <Link
                 to={`/guest?ref=${encodeURIComponent(g.ref)}`}
-                className="block rounded-lg border border-slate-200 bg-white p-3 text-sm hover:border-accent-400 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-accent-600"
+                className="block rounded-lg border border-border bg-white p-3 text-sm hover:border-accent-400 dark:bg-slate-900 dark:hover:border-accent-600"
               >
                 <span className="block font-medium text-slate-800 dark:text-slate-100">{g.label}</span>
-                <span className="block text-slate-600 dark:text-slate-400">
+                <span className="block text-fg-muted">
                   {g.node} · {g.nicCount} NIC{g.nicCount === 1 ? "" : "s"}
                 </span>
               </Link>
@@ -213,7 +213,7 @@ function PathPanel({ primaryNicRef }: { primaryNicRef: string | undefined }) {
       {data && (
         <div className="space-y-2">
           <VerdictBanner result={data} />
-          <p className="text-xs text-slate-600 dark:text-slate-400">
+          <p className="text-xs text-fg-muted">
             {data.hops.length} hop{data.hops.length === 1 ? "" : "s"} evaluated
             {data.blockingRule ? ` · blocked by rule at position ${String(data.blockingRule.pos)}` : ""}
           </p>
@@ -246,7 +246,7 @@ function FirewallPanel({ guestRef }: { guestRef: string }) {
             · default in <span className="font-mono">{summary.defaultIn}</span> · default out{" "}
             <span className="font-mono">{summary.defaultOut}</span>
           </p>
-          <p className="text-slate-600 dark:text-slate-400">
+          <p className="text-fg-muted">
             {summary.enabledRules} of {summary.totalRules} rule{summary.totalRules === 1 ? "" : "s"} enabled ·{" "}
             {summary.allowCount} allow · {summary.denyCount} deny
           </p>
@@ -300,11 +300,11 @@ function FlowsPanel({ targets }: { targets: string[] }) {
       {state.kind === "data" && (
         <ul className="space-y-1 text-xs">
           {state.items.slice(0, 8).map((f, i) => (
-            <li key={`${String(f.at)}-${String(i)}`} className="flex items-center justify-between gap-2 rounded border border-slate-200 px-2 py-1 dark:border-slate-700">
-              <span className="font-mono text-slate-700 dark:text-slate-200">
+            <li key={`${String(f.at)}-${String(i)}`} className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1">
+              <span className="font-mono text-fg-body">
                 {f.srcIp} → {f.dstIp} ({protoName(f.proto)})
               </span>
-              <span className="text-slate-600 dark:text-slate-400">{formatByteCount(f.bytes)}</span>
+              <span className="text-fg-muted">{formatByteCount(f.bytes)}</span>
             </li>
           ))}
         </ul>
@@ -346,11 +346,11 @@ function ConntrackPanel({ guestRef, guestNode }: { guestRef: string; guestNode: 
       {state.kind === "data" && (
         <ul className="space-y-1 text-xs">
           {state.items.slice(0, 8).map((e, i) => (
-            <li key={i} className="flex items-center justify-between gap-2 rounded border border-slate-200 px-2 py-1 dark:border-slate-700">
-              <span className="font-mono text-slate-700 dark:text-slate-200">
+            <li key={i} className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1">
+              <span className="font-mono text-fg-body">
                 {e.srcIp}{e.srcPort ? `:${String(e.srcPort)}` : ""} → {e.dstIp}{e.dstPort ? `:${String(e.dstPort)}` : ""}
               </span>
-              <span className="text-slate-600 dark:text-slate-400">{e.state ?? "—"}</span>
+              <span className="text-fg-muted">{e.state ?? "—"}</span>
             </li>
           ))}
         </ul>
@@ -376,10 +376,10 @@ function FindingsPanel({ guestRef, nicRefs }: { guestRef: string; nicRefs: strin
     >
       <ul className="space-y-1 text-xs">
         {findings.map((f) => (
-          <li key={f.id} className="rounded border border-slate-200 px-2 py-1 dark:border-slate-700">
-            <span className="font-medium text-slate-700 dark:text-slate-200">{f.severity}</span>{" "}
-            <span className="text-slate-600 dark:text-slate-400">{f.check}</span>
-            <p className="text-slate-700 dark:text-slate-200">{f.detail}</p>
+          <li key={f.id} className="rounded border border-border px-2 py-1">
+            <span className="font-medium text-fg-body">{f.severity}</span>{" "}
+            <span className="text-fg-muted">{f.check}</span>
+            <p className="text-fg-body">{f.detail}</p>
           </li>
         ))}
       </ul>
@@ -420,7 +420,7 @@ function GuestEgoContent({ guestRef }: { guestRef: string }) {
           <div className="flex flex-wrap gap-2 text-sm">
             <button
               type="button"
-              className="rounded-md border border-slate-300 px-3 py-1.5 font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              className="rounded-md border border-border-strong px-3 py-1.5 font-medium hover:bg-slate-50 dark:hover:bg-slate-800"
               onClick={() => {
                 select(guestRef);
                 void navigate("/topology");
@@ -431,7 +431,7 @@ function GuestEgoContent({ guestRef }: { guestRef: string }) {
             {diagnoseUrl && (
               <button
                 type="button"
-                className="rounded-md border border-slate-300 px-3 py-1.5 font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                className="rounded-md border border-border-strong px-3 py-1.5 font-medium hover:bg-slate-50 dark:hover:bg-slate-800"
                 onClick={() => { void navigate(diagnoseUrl); }}
               >
                 Diagnose
@@ -440,7 +440,7 @@ function GuestEgoContent({ guestRef }: { guestRef: string }) {
             {traceUrl && (
               <button
                 type="button"
-                className="rounded-md border border-slate-300 px-3 py-1.5 font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                className="rounded-md border border-border-strong px-3 py-1.5 font-medium hover:bg-slate-50 dark:hover:bg-slate-800"
                 onClick={() => { void navigate(traceUrl); }}
               >
                 Trace path from here
@@ -450,7 +450,7 @@ function GuestEgoContent({ guestRef }: { guestRef: string }) {
         }
       />
 
-      {detailLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading guest…</p>}
+      {detailLoading && <p className="text-sm text-fg-muted">Loading guest…</p>}
       {detailError && (
         <EmptyState
           icon="guest"

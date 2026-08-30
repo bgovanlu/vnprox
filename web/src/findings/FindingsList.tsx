@@ -170,7 +170,7 @@ export function FindingsList({
                     </span>
                   )}
                   {f.nodes.length > 0 && (
-                    <span className="text-[10px] text-slate-600 dark:text-slate-400">
+                    <span className="text-[10px] text-fg-muted">
                       {f.nodes.join(", ")}
                     </span>
                   )}
@@ -182,7 +182,7 @@ export function FindingsList({
                 </div>
                 <p>{f.detail}</p>
                 {f.refs && f.refs.length > 0 && (
-                  <p className="text-[10px] text-slate-600 dark:text-slate-400">
+                  <p className="text-[10px] text-fg-muted">
                     {f.refs.join(" · ")}
                   </p>
                 )}
@@ -190,7 +190,7 @@ export function FindingsList({
                     acknowledgement with no visible justification is the
                     unexplained silence T-2402 exists to avoid. */}
                 {f.ack && (
-                  <p className="text-[10px] text-slate-600 dark:text-slate-300">
+                  <p className="text-[10px] text-fg-muted">
                     {f.ack.reason} — {f.ack.ackedBy}
                     {f.ack.expiresAt ? `, until ${new Date(f.ack.expiresAt * 1000).toLocaleDateString()}` : ""}
                   </p>

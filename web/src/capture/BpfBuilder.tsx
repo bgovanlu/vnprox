@@ -125,7 +125,7 @@ export function BpfBuilder({ onSubmit, submitting = false, submitLabel = "Start 
       <Field label="Filter">
         <code
           data-testid="bpf-filter-preview"
-          className="block rounded border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+          className="block rounded border border-border bg-slate-50 px-2 py-1 font-mono text-xs text-fg-muted dark:bg-slate-800"
         >
           {filter || "(none — capture everything on this interface)"}
         </code>

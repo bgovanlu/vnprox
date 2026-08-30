@@ -56,7 +56,7 @@ export function SpecPlanPanel({ content, writeDisabledReason }: SpecPlanPanelPro
         The plan
         <HelpAnchor topic="spec-plan" />
       </h2>
-      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+      <p className="mt-1 text-sm text-fg-muted">
         Diffs the working document against live state. This is the same primitive the automation contract
         specifies for a <code className="font-mono">terraform plan</code>-shaped check — and it stages a draft
         changeset for the result, every time, including when the result is empty. It never applies anything.
@@ -74,7 +74,7 @@ export function SpecPlanPanel({ content, writeDisabledReason }: SpecPlanPanelPro
           {importMutation.isPending ? "Planning…" : "Plan against live state (stages a draft)"}
         </Button>
         {empty && (
-          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+          <p className="mt-1 text-xs text-fg-muted">
             Load or paste a document above first — there is nothing to plan.
           </p>
         )}
@@ -85,13 +85,13 @@ export function SpecPlanPanel({ content, writeDisabledReason }: SpecPlanPanelPro
           role="alert"
           className="mt-3 rounded-md border border-status-critical bg-status-critical-soft p-3 text-sm"
         >
-          <p className="font-semibold text-slate-900 dark:text-slate-100">The daemon refused this document</p>
+          <p className="font-semibold text-fg">The daemon refused this document</p>
           <p className="mt-1 text-slate-800 dark:text-slate-100">{planError}</p>
         </div>
       )}
 
       {result !== undefined && (
-        <div className="mt-3 rounded-md border border-slate-200 p-3 dark:border-slate-800">
+        <div className="mt-3 rounded-md border border-border p-3">
           {/* Two facts, two paragraphs, always both — a clean plan is the
            * conjunction of them and reads as one sentence about ops only if
            * they are collapsed. */}
@@ -108,7 +108,7 @@ export function SpecPlanPanel({ content, writeDisabledReason }: SpecPlanPanelPro
                 // case of a response whose ops carry none.
                 <li
                   key={op.id !== undefined && op.id !== "" ? op.id : `${op.op}:${op.target ?? ""}:${String(i)}`}
-                  className="font-mono text-xs text-slate-700 dark:text-slate-200"
+                  className="font-mono text-xs text-fg-body"
                 >
                   {op.op} {op.target ?? ""}
                 </li>
@@ -119,14 +119,14 @@ export function SpecPlanPanel({ content, writeDisabledReason }: SpecPlanPanelPro
           {result.notInSpec.length > 0 && (
             <ul className="mt-2 flex flex-col gap-1">
               {result.notInSpec.map((ref) => (
-                <li key={ref} className="font-mono text-xs text-slate-700 dark:text-slate-200">
+                <li key={ref} className="font-mono text-xs text-fg-body">
                   {ref}
                 </li>
               ))}
             </ul>
           )}
 
-          <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">
+          <p className="mt-3 text-xs text-fg-muted">
             The draft this plan created is <code className="font-mono">{result.id}</code>. Nothing has been
             applied; discard it from the review screen if the plan was only a question.
           </p>

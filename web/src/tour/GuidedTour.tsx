@@ -86,11 +86,11 @@ export function GuidedTour() {
       <section
         aria-label="Guided tour"
         data-testid="guided-tour"
-        className="flex w-full max-w-2xl shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950"
+        className="flex w-full max-w-2xl shrink-0 flex-col overflow-hidden border-b border-border bg-white shadow-sm dark:bg-slate-950"
       >
         <div className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-2 dark:bg-slate-800/60">
           <span className="flex items-baseline gap-1.5 text-sm font-medium">
-            <span className="text-xs font-normal text-slate-600 dark:text-slate-400" data-testid="guided-tour-step">
+            <span className="text-xs font-normal text-fg-muted" data-testid="guided-tour-step">
               {index}/{TOUR_STEPS.length}
             </span>
             <span>{step.title}</span>
@@ -99,13 +99,13 @@ export function GuidedTour() {
             type="button"
             aria-label="Minimize guided tour"
             onClick={() => { apply(dismissTour(current, Date.now())); }}
-            className="text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+            className="text-fg-muted hover:text-slate-700 dark:hover:text-slate-200"
           >
             ▾
           </button>
         </div>
         <div className="flex flex-col gap-3 p-3 text-sm">
-          <p className="text-slate-600 dark:text-slate-300">{step.body}</p>
+          <p className="text-fg-muted">{step.body}</p>
           <p className="text-xs text-fg-subtle">
             <span className="font-semibold">Look for:</span> {step.lookFor}
           </p>
@@ -146,7 +146,7 @@ export function GuidedTour() {
     const done = isTourDone(progress);
     const current = progress;
     return (
-      <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-1.5 dark:border-slate-800 dark:bg-slate-950">
+      <div className="shrink-0 border-b border-border bg-white px-4 py-1.5 dark:bg-slate-950">
         <button
           type="button"
           data-testid="guided-tour-reopen"
@@ -154,7 +154,7 @@ export function GuidedTour() {
             const next = done ? restartTour() : resumeTour(current);
             apply(next, tourStep(next.currentStep)?.route);
           }}
-          className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+          className="rounded-full border border-border bg-slate-50 px-3 py-1 text-xs font-medium hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800"
         >
           {done
             ? "Take the tour again"

@@ -37,15 +37,15 @@ const OUTCOME_CLASS: Record<string, string> = {
   reachable: "text-emerald-700 dark:text-emerald-300",
   unreachable: "text-red-700 dark:text-red-300",
   timeout: "text-amber-700 dark:text-amber-300",
-  error: "text-slate-600 dark:text-slate-400",
+  error: "text-fg-muted",
 };
 
 export function VerifyPanel({ verify }: { verify: VerifyResult }) {
   const { simulated, observed, diverges } = verify;
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+    <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-fg-body">
           Verify live
           <HelpAnchor topic="verify-live" />
         </h3>
@@ -56,20 +56,20 @@ export function VerifyPanel({ verify }: { verify: VerifyResult }) {
 
       <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
         <div>
-          <h4 className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-400">
+          <h4 className="mb-1 text-xs font-medium uppercase tracking-wide text-fg-muted">
             Simulated
           </h4>
           <p className="font-medium text-slate-800 dark:text-slate-100">{VERDICT_LABEL[simulated.verdict] ?? simulated.verdict}</p>
-          <p className="text-xs text-slate-600 dark:text-slate-400">Static analysis of configured state.</p>
+          <p className="text-xs text-fg-muted">Static analysis of configured state.</p>
         </div>
         <div>
-          <h4 className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-400">
+          <h4 className="mb-1 text-xs font-medium uppercase tracking-wide text-fg-muted">
             Observed
           </h4>
           <p className={clsx("font-medium", OUTCOME_CLASS[observed.outcome] ?? "text-slate-800 dark:text-slate-100")}>
             {OUTCOME_LABEL[observed.outcome] ?? observed.outcome}
           </p>
-          <p className="text-xs text-slate-600 dark:text-slate-400">
+          <p className="text-xs text-fg-muted">
             {observed.outcome === "error" ? (observed.execError ?? "The probe could not be attempted.") : (observed.detail ?? "A real ICMP/TCP probe run inside the source guest.")}
           </p>
         </div>

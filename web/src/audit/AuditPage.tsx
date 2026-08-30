@@ -107,7 +107,7 @@ export function AuditPage() {
       </form>
 
       {auditQuery.isLoading ? (
-        <p className="text-sm text-slate-600 dark:text-slate-400">Loading audit log…</p>
+        <p className="text-sm text-fg-muted">Loading audit log…</p>
       ) : auditQuery.isError ? (
         <EmptyState
           icon="node"
@@ -195,7 +195,7 @@ export function AuditPage() {
                             aria-expanded={expanded}
                             aria-controls={detailId}
                             aria-label={expanded ? "Collapse entry details" : "Expand entry details"}
-                            className="shrink-0 rounded text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                            className="shrink-0 rounded text-fg-muted hover:text-slate-900 dark:hover:text-slate-100"
                             onClick={(e) => {
                               e.stopPropagation();
                               setExpandedId((prev) => (prev === entry.id ? undefined : entry.id));
@@ -257,7 +257,7 @@ interface FilterInputProps {
 
 function FilterInput({ label, value, onChange, placeholder, type = "text" }: FilterInputProps) {
   return (
-    <label className="flex flex-col gap-1 text-xs text-slate-600 dark:text-slate-400">
+    <label className="flex flex-col gap-1 text-xs text-fg-muted">
       {label}
       <input
         type={type}
@@ -266,7 +266,7 @@ function FilterInput({ label, value, onChange, placeholder, type = "text" }: Fil
         onChange={(e) => {
           onChange(e.target.value);
         }}
-        className="h-9 rounded-md border border-slate-300 bg-white px-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+        className="h-9 rounded-md border border-border-strong bg-white px-2.5 text-sm text-fg dark:bg-slate-900"
       />
     </label>
   );
@@ -276,17 +276,17 @@ function ExpandedDetail({ entry }: { entry: AuditEntry }) {
   return (
     <div className="flex flex-col gap-2 py-1 text-sm">
       {entry.changesetId ? (
-        <p className="text-slate-600 dark:text-slate-300">
+        <p className="text-fg-muted">
           Changeset: <span className="font-mono text-xs">{entry.changesetId}</span> — its snapshots
           appear on the History page under this changeset.
         </p>
       ) : null}
       {entry.detail ? (
-        <pre className="overflow-x-auto rounded-md border border-slate-200 bg-white p-2 text-xs dark:border-slate-800 dark:bg-slate-950">
+        <pre className="overflow-x-auto rounded-md border border-border bg-white p-2 text-xs dark:bg-slate-950">
           {JSON.stringify(entry.detail, null, 2)}
         </pre>
       ) : (
-        <p className="text-slate-600 dark:text-slate-400">No additional detail recorded.</p>
+        <p className="text-fg-muted">No additional detail recorded.</p>
       )}
     </div>
   );

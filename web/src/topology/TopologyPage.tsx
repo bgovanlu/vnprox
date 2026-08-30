@@ -1292,7 +1292,7 @@ function TopologyPageContent() {
           is highlighted" and "nothing changed" look identical. */}
       {topologyDiff && (
         <div
-          className="rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 print:hidden"
+          className="rounded-md border border-border-strong bg-slate-50 px-3 py-2 text-xs text-fg-body dark:bg-slate-900 print:hidden"
           role="status"
         >
           <span className="font-medium">
@@ -1504,7 +1504,7 @@ function TopologyPageContent() {
         // viewport the banners scroll away and the map keeps its 22rem.
         // Capping the banner lists (done separately) raised the bar; this is
         // what removes the failure mode.
-        className="min-h-[22rem] flex-1 rounded-lg border border-slate-200 dark:border-slate-800 print:border-none print:h-auto print:min-h-0"
+        className="min-h-[22rem] flex-1 rounded-lg border border-border print:border-none print:h-auto print:min-h-0"
       >
         {isLoading && (
           <div className="flex h-full items-center justify-center">

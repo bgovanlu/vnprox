@@ -51,14 +51,14 @@ export function PortsPage() {
           <a
             href={`${API_BASE}/ports?format=csv`}
             download
-            className="inline-flex h-9 shrink-0 items-center justify-center rounded-pill bg-slate-200 px-3.5 text-sm font-medium text-slate-900 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+            className="inline-flex h-9 shrink-0 items-center justify-center rounded-pill bg-slate-200 px-3.5 text-sm font-medium text-fg hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700"
           >
             Export CSV
           </a>
         }
       />
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading ports…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading ports…</p>}
       {isError && <p className="text-sm text-red-600 dark:text-red-400">Could not load the ports table.</p>}
 
       {data && rows.length === 0 && (
@@ -71,9 +71,9 @@ export function PortsPage() {
       )}
 
       {rows.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+        <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full border-collapse text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
+            <thead className="border-b border-border bg-slate-50 dark:bg-slate-900">
               <tr>
                 <th className={th}>Node</th>
                 <th className={th}>NIC</th>
@@ -91,7 +91,7 @@ export function PortsPage() {
                   key={`${row.node}/${row.nic}/${String(i)}`}
                   className={
                     "border-b border-slate-100 last:border-b-0 dark:border-slate-800 " +
-                    (row.stale ? "text-fg-subtle" : "text-slate-700 dark:text-slate-200")
+                    (row.stale ? "text-fg-subtle" : "text-fg-body")
                   }
                 >
                   <td className={td}>{row.node}</td>

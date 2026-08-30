@@ -62,7 +62,7 @@ function TreeRow({
         "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors",
         selected
           ? "bg-accent-soft text-accent-fg"
-          : "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800/60",
+          : "text-fg-body hover:bg-slate-100 dark:hover:bg-slate-800/60",
       )}
       style={{ paddingLeft: `${String(0.5 + depth * 1.25)}rem` }}
     >
@@ -170,7 +170,7 @@ function SdnTreeView({
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-4 border-b border-slate-100 py-1 text-sm last:border-0 dark:border-slate-800">
-      <dt className="text-slate-600 dark:text-slate-400">{label}</dt>
+      <dt className="text-fg-muted">{label}</dt>
       <dd className="text-right text-slate-800 dark:text-slate-100">{value || "—"}</dd>
     </div>
   );
@@ -215,7 +215,7 @@ function ZoneDetail({ zone, gate }: { zone: SdnZone; gate: SdnWriteGate }) {
       <div className="flex items-start justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">{zone.id}</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">Zone · {zone.type}</p>
+          <p className="text-sm text-fg-muted">Zone · {zone.type}</p>
         </div>
         <div className="flex shrink-0 gap-1.5">
           <Button
@@ -258,17 +258,17 @@ function ZoneDetail({ zone, gate }: { zone: SdnZone; gate: SdnWriteGate }) {
         <Field label="VRF VXLAN" value={zone.vrfVxlan ? String(zone.vrfVxlan) : ""} />
       </dl>
       <div>
-        <h3 className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">Per-node status</h3>
+        <h3 className="mb-2 text-sm font-medium text-fg-muted">Per-node status</h3>
         <ul className="flex flex-col gap-1">
           {zone.nodeStatus.length === 0 && (
-            <li className="text-sm text-slate-600 dark:text-slate-400">No per-node status reported yet.</li>
+            <li className="text-sm text-fg-muted">No per-node status reported yet.</li>
           )}
           {zone.nodeStatus.map((ns) => (
             <li key={ns.node} className="flex items-center gap-2 text-sm">
               <StatusDot status={sdnNodeEntityStatus(ns.status)} />
               <span className="font-medium">{ns.node}</span>
-              <span className="text-slate-600 dark:text-slate-400">{ns.status || "ok"}</span>
-              {ns.detail && <span className="text-xs text-slate-600 dark:text-slate-400">— {ns.detail}</span>}
+              <span className="text-fg-muted">{ns.status || "ok"}</span>
+              {ns.detail && <span className="text-xs text-fg-muted">— {ns.detail}</span>}
             </li>
           ))}
         </ul>
@@ -284,7 +284,7 @@ function VnetDetail({ vnet, gate }: { vnet: SdnVnet; gate: SdnWriteGate }) {
       <div className="flex items-start justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">{vnet.id}</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">VNet · zone {vnet.zone}</p>
+          <p className="text-sm text-fg-muted">VNet · zone {vnet.zone}</p>
         </div>
         <div className="flex shrink-0 gap-1.5">
           <Button
@@ -333,7 +333,7 @@ function SubnetDetail({ subnet, gate }: { subnet: SdnSubnet; gate: SdnWriteGate 
       <div className="flex items-start justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">{subnet.cidr || subnet.id}</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">Subnet · vnet {subnet.vnet}</p>
+          <p className="text-sm text-fg-muted">Subnet · vnet {subnet.vnet}</p>
         </div>
         <div className="flex shrink-0 gap-1.5">
           <Button
@@ -464,7 +464,7 @@ export function SdnPage() {
       <ZoneWizardPicker open={wizardPickerOpen} onOpenChange={setWizardPickerOpen} initialActive={wizardInitialKind} />
 
       <TabsContent value="configuration" className="flex min-h-0 flex-1 flex-col gap-3">
-        {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading SDN configuration…</p>}
+        {isLoading && <p className="text-sm text-fg-muted">Loading SDN configuration…</p>}
         {isError && (
           <EmptyState
             icon="sdn-zone"
@@ -503,10 +503,10 @@ export function SdnPage() {
 
         {!isLoading && !isError && tree && tree.zones.length > 0 && (
           <div className="grid min-h-0 flex-1 grid-cols-[minmax(220px,320px)_1fr] gap-3">
-            <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-2 dark:border-slate-800">
+            <div className="min-h-0 overflow-y-auto rounded-lg border border-border p-2">
               <SdnTreeView tree={tree} selection={selection} onSelect={setSelection} />
             </div>
-            <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+            <div className="min-h-0 overflow-y-auto rounded-lg border border-border p-4">
               {!resolved && (
                 <EmptyState title="Nothing selected" description="Pick a zone, VNet, or subnet from the tree." />
               )}

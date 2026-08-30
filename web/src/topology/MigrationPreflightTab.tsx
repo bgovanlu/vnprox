@@ -86,7 +86,7 @@ export function MigrationPreflightTab({ entityRef }: MigrationPreflightTabProps)
         <input
           id="migration-preflight-target"
           type="text"
-          className="w-32 rounded border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+          className="w-32 rounded border border-border-strong bg-white px-2 py-1 text-xs dark:bg-slate-900"
           value={targetNode}
           placeholder="e.g. pve2"
           onChange={(e) => {

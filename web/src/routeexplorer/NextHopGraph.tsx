@@ -53,7 +53,7 @@ export function NextHopGraph({ routes, highlighted }: NextHopGraphProps) {
   const highlightedKey = highlighted ? routeKey(highlighted) : undefined;
 
   if (groups.length === 0) {
-    return <p className="text-sm text-slate-600 dark:text-slate-400">No forwarding routes in the main table.</p>;
+    return <p className="text-sm text-fg-muted">No forwarding routes in the main table.</p>;
   }
 
   return (
@@ -61,12 +61,12 @@ export function NextHopGraph({ routes, highlighted }: NextHopGraphProps) {
       {groups.map((group) => (
         <li
           key={group.dev}
-          className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-900"
+          className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-white p-2 dark:bg-slate-900"
         >
           <span className="rounded bg-slate-100 px-2 py-1 font-mono text-xs font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-200">
             {group.dev}
           </span>
-          <ArrowRight aria-hidden="true" className="h-4 w-4 shrink-0 text-slate-600 dark:text-slate-400" />
+          <ArrowRight aria-hidden="true" className="h-4 w-4 shrink-0 text-fg-muted" />
           <ul className="flex flex-wrap gap-1.5" aria-label={`Destinations via ${group.dev}`}>
             {group.routes.map((r) => {
               const isHighlighted = highlightedKey !== undefined && routeKey(r) === highlightedKey;
@@ -77,7 +77,7 @@ export function NextHopGraph({ routes, highlighted }: NextHopGraphProps) {
                     "rounded-full border px-2 py-0.5 font-mono text-xs",
                     isHighlighted
                       ? "border-blue-500 bg-blue-50 font-semibold text-blue-800 dark:border-blue-400 dark:bg-blue-950/50 dark:text-blue-200"
-                      : "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300",
+                      : "border-border-strong bg-slate-50 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300",
                   )}
                 >
                   {r.dst}

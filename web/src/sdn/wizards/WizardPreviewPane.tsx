@@ -69,7 +69,7 @@ export function WizardPreviewPane({ graph, debounceMs = PREVIEW_DEBOUNCE_MS }: W
   }
 
   return (
-    <div className="h-full min-h-[22rem] overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
+    <div className="h-full min-h-[22rem] overflow-hidden rounded-lg border border-border">
       <TopologyCanvas
         elements={elements}
         onNodeClick={() => {

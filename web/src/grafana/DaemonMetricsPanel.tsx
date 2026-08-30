@@ -105,7 +105,7 @@ export function DaemonMetricsPanel({ scrape }: DaemonMetricsPanelProps) {
 
   if (flatFamilies.length === 0 && histograms.length === 0) {
     return (
-      <p className="text-sm text-slate-600 dark:text-slate-400" data-testid="daemon-metrics-panel-empty">
+      <p className="text-sm text-fg-muted" data-testid="daemon-metrics-panel-empty">
         No vnprox daemon self-observability metrics in this scrape.
       </p>
     );
@@ -126,7 +126,7 @@ export function DaemonMetricsPanel({ scrape }: DaemonMetricsPanelProps) {
                   .join(", ");
                 return (
                   <tr key={`${f.name}-${String(i)}`}>
-                    <td className="pr-3 text-slate-600 dark:text-slate-400">{labelText || "—"}</td>
+                    <td className="pr-3 text-fg-muted">{labelText || "—"}</td>
                     <td className="tabular-nums font-medium">{s.value}</td>
                   </tr>
                 );
@@ -142,7 +142,7 @@ export function DaemonMetricsPanel({ scrape }: DaemonMetricsPanelProps) {
             <tbody>
               {rows.map((row, i) => (
                 <tr key={`${base}-${String(i)}`}>
-                  <td className="pr-3 text-slate-600 dark:text-slate-400">{row.labelText || "—"}</td>
+                  <td className="pr-3 text-fg-muted">{row.labelText || "—"}</td>
                   <td className="tabular-nums font-medium">
                     {row.count} calls, avg {row.avgSeconds.toFixed(3)}s
                   </td>

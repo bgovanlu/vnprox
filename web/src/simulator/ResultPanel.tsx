@@ -28,7 +28,7 @@ const VERDICT_BANNER_CLASS: Record<SimVerdict, string> = {
 };
 
 const CAVEAT_SEVERITY_CLASS: Record<SimCaveatSeverity, string> = {
-  info: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300",
+  info: "border-border bg-slate-50 text-slate-700 dark:bg-slate-900 dark:text-slate-300",
   warning: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200",
   blocker: "border-red-300 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200",
 };
@@ -81,20 +81,20 @@ export function VerdictBanner({ result }: { result: SimulateResult }) {
 
 function HopList({ result }: { result: SimulateResult }) {
   if (result.hops.length === 0) {
-    return <p className="text-sm text-slate-600 dark:text-slate-400">No path traced yet.</p>;
+    return <p className="text-sm text-fg-muted">No path traced yet.</p>;
   }
   return (
     <ol className="flex flex-col gap-1.5 text-sm">
       {result.hops.map((hop, i) => (
         <li key={`${hop.ref ?? hop.kind}-${String(i)}`} className="flex items-start gap-2">
-          <span className="mt-0.5 shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          <span className="mt-0.5 shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-fg-muted dark:bg-slate-800">
             {i + 1}
           </span>
           <div>
             <span className="font-medium text-slate-800 dark:text-slate-100">{hop.label}</span>
-            <span className="ml-2 text-xs text-slate-600 dark:text-slate-400">{hop.kind}</span>
-            {hop.node && <span className="ml-1 text-xs text-slate-600 dark:text-slate-400">· {hop.node}</span>}
-            {hop.detail && <p className="text-xs text-slate-600 dark:text-slate-400">{hop.detail}</p>}
+            <span className="ml-2 text-xs text-fg-muted">{hop.kind}</span>
+            {hop.node && <span className="ml-1 text-xs text-fg-muted">· {hop.node}</span>}
+            {hop.detail && <p className="text-xs text-fg-muted">{hop.detail}</p>}
           </div>
         </li>
       ))}
@@ -120,20 +120,20 @@ function BlockingRuleCard({ result }: { result: SimulateResult }) {
         )}
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-        <dt className="text-slate-600 dark:text-slate-400">Enforcement point</dt>
+        <dt className="text-fg-muted">Enforcement point</dt>
         <dd>{rule.enforcementPoint === "source-guest-out" ? "Source guest, outbound" : "Destination guest, inbound"}</dd>
-        <dt className="text-slate-600 dark:text-slate-400">Origin</dt>
+        <dt className="text-fg-muted">Origin</dt>
         <dd>
           {rule.origin}
           {rule.groupName ? `: ${rule.groupName}` : ""} (position {rule.pos})
         </dd>
-        <dt className="text-slate-600 dark:text-slate-400">Action</dt>
+        <dt className="text-fg-muted">Action</dt>
         <dd className="font-mono uppercase">{rule.action}</dd>
-        <dt className="text-slate-600 dark:text-slate-400">Match</dt>
+        <dt className="text-fg-muted">Match</dt>
         <dd>{ruleMatchLabel(rule.rule)}</dd>
         {rule.rule.comment && (
           <>
-            <dt className="text-slate-600 dark:text-slate-400">Comment</dt>
+            <dt className="text-fg-muted">Comment</dt>
             <dd>{rule.rule.comment}</dd>
           </>
         )}
@@ -166,7 +166,7 @@ function CaveatList({ result }: { result: SimulateResult }) {
   const caveats = sortCaveats(result.caveats);
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Caveats ({caveats.length})</h3>
+      <h3 className="text-sm font-semibold text-fg-body">Caveats ({caveats.length})</h3>
       <ul className="flex flex-col gap-1.5">
         {caveats.map((c, i) => (
           <li
@@ -176,9 +176,9 @@ function CaveatList({ result }: { result: SimulateResult }) {
             <span className="mr-1.5 rounded bg-black/10 px-1 py-0.5 text-[10px] font-semibold uppercase dark:bg-white/10">
               {CAVEAT_SEVERITY_LABEL[c.severity]}
             </span>
-            <span className="font-mono text-[10px] text-slate-600 dark:text-slate-400">{c.code}</span>
+            <span className="font-mono text-[10px] text-fg-muted">{c.code}</span>
             <p className="mt-0.5">{c.message}</p>
-            {c.feature && <p className="mt-0.5 text-slate-600 dark:text-slate-400">Feature: {c.feature}</p>}
+            {c.feature && <p className="mt-0.5 text-fg-muted">Feature: {c.feature}</p>}
           </li>
         ))}
       </ul>
@@ -189,7 +189,7 @@ function CaveatList({ result }: { result: SimulateResult }) {
 export function ResultPanel({ result }: { result: SimulateResult }) {
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-400">
+      <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-fg-muted">
         Simulated result
         <HelpAnchor topic="path-simulator" />
       </div>
@@ -197,11 +197,11 @@ export function ResultPanel({ result }: { result: SimulateResult }) {
 
       <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
         <div>
-          <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-400">Source</h3>
+          <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-fg-muted">Source</h3>
           <p>{endpointSummary(result.src)}</p>
         </div>
         <div>
-          <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-400">
+          <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-fg-muted">
             Destination
           </h3>
           <p>{endpointSummary(result.dst)}</p>
@@ -212,7 +212,7 @@ export function ResultPanel({ result }: { result: SimulateResult }) {
       <MissingLinkCard result={result} />
 
       <div>
-        <h3 className="mb-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">Path</h3>
+        <h3 className="mb-1.5 text-sm font-semibold text-fg-body">Path</h3>
         <HopList result={result} />
       </div>
 

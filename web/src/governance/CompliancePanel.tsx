@@ -43,23 +43,23 @@ export function CompliancePanel() {
       </div>
 
       {profilesQuery.isLoading && (
-        <p className="text-sm text-slate-600 dark:text-slate-400">Reading the installed profiles…</p>
+        <p className="text-sm text-fg-muted">Reading the installed profiles…</p>
       )}
       {profilesQuery.error !== null && (
-        <p className="text-sm text-slate-700 dark:text-slate-200" role="status">
+        <p className="text-sm text-fg-body" role="status">
           The profile list could not be read, so which profiles are installed is unknown. The daemon said:{" "}
           {profilesQuery.error instanceof Error ? profilesQuery.error.message : "the read failed"}
         </p>
       )}
       {profilesQuery.data !== undefined && profiles.length === 0 && (
-        <p className="text-sm text-slate-600 dark:text-slate-400">No compliance profiles are installed.</p>
+        <p className="text-sm text-fg-muted">No compliance profiles are installed.</p>
       )}
 
       {profiles.length > 0 && (
         <label className="flex items-center gap-2 text-sm">
           Profile
           <select
-            className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className="rounded border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
             value={activeProfile ?? ""}
             onChange={(e) => {
               setSelected(e.target.value);
@@ -75,11 +75,11 @@ export function CompliancePanel() {
       )}
 
       {reportQuery.isLoading && activeProfile !== undefined && (
-        <p className="text-sm text-slate-600 dark:text-slate-400">Building the report…</p>
+        <p className="text-sm text-fg-muted">Building the report…</p>
       )}
 
       {reportQuery.error !== null && (
-        <p className="text-sm text-slate-700 dark:text-slate-200" role="status" data-testid="compliance-report-error">
+        <p className="text-sm text-fg-body" role="status" data-testid="compliance-report-error">
           The report could not be built, so this profile's controls are unknown — none of them may be read as passing.
           The daemon said:{" "}
           {reportQuery.error instanceof ApiError || reportQuery.error instanceof Error
@@ -90,7 +90,7 @@ export function CompliancePanel() {
 
       {reportQuery.data !== undefined && (
         <>
-          <p className="rounded-md border border-slate-300 p-2 text-xs text-slate-600 dark:border-slate-700 dark:text-slate-300">
+          <p className="rounded-md border border-border-strong p-2 text-xs text-fg-muted">
             {reportQuery.data.notice}
           </p>
 
@@ -142,11 +142,11 @@ export function CompliancePanel() {
                   {CONTROL_STATUS_LABEL[control.classified]}
                   {control.classified === "unknown" && <span className="ml-1 font-mono normal-case">({control.status})</span>}
                 </p>
-                <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
+                <p className="mt-0.5 text-xs text-fg-muted">
                   {CONTROL_STATUS_MEANING[control.classified]}
                 </p>
                 {control.statement !== "" && (
-                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{control.statement}</p>
+                  <p className="mt-1 text-sm text-fg-muted">{control.statement}</p>
                 )}
                 {control.classified === "unmapped" && (
                   <p className="mt-1 text-xs" data-testid={`compliance-unmapped-${control.id}`}>
@@ -164,7 +164,7 @@ export function CompliancePanel() {
                         </span>{" "}
                         — {e.status}: {e.detail}
                         {e.note !== undefined && e.note !== "" && (
-                          <span className="block text-slate-600 dark:text-slate-400">{e.note}</span>
+                          <span className="block text-fg-muted">{e.note}</span>
                         )}
                       </li>
                     ))}
@@ -172,7 +172,7 @@ export function CompliancePanel() {
                 )}
                 {(control.evidence === undefined || control.evidence.length === 0) &&
                   control.classified !== "unmapped" && (
-                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                    <p className="mt-1 text-xs text-fg-muted">
                       The report carried no evidence items for this control, so nothing here explains its status.
                     </p>
                   )}
@@ -181,12 +181,12 @@ export function CompliancePanel() {
           </ul>
 
           {reportQuery.data.unmappedChecks !== undefined && reportQuery.data.unmappedChecks.length > 0 && (
-            <div className="rounded-md border border-slate-300 p-2 text-xs dark:border-slate-700">
+            <div className="rounded-md border border-border-strong p-2 text-xs">
               <p className="font-medium">
                 Checks this build can emit that no control in this profile maps ({reportQuery.data.unmappedChecks.length}):
               </p>
               <p className="mt-0.5 font-mono">{reportQuery.data.unmappedChecks.join(", ")}</p>
-              <p className="mt-0.5 text-slate-600 dark:text-slate-400">
+              <p className="mt-0.5 text-fg-muted">
                 Computed from: {reportQuery.data.checkUniverse}
               </p>
             </div>

@@ -37,7 +37,7 @@ function severityClass(severity: DriftFinding["severity"]): string {
     case "warning":
       return "border-status-degraded bg-status-degraded-soft";
     default:
-      return "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/60";
+      return "border-border bg-slate-50 dark:bg-slate-900/60";
   }
 }
 
@@ -47,7 +47,7 @@ function PresenceChip({ position, present }: { position: SpecPosition; present: 
       title={POSITION_MEANING[position]}
       className={
         present
-          ? "rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-800 dark:border-slate-600 dark:text-slate-100"
+          ? "rounded border border-border-strong px-2 py-0.5 text-xs text-slate-800 dark:text-slate-100"
           : "rounded border border-dashed border-outline px-2 py-0.5 text-xs text-fg-subtle"
       }
     >
@@ -80,7 +80,7 @@ function AdoptionLink({ findingId }: { findingId: string }) {
       ? "the open pull request"
       : `pull request #${data.pullRequestId}`;
   return (
-    <p className="text-xs text-slate-600 dark:text-slate-300">
+    <p className="text-xs text-fg-muted">
       Already adopted as{" "}
       {data.pullRequestUrl === undefined || data.pullRequestUrl === "" ? (
         <span className="font-mono">{label}</span>
@@ -129,10 +129,10 @@ export function ReconciliationCard({
   return (
     <li className={`rounded-md border p-3 ${severityClass(finding.severity)}`}>
       <div className="flex flex-wrap items-baseline gap-2">
-        <code className="font-mono text-sm font-semibold text-slate-900 dark:text-slate-100">
+        <code className="font-mono text-sm font-semibold text-fg">
           {reconciliation.ref}
         </code>
-        <span className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-300">
+        <span className="text-xs uppercase tracking-wide text-fg-muted">
           {finding.severity}
         </span>
         {finding.nodes.length > 0 && (
@@ -148,7 +148,7 @@ export function ReconciliationCard({
       </div>
 
       {odd !== undefined && (
-        <p className="mt-2 text-sm text-slate-700 dark:text-slate-200">
+        <p className="mt-2 text-sm text-fg-body">
           The odd one out is <strong>{POSITION_LABEL[odd]}</strong> — the other two agree.
         </p>
       )}
@@ -169,8 +169,8 @@ export function ReconciliationCard({
             </thead>
             <tbody>
               {reconciliation.fields.map((field) => (
-                <tr key={field.field} className="border-t border-slate-200 align-top dark:border-slate-800">
-                  <td className="py-1 pr-4 font-mono text-xs text-slate-700 dark:text-slate-200">{field.field}</td>
+                <tr key={field.field} className="border-t border-border align-top">
+                  <td className="py-1 pr-4 font-mono text-xs text-fg-body">{field.field}</td>
                   {POSITIONS.map((p) => {
                     const cell = cellText(valueAt(field, p));
                     return (
@@ -178,7 +178,7 @@ export function ReconciliationCard({
                         key={p}
                         className={
                           cell.known
-                            ? "py-1 pr-4 font-mono text-xs text-slate-900 dark:text-slate-100"
+                            ? "py-1 pr-4 font-mono text-xs text-fg"
                             : "py-1 pr-4 text-xs italic text-fg-subtle"
                         }
                       >
@@ -195,13 +195,13 @@ export function ReconciliationCard({
 
       <ul className="mt-3 flex flex-col gap-1">
         {reconciliation.pairs.map((pair) => (
-          <li key={`${pair.a}/${pair.b}`} className="text-xs text-slate-600 dark:text-slate-300">
+          <li key={`${pair.a}/${pair.b}`} className="text-xs text-fg-muted">
             <span className="font-semibold">{pairLabel(pair)}:</span> {pairSummary(pair)}
           </li>
         ))}
       </ul>
 
-      <div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-800">
+      <div className="mt-3 border-t border-border pt-3">
         <h4 className="flex items-center gap-2 text-sm font-semibold">
           Reconcile
           <HelpAnchor topic="spec-reconciliation" />

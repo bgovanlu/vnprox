@@ -133,7 +133,7 @@ export function GuestsPage() {
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <select
               aria-label="Filter by node"
-              className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+              className="rounded border border-border-strong px-2 py-1 text-sm dark:bg-slate-800"
               value={filter.node ?? ""}
               onChange={(e) => { setFilter((f) => ({ ...f, node: e.target.value || undefined })); }}
             >
@@ -146,7 +146,7 @@ export function GuestsPage() {
             </select>
             <select
               aria-label="Filter by bridge or VNet"
-              className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+              className="rounded border border-border-strong px-2 py-1 text-sm dark:bg-slate-800"
               value={filter.bridgeOrVnet ?? ""}
               onChange={(e) => { setFilter((f) => ({ ...f, bridgeOrVnet: e.target.value || undefined })); }}
             >
@@ -161,7 +161,7 @@ export function GuestsPage() {
         }
       />
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading guest NICs…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading guest NICs…</p>}
       {!isLoading && filtered.length === 0 && hasActiveFilter && (
         <EmptyState
           icon="guest-nic"
@@ -194,7 +194,7 @@ export function GuestsPage() {
               </span>
               <select
                 aria-label="Reattach selected guests to"
-                className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+                className="rounded border border-border-strong px-2 py-1 text-sm dark:bg-slate-800"
                 value={bulkTarget}
                 onChange={(e) => { setBulkTarget(e.target.value); }}
               >

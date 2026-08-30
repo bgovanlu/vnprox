@@ -38,8 +38,8 @@ function TopicBody({ topic }: { topic: HelpTopic }) {
     <div className="mt-4 space-y-5">
       {topic.sections.map((section) => (
         <section key={section.heading}>
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{section.heading}</h3>
-          <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+          <h3 className="text-sm font-semibold text-fg">{section.heading}</h3>
+          <p className="mt-1 text-sm leading-relaxed text-fg-muted">
             <HelpText>{section.body}</HelpText>
           </p>
         </section>
@@ -47,8 +47,8 @@ function TopicBody({ topic }: { topic: HelpTopic }) {
 
       {topic.steps && topic.steps.length > 0 && (
         <section>
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Step by step</h3>
-          <ol className="mt-1 list-decimal space-y-1 pl-5 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+          <h3 className="text-sm font-semibold text-fg">Step by step</h3>
+          <ol className="mt-1 list-decimal space-y-1 pl-5 text-sm leading-relaxed text-fg-muted">
             {topic.steps.map((step) => (
               <li key={step}>
                 <HelpText>{step}</HelpText>
@@ -76,7 +76,7 @@ function TopicBody({ topic }: { topic: HelpTopic }) {
                     onClick={() => {
                       goToTopic(id);
                     }}
-                    className="rounded-full border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-slate-100"
+                    className="rounded-full border border-border-strong px-2.5 py-1 text-xs text-fg-muted hover:border-slate-400 hover:text-slate-900 dark:hover:border-slate-500 dark:hover:text-slate-100"
                   >
                     {related.title}
                   </button>
@@ -118,7 +118,7 @@ function SearchResults({ query }: { query: string }) {
             }}
             className="w-full rounded-md px-2 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-800"
           >
-            <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">
+            <span className="block text-sm font-medium text-fg">
               {hit.topic.title}
             </span>
             <span className="mt-0.5 block text-xs leading-relaxed text-fg-subtle">
@@ -168,7 +168,7 @@ function BrowseIndex() {
                     onClick={() => {
                       goToTopic(topic.id);
                     }}
-                    className="w-full rounded px-2 py-1 text-left text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                    className="w-full rounded px-2 py-1 text-left text-sm text-fg-muted hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                   >
                     {topic.title}
                   </button>
@@ -231,7 +231,7 @@ export function HelpPanel() {
           )}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <DrawerTitle className="min-w-0 truncate text-base font-semibold text-slate-900 dark:text-slate-100">
+              <DrawerTitle className="min-w-0 truncate text-base font-semibold text-fg">
                 {searching ? "Search help" : (topic?.title ?? "Help")}
               </DrawerTitle>
               {/* The drawer documents itself. It is a panel like any other,
@@ -265,7 +265,7 @@ export function HelpPanel() {
               setQuery(e.target.value);
             }}
             placeholder="Search help…"
-            className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+            className="h-9 w-full rounded-md border border-border-strong bg-white px-3 text-sm text-fg placeholder:text-slate-400 focus:border-slate-400 focus:outline-none dark:bg-slate-900 dark:placeholder:text-slate-500"
           />
         </label>
 
@@ -282,7 +282,7 @@ export function HelpPanel() {
          * whole list ambiguous to anything querying by name — a screen
          * reader as much as a test. */}
         {!searching && topic && (
-          <div className="mt-6 border-t border-slate-200 pt-3 dark:border-slate-800">
+          <div className="mt-6 border-t border-border pt-3">
             <button
               type="button"
               onClick={browseIndex}

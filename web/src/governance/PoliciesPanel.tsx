@@ -53,7 +53,7 @@ function parseDocument(raw: string): { set: PolicySet } | { error: string } {
 
 function StatRow({ stat }: { stat: PolicyRuleStatus }) {
   return (
-    <p className="text-xs text-slate-600 dark:text-slate-400">
+    <p className="text-xs text-fg-muted">
       {stat.evalCount === 0
         ? "Never evaluated yet."
         : `Evaluated ${String(stat.evalCount)} time${stat.evalCount === 1 ? "" : "s"}, matched ${String(stat.matchCount)}.`}
@@ -103,16 +103,16 @@ export function PoliciesPanel() {
         <h2 className="text-base font-semibold">Policy as code</h2>
         <HelpAnchor topic="policies-panel" />
       </div>
-      <p className="text-sm text-slate-600 dark:text-slate-300">
+      <p className="text-sm text-fg-muted">
         The cluster's declarative rule set. A rule matches operations and asserts something about them; a `deny` rule
         blocks the apply inside the change engine's validate stage, and a `warn` rule annotates the changeset. Nothing
         here is enforced by this screen — it is where the rules are read and replaced.
       </p>
 
-      {query.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Reading the installed rule set…</p>}
+      {query.isLoading && <p className="text-sm text-fg-muted">Reading the installed rule set…</p>}
 
       {notConfigured && (
-        <p className="text-sm text-slate-600 dark:text-slate-300">
+        <p className="text-sm text-fg-muted">
           This daemon has no policy store wired, so there is no rule set to administer. Changesets still validate
           against an empty set, which produces no policy findings — this is not policy being bypassed. The daemon said:{" "}
           {query.error instanceof Error ? query.error.message : ""}
@@ -120,7 +120,7 @@ export function PoliciesPanel() {
       )}
 
       {unreadable && (
-        <p className="text-sm text-slate-700 dark:text-slate-200" role="status">
+        <p className="text-sm text-fg-body" role="status">
           The rule set could not be read, so what is installed is unknown — not that nothing is. The daemon said:{" "}
           {query.error instanceof Error ? query.error.message : "the read failed"}
         </p>
@@ -128,7 +128,7 @@ export function PoliciesPanel() {
 
       {status !== undefined && (
         <>
-          <p className="text-xs text-slate-600 dark:text-slate-400">
+          <p className="text-xs text-fg-muted">
             Store revision {String(status.revision)}
             {status.revision === 0 && " (nothing has ever been installed)"}
             {status.updatedBy !== undefined && status.updatedBy !== "" && ` · last installed by ${status.updatedBy}`}
@@ -138,7 +138,7 @@ export function PoliciesPanel() {
           </p>
 
           {(status.set.rules ?? []).length === 0 ? (
-            <p className="text-sm text-slate-600 dark:text-slate-400">
+            <p className="text-sm text-fg-muted">
               No rules are installed, so policy-as-code guards nothing on this cluster today.
             </p>
           ) : (
@@ -147,18 +147,18 @@ export function PoliciesPanel() {
                 const severity = classifySeverity(rule.severity);
                 const stat = statsById.get(rule.id);
                 return (
-                  <li key={rule.id} className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
+                  <li key={rule.id} className="rounded-md border border-border p-3">
                     <p className="text-sm font-medium">
                       <span className="font-mono">{rule.id}</span>{" "}
-                      <span className="font-normal text-slate-600 dark:text-slate-400">
+                      <span className="font-normal text-fg-muted">
                         — {rule.severity}: {SEVERITY_NOTE[severity]}
                       </span>
                     </p>
                     {rule.description !== "" && (
-                      <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">{rule.description}</p>
+                      <p className="mt-0.5 text-sm text-fg-muted">{rule.description}</p>
                     )}
                     {rule.tags !== undefined && rule.tags.length > 0 && (
-                      <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+                      <p className="mt-0.5 text-xs text-fg-muted">
                         Tags: {rule.tags.join(", ")} — a protected class may be declared against any of these.
                       </p>
                     )}
@@ -180,14 +180,14 @@ export function PoliciesPanel() {
                             ))}
                           </ul>
                         ) : (
-                          <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
+                          <p className="mt-0.5 text-xs text-fg-muted">
                             Nothing — for this rule the match itself is the violation.
                           </p>
                         )}
                       </div>
                     </div>
                     {stat === undefined ? (
-                      <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                      <p className="mt-1 text-xs text-fg-muted">
                         The daemon reported no statistics for this rule, so how often it has matched is unknown.
                       </p>
                     ) : (
@@ -199,9 +199,9 @@ export function PoliciesPanel() {
             </ul>
           )}
 
-          <details className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
+          <details className="rounded-md border border-border p-3">
             <summary className="cursor-pointer text-sm font-medium">Replace the rule set</summary>
-            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+            <p className="mt-1 text-xs text-fg-muted">
               A whole document, installed as a unit — there is no per-rule patch. The daemon validates it before
               anything is written: a malformed set is refused and nothing is stored and nothing is audited.
               Re-installing an identical set is a no-op, with no new revision and no audit entry.
@@ -214,7 +214,7 @@ export function PoliciesPanel() {
               rows={12}
               aria-label="Policy document"
               spellCheck={false}
-              className="mt-2 w-full rounded border border-slate-300 p-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-900"
+              className="mt-2 w-full rounded border border-border-strong p-2 font-mono text-xs dark:bg-slate-900"
             />
             {parseError !== undefined && (
               <p className="mt-1 text-xs text-red-700 dark:text-red-300" role="alert">

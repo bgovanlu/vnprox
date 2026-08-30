@@ -54,7 +54,7 @@ export function EmptyState({ title, description, action, className, density, ico
         // T-3405: larger radius to match Dialog/Drawer/Toast's softer look.
         "flex h-full flex-col items-center justify-center rounded-xl border border-dashed text-center",
         DENSITY_CLASSES[resolvedDensity],
-        "border-slate-300 dark:border-slate-700",
+        "border-border-strong",
         className,
       )}
     >
@@ -69,7 +69,7 @@ export function EmptyState({ title, description, action, className, density, ico
         // on AppShell's `bg-slate-100`, where text-slate-500 measures
         // 4.34:1 against the 4.5:1 AA floor. slate-600 clears it; dark
         // mode (slate-400 on bg-slate-900) is untouched.
-        <p className="max-w-md text-sm text-slate-600 dark:text-slate-400">{description}</p>
+        <p className="max-w-md text-sm text-fg-muted">{description}</p>
       ) : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>

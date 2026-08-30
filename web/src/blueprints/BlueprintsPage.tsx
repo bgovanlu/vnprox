@@ -178,7 +178,7 @@ export function BlueprintsPage() {
       <div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
       <div className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Saved</h2>
+          <h2 className="text-sm font-semibold text-fg-body">Saved</h2>
           <div>
             <input
               ref={fileInputRef}
@@ -196,7 +196,7 @@ export function BlueprintsPage() {
                 <button
                   type="button"
                   disabled={!canWrite}
-                  className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                  className="rounded-md border border-border-strong px-2 py-1 text-xs font-medium hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-slate-800"
                   onClick={() => fileInputRef.current?.click()}
                 >
                   Import
@@ -223,15 +223,15 @@ export function BlueprintsPage() {
               >
                 <span className="font-medium">{bp.name}</span>
                 {bp.readOnly ? (
-                  <span className="text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-400">starter</span>
+                  <span className="text-[10px] uppercase tracking-wide text-fg-muted">starter</span>
                 ) : null}
               </button>
             </li>
           ))}
         </ul>
 
-        <div className="mt-auto flex flex-col gap-2 border-t border-slate-200 pt-3 dark:border-slate-800">
-          <label htmlFor="capture-node" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+        <div className="mt-auto flex flex-col gap-2 border-t border-border pt-3">
+          <label htmlFor="capture-node" className="text-xs font-medium text-fg-muted">
             Capture from node
           </label>
           <div className="flex gap-2">
@@ -239,7 +239,7 @@ export function BlueprintsPage() {
               id="capture-node"
               type="text"
               placeholder="pve1"
-              className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className="w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
               value={captureNode}
               onChange={(e) => {
                 setCaptureNode(e.target.value);
@@ -250,7 +250,7 @@ export function BlueprintsPage() {
                 <button
                   type="button"
                   disabled={!canWrite}
-                  className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                  className="shrink-0 rounded-md border border-border-strong px-2 py-1 text-xs font-medium hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-slate-800"
                   onClick={() => {
                     void handleCapture();
                   }}
@@ -276,13 +276,13 @@ export function BlueprintsPage() {
                  * detail-panel's own heading below the page title. */}
                 <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{selected.name}</h2>
                 {selected.description ? (
-                  <p className="max-w-2xl text-sm text-slate-600 dark:text-slate-400">{selected.description}</p>
+                  <p className="max-w-2xl text-sm text-fg-muted">{selected.description}</p>
                 ) : null}
               </div>
               <div className="flex gap-2">
                 <button
                   type="button"
-                  className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                  className="rounded-md border border-border-strong px-2 py-1 text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800"
                   onClick={() => {
                     handleExport(selected);
                   }}
@@ -309,12 +309,12 @@ export function BlueprintsPage() {
             </div>
 
             <section>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Preview</h3>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">Preview</h3>
               <BlueprintPreviewDiagram blueprint={selected} />
             </section>
 
             <section>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Instantiate</h3>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">Instantiate</h3>
               <ParamForm
                 key={selected.id}
                 blueprintId={selected.id}

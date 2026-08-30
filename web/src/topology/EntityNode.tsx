@@ -355,7 +355,7 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
           // (T-2108). So this uses a step darker in light mode and lighter in
           // dark mode than muted text elsewhere, which is the only way to
           // clear 4.5:1 across every tint a node can take.
-          <span className="shrink-0 text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-300">
+          <span className="shrink-0 text-[10px] uppercase tracking-wide text-fg-muted">
             {data.kind}
           </span>
         )}
@@ -372,7 +372,7 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
         <div className="flex items-center gap-1">
           <PortJack kind={jackKind} status={data.status} />
           {speedLabel && (
-            <span className="text-[9px] font-semibold uppercase leading-none tracking-wider text-slate-600 dark:text-slate-300">
+            <span className="text-[9px] font-semibold uppercase leading-none tracking-wider text-fg-muted">
               {speedLabel}
             </span>
           )}

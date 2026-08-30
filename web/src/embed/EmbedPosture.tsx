@@ -23,7 +23,7 @@ function FactorRow({ factor }: { factor: PostureFactor }) {
     <li className="flex items-start justify-between gap-3 border-b border-slate-100 py-1.5 text-sm last:border-0 dark:border-slate-800">
       <div className="min-w-0">
         <div className="font-medium">{factor.name}</div>
-        <div className="text-xs text-slate-600 dark:text-slate-400">{factor.detail}</div>
+        <div className="text-xs text-fg-muted">{factor.detail}</div>
         {factor.caveat ? (
           <div className="text-xs text-amber-600 dark:text-amber-400">{factor.caveat}</div>
         ) : null}
@@ -32,7 +32,7 @@ function FactorRow({ factor }: { factor: PostureFactor }) {
         {factor.evaluated ? (
           <span className="tabular-nums font-semibold">{factor.scorePct}</span>
         ) : (
-          <span className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">Not evaluated</span>
+          <span className="text-xs uppercase tracking-wide text-fg-muted">Not evaluated</span>
         )}
       </div>
     </li>
@@ -47,7 +47,7 @@ export function EmbedPosture() {
   });
 
   if (isLoading) {
-    return <p className="text-sm text-slate-600 dark:text-slate-400">Loading posture…</p>;
+    return <p className="text-sm text-fg-muted">Loading posture…</p>;
   }
 
   if (error) {
@@ -55,7 +55,7 @@ export function EmbedPosture() {
     // failure.
     if (error instanceof ApiError && error.status === 404) {
       return (
-        <p className="text-sm text-slate-600 dark:text-slate-400" data-embed-state="posture-unavailable">
+        <p className="text-sm text-fg-muted" data-embed-state="posture-unavailable">
           Network posture scoring is not available on this instance yet.
         </p>
       );
@@ -75,7 +75,7 @@ export function EmbedPosture() {
     <div className="flex flex-col gap-4" data-testid="embed-posture">
       <div className="flex items-baseline gap-3">
         <span className={`text-4xl font-bold tabular-nums ${scoreColor(data.overall)}`}>{data.overall}</span>
-        <span className="text-sm text-slate-600 dark:text-slate-400">/ 100 overall</span>
+        <span className="text-sm text-fg-muted">/ 100 overall</span>
         {data.qualified ? (
           <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
             Qualified — some dimensions unknown

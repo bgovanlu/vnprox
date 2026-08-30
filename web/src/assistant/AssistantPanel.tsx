@@ -52,7 +52,7 @@ function BackendSettings({
 
   return (
     <form
-      className="mt-4 space-y-3 rounded-md border border-slate-200 p-3 dark:border-slate-800"
+      className="mt-4 space-y-3 rounded-md border border-border p-3"
       onSubmit={(e) => {
         e.preventDefault();
         if (endpoint.trim() === "" || model.trim() === "") {
@@ -65,8 +65,8 @@ function BackendSettings({
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Model backend</h3>
-      <label className="block text-xs text-slate-600 dark:text-slate-300">
+      <h3 className="text-sm font-semibold text-fg">Model backend</h3>
+      <label className="block text-xs text-fg-muted">
         Endpoint (OpenAI-compatible chat completions URL)
         <input
           type="url"
@@ -75,10 +75,10 @@ function BackendSettings({
             setEndpoint(e.target.value);
           }}
           placeholder="https://model.example.internal/v1/chat/completions"
-          className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+          className="mt-1 h-9 w-full rounded-md border border-border-strong bg-white px-2 text-sm dark:bg-slate-900"
         />
       </label>
-      <label className="block text-xs text-slate-600 dark:text-slate-300">
+      <label className="block text-xs text-fg-muted">
         Model
         <input
           type="text"
@@ -86,10 +86,10 @@ function BackendSettings({
           onChange={(e) => {
             setModel(e.target.value);
           }}
-          className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+          className="mt-1 h-9 w-full rounded-md border border-border-strong bg-white px-2 text-sm dark:bg-slate-900"
         />
       </label>
-      <label className="block text-xs text-slate-600 dark:text-slate-300">
+      <label className="block text-xs text-fg-muted">
         API key (optional)
         <input
           type="password"
@@ -97,7 +97,7 @@ function BackendSettings({
           onChange={(e) => {
             setKey(e.target.value);
           }}
-          className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+          className="mt-1 h-9 w-full rounded-md border border-border-strong bg-white px-2 text-sm dark:bg-slate-900"
         />
         <span className="mt-1 block text-[11px] text-fg-subtle">
           Kept in memory for this tab only — never written to storage and never sent to vnprox.
@@ -126,7 +126,7 @@ function ToolEvidence({ result }: { result: AssistantResult }) {
       <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
         Tools run
       </h3>
-      <ul className="mt-1 space-y-0.5 text-xs text-slate-600 dark:text-slate-300">
+      <ul className="mt-1 space-y-0.5 text-xs text-fg-muted">
         {result.runs.map((run) => (
           <li key={run.tool}>
             <code className="font-mono">{run.tool}</code>
@@ -154,8 +154,8 @@ function Proposals({
   }
   return (
     <section className="mt-4 rounded-md border border-amber-300 p-3 dark:border-amber-700">
-      <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Proposed change</h3>
-      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+      <h3 className="text-sm font-semibold text-fg">Proposed change</h3>
+      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-fg-muted">
         {proposals.map((proposal) => (
           <li key={`${proposal.kind}:${proposal.targetRef}`}>{proposalSummary(proposal)}</li>
         ))}
@@ -206,7 +206,7 @@ function Answer({ result }: { result: AssistantResult }) {
     // The answer text is not in `result` at all — see citations.ts. There is
     // nothing here to render even if this branch wanted to.
     return (
-      <section className="mt-4 rounded-md border border-slate-300 p-3 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-200">
+      <section className="mt-4 rounded-md border border-border-strong p-3 text-sm text-fg-body">
         <p className="font-semibold">Answer withheld</p>
         <p className="mt-1">
           {result.reason === "unparsable-reply"
@@ -214,7 +214,7 @@ function Answer({ result }: { result: AssistantResult }) {
             : "The model's answer cited nothing that this session's tool results support, so it was discarded rather than shown."}
         </p>
         {result.unresolved.length > 0 && (
-          <ul className="mt-2 list-disc pl-5 text-xs text-slate-600 dark:text-slate-300">
+          <ul className="mt-2 list-disc pl-5 text-xs text-fg-muted">
             {result.unresolved.map((c) => (
               <li key={`${c.tool}:${c.ref}`}>
                 claimed <code className="font-mono">{c.tool}</code> · {c.ref}
@@ -304,7 +304,7 @@ export function AssistantPanel() {
       }}
     >
       <DrawerContent side="right" aria-describedby="assistant-panel-summary" className="max-w-lg">
-        <DrawerTitle className="flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-slate-100">
+        <DrawerTitle className="flex items-center gap-2 text-base font-semibold text-fg">
           Assistant
           <HelpAnchor topic="in-app-assistant" />
         </DrawerTitle>
@@ -317,7 +317,7 @@ export function AssistantPanel() {
         </DrawerDescription>
 
         {!configured && (
-          <div className="mt-4 rounded-md border border-slate-300 p-3 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-200">
+          <div className="mt-4 rounded-md border border-border-strong p-3 text-sm text-fg-body">
             <p className="font-semibold">No model backend is configured.</p>
             <p className="mt-1">
               vnprox ships no model and no credential for one, and nothing is sent anywhere until you point
@@ -368,7 +368,7 @@ export function AssistantPanel() {
             rows={3}
             disabled={!configured}
             placeholder="Which subnets are nearly full?"
-            className="mt-1 w-full rounded-md border border-slate-300 bg-white p-2 text-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900"
+            className="mt-1 w-full rounded-md border border-border-strong bg-white p-2 text-sm disabled:opacity-50 dark:bg-slate-900"
           />
         </label>
         <Button

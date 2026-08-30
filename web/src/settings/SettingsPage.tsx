@@ -26,9 +26,9 @@ import { PushSettingsSection } from "../push/PushSettingsSection";
 
 function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
-    <section className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+    <section className="rounded-lg border border-border p-4">
       <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{title}</h2>
-      {description && <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">{description}</p>}
+      {description && <p className="mt-0.5 text-xs text-fg-muted">{description}</p>}
       <div className="mt-3">{children}</div>
     </section>
   );
@@ -37,18 +37,18 @@ function Section({ title, description, children }: { title: string; description?
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-slate-100 py-1.5 text-sm last:border-b-0 dark:border-slate-800">
-      <span className="w-52 shrink-0 text-slate-600 dark:text-slate-400">{label}</span>
-      <span className="min-w-0 break-words font-medium text-slate-700 dark:text-slate-200">{children}</span>
+      <span className="w-52 shrink-0 text-fg-muted">{label}</span>
+      <span className="min-w-0 break-words font-medium text-fg-body">{children}</span>
     </div>
   );
 }
 
 function YesNo({ value, yesTone }: { value: boolean; yesTone?: "warn" }) {
   if (value) {
-    const cls = yesTone === "warn" ? "text-amber-600 dark:text-amber-400" : "text-slate-700 dark:text-slate-200";
+    const cls = yesTone === "warn" ? "text-amber-600 dark:text-amber-400" : "text-fg-body";
     return <span className={cls}>Yes</span>;
   }
-  return <span className="text-slate-600 dark:text-slate-400">No</span>;
+  return <span className="text-fg-muted">No</span>;
 }
 
 const CAP_LABELS: { key: keyof Capabilities; label: string }[] = [
@@ -117,7 +117,7 @@ export function SettingsPage() {
 
       <Section title="Appearance" description="Stored in this browser only.">
         <Row label="Theme">
-          <div className="inline-flex overflow-hidden rounded-md border border-slate-300 dark:border-slate-600" role="radiogroup" aria-label="Theme">
+          <div className="inline-flex overflow-hidden rounded-md border border-border-strong" role="radiogroup" aria-label="Theme">
             {(["light", "dark"] as Theme[]).map((t) => (
               <button
                 key={t}
@@ -131,7 +131,7 @@ export function SettingsPage() {
                   "px-3 py-1 text-sm capitalize " +
                   (theme === t
                     ? "bg-accent-600 text-white"
-                    : "bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800")
+                    : "bg-white text-fg-muted hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800")
                 }
               >
                 {t}
@@ -150,12 +150,12 @@ export function SettingsPage() {
             <Row label="You can">
               <div className="flex flex-wrap gap-1.5">
                 {CAP_LABELS.filter((c) => hasCapAnywhere(caps, c.key)).map((c) => (
-                  <span key={c.key} className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  <span key={c.key} className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-fg-muted dark:bg-slate-800">
                     {c.label}
                   </span>
                 ))}
                 {CAP_LABELS.every((c) => !hasCapAnywhere(caps, c.key)) && (
-                  <span className="text-xs text-slate-600 dark:text-slate-400">No capabilities granted.</span>
+                  <span className="text-xs text-fg-muted">No capabilities granted.</span>
                 )}
               </div>
             </Row>
@@ -172,7 +172,7 @@ export function SettingsPage() {
             </div>
           </>
         ) : (
-          <p className="text-sm text-slate-600 dark:text-slate-400">Not signed in.</p>
+          <p className="text-sm text-fg-muted">Not signed in.</p>
         )}
       </Section>
 
@@ -200,7 +200,7 @@ export function SettingsPage() {
             </Row>
           </>
         ) : (
-          <p className="text-sm text-slate-600 dark:text-slate-400">Loading instance configuration…</p>
+          <p className="text-sm text-fg-muted">Loading instance configuration…</p>
         )}
       </Section>
 

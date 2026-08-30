@@ -33,7 +33,7 @@ export function EmbedFrame({ title, children }: EmbedFrameProps) {
     return (
       <div
         data-testid="embed-missing-token"
-        className="flex h-full min-h-screen items-center justify-center bg-white p-6 text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300"
+        className="flex h-full min-h-screen items-center justify-center bg-white p-6 text-sm text-fg-muted dark:bg-slate-950"
       >
         This embed link is missing its access token.
       </div>
@@ -41,13 +41,13 @@ export function EmbedFrame({ title, children }: EmbedFrameProps) {
   }
 
   return (
-    <div className="flex h-full min-h-screen flex-col bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="flex h-full min-h-screen flex-col bg-white text-fg dark:bg-slate-950">
       {/* T-2801: an embed is a screen someone put on a wall. If it is a
        * demo, the wall must say so. */}
       <DemoBanner />
-      <header className="flex items-center justify-between border-b border-slate-200 px-4 py-2 dark:border-slate-800">
+      <header className="flex items-center justify-between border-b border-border px-4 py-2">
         <span className="text-sm font-semibold">{title}</span>
-        <span className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400" data-testid="embed-readonly-badge">
+        <span className="text-xs uppercase tracking-wide text-fg-muted" data-testid="embed-readonly-badge">
           Read-only
         </span>
       </header>

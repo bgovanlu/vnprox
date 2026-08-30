@@ -63,9 +63,9 @@ function UnderlayChain({ paths }: { paths: UnderlayPath[] }) {
         <ol key={path.nicId} className="flex flex-wrap items-center gap-1 text-xs">
           {path.hops.map((hop, i) => (
             <li key={hop.id} className="flex items-center gap-1">
-              {i > 0 && <span className="text-slate-600 dark:text-slate-400">&rarr;</span>}
+              {i > 0 && <span className="text-fg-muted">&rarr;</span>}
               <span
-                className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono dark:border-slate-700 dark:bg-slate-800"
+                className="rounded border border-border bg-slate-50 px-1.5 py-0.5 font-mono dark:bg-slate-800"
                 title={hop.id}
               >
                 {hop.label}
@@ -86,7 +86,7 @@ export function PodDrilldown({ selection, overlay, topologyNodes, topologyEdges,
     <div
       role="region"
       aria-label="Pod drilldown"
-      className="fixed bottom-4 left-1/2 z-30 w-[28rem] max-w-full -translate-x-1/2 rounded-lg border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
+      className="fixed bottom-4 left-1/2 z-30 w-[28rem] max-w-full -translate-x-1/2 rounded-lg border border-border bg-white/95 p-4 shadow-xl backdrop-blur dark:bg-slate-900/95"
     >
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-sm font-semibold">{title}</h3>
@@ -94,7 +94,7 @@ export function PodDrilldown({ selection, overlay, topologyNodes, topologyEdges,
           type="button"
           aria-label="Close"
           onClick={onClose}
-          className="rounded px-1.5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          className="rounded px-1.5 text-fg-muted hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
         >
           ×
         </button>
@@ -191,7 +191,7 @@ function PodDrilldownBody({
         )}
       </dl>
 
-      <h4 className="mt-3 text-xs font-semibold text-slate-600 dark:text-slate-300">Underlay path</h4>
+      <h4 className="mt-3 text-xs font-semibold text-fg-muted">Underlay path</h4>
       {correlation?.matched && correlation.guestRef ? (
         <UnderlayChain paths={computePodUnderlayChain(topologyNodes, topologyEdges, correlation.guestRef)} />
       ) : (

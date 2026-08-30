@@ -87,7 +87,7 @@ function TopBlockedChart({ title, data }: { title: string; data: { value: number
     return (
       <div>
         <h3 className="mb-1 text-sm font-semibold">{title}</h3>
-        <p className="text-xs text-slate-600 dark:text-slate-400">No DROP/REJECT lines in this window.</p>
+        <p className="text-xs text-fg-muted">No DROP/REJECT lines in this window.</p>
       </div>
     );
   }
@@ -171,7 +171,7 @@ export function AnalyticsTab() {
             aria-label="Analytics window"
             value={windowHours}
             onChange={(e) => { setWindowHours(Number(e.target.value)); }}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
           >
             {WINDOW_OPTIONS.map((o) => (
               <option key={o.hours} value={o.hours}>
@@ -182,7 +182,7 @@ export function AnalyticsTab() {
         </label>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading analytics…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading analytics…</p>}
       {error && (
         <EmptyState
           icon="fw-ruleset"

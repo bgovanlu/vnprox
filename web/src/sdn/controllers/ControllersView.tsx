@@ -345,7 +345,7 @@ export function ControllersView() {
   const gateTitle = canWrite ? undefined : missingCapTooltip(session, "", "sdnWrite");
 
   if (isLoading) {
-    return <p className="text-sm text-slate-600 dark:text-slate-400">Loading SDN controllers…</p>;
+    return <p className="text-sm text-fg-muted">Loading SDN controllers…</p>;
   }
   if (isError || !tree) {
     return (

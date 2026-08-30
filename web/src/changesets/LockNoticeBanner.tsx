@@ -40,7 +40,7 @@ export function LockNoticeBanner({ changeset }: LockNoticeBannerProps) {
       data-testid="lock-notice"
       className={
         isOverride
-          ? "rounded-md border border-slate-300 bg-slate-50 p-3 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+          ? "rounded-md border border-border-strong bg-slate-50 p-3 text-sm text-slate-800 dark:bg-slate-900 dark:text-slate-200"
           : "rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-100"
       }
     >

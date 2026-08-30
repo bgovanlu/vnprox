@@ -23,7 +23,7 @@ const DISRUPTION_LABEL: Record<DisruptionClass, string> = {
 };
 
 const DISRUPTION_CLASSES: Record<DisruptionClass, string> = {
-  none: "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200",
+  none: "border-border-strong bg-slate-50 text-fg-body dark:bg-slate-900",
   brief: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200",
   outage: "border-red-300 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200",
 };
@@ -36,7 +36,7 @@ export interface ImpactPanelProps {
 
 export function ImpactPanel({ impact, loading, error }: ImpactPanelProps) {
   if (loading) {
-    return <p className="text-xs text-slate-600 dark:text-slate-400">Computing impact…</p>;
+    return <p className="text-xs text-fg-muted">Computing impact…</p>;
   }
   // A failure says so rather than rendering an empty panel. "We could not work
   // out the blast radius" and "the blast radius is nothing" must never look the
@@ -72,7 +72,7 @@ export function ImpactPanel({ impact, loading, error }: ImpactPanelProps) {
           <h3 className="mb-1 text-xs font-medium text-fg-subtle">Guests affected</h3>
           <ul className="space-y-1 text-xs">
             {impact.guests.map((g) => (
-              <li key={`${g.ref}:${g.nic}`} className="rounded border border-slate-200 px-2 py-1 dark:border-slate-700">
+              <li key={`${g.ref}:${g.nic}`} className="rounded border border-border px-2 py-1">
                 <span className="font-medium">{g.name || g.ref}</span>
                 {g.vmid > 0 && <span className="text-fg-subtle"> ({g.vmid})</span>}
                 <span className="text-fg-subtle">
@@ -89,7 +89,7 @@ export function ImpactPanel({ impact, loading, error }: ImpactPanelProps) {
         <h3 className="mb-1 text-xs font-medium text-fg-subtle">Per operation</h3>
         <ul className="space-y-1 text-xs">
           {impact.ops.map((o, i) => (
-            <li key={o.opId ?? `${o.op}:${String(i)}`} className="rounded border border-slate-200 px-2 py-1 dark:border-slate-700">
+            <li key={o.opId ?? `${o.op}:${String(i)}`} className="rounded border border-border px-2 py-1">
               <span
                 className={clsx(
                   "mr-1.5 rounded px-1 py-0.5 text-[10px] uppercase",
@@ -101,10 +101,10 @@ export function ImpactPanel({ impact, loading, error }: ImpactPanelProps) {
               <span className="font-mono">{o.op}</span>
               {o.target && <span className="text-fg-subtle"> {o.target}</span>}
               {/* The server's own reason, verbatim. */}
-              <span className="block text-slate-600 dark:text-slate-300">{o.reason}</span>
+              <span className="block text-fg-muted">{o.reason}</span>
             </li>
           ))}
-          {impact.ops.length === 0 && <li className="text-slate-600 dark:text-slate-400">No operations.</li>}
+          {impact.ops.length === 0 && <li className="text-fg-muted">No operations.</li>}
         </ul>
       </section>
     </div>

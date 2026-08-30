@@ -250,11 +250,11 @@ export function HistoryTimeline({
 
   return (
     <div
-      className="flex flex-col gap-1 rounded-md border border-slate-200 bg-white/90 p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900/90"
+      className="flex flex-col gap-1 rounded-md border border-border bg-white/90 p-2 shadow-sm dark:bg-slate-900/90"
       data-testid="history-timeline"
     >
       <div className="flex items-center gap-2">
-        <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+        <span className="flex items-center gap-1.5 text-xs font-medium text-fg-muted">
           History
           <HelpAnchor topic="history-playback" />
         </span>

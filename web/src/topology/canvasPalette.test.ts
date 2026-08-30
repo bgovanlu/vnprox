@@ -222,8 +222,14 @@ describe("canvasPalette (T-4301)", () => {
     // selection ring while the rest of the page went purple. This is the one
     // addition here that IS a new token, because the accent had no
     // representation in this palette at all before it.
+    // T-4215 dropped the distinct count back to 16 without removing a role:
+    // `badgeText` moved from `--color-fg-muted` to `--color-fg-body` (it draws
+    // on `--color-border`, a hairline token used as a fill, where a
+    // surface-solved foreground measured 4.04 in dark), and `--color-fg-muted`
+    // had no other reader here. Sharing with `nodeText` is correct — both are
+    // primary-weight text on a filled shape.
     expect(reads).toHaveLength(24);
-    expect(new Set(reads).size).toBe(17);
+    expect(new Set(reads).size).toBe(16);
   });
 
   // The count above is a shape check and deliberately not a meaning check:

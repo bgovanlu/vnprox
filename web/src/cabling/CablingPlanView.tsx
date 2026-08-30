@@ -63,7 +63,7 @@ function speedLabel(row: CablingRow): string {
 function FarEndCell({ row }: { row: CablingRow }) {
   if (row.linkState === "discovered") {
     return (
-      <span className="text-slate-700 dark:text-slate-200">
+      <span className="text-fg-body">
         {row.farEndSwitch ?? "(unnamed switch)"}
         {row.farEndPort ? ` · ${row.farEndPort}` : ""}
       </span>
@@ -71,7 +71,7 @@ function FarEndCell({ row }: { row: CablingRow }) {
   }
   if (row.linkState === "grouped") {
     return (
-      <span className="text-slate-600 dark:text-slate-400">
+      <span className="text-fg-muted">
         {row.groupCount ?? "several"} NICs grouped — view individually on the Topology map
       </span>
     );
@@ -84,7 +84,7 @@ function FarEndCell({ row }: { row: CablingRow }) {
 }
 
 /** Fill/stroke classes per link state — dark: variants included, same
- * `text-slate-600 dark:text-slate-400` family the rest of the app uses for
+ * `text-fg-muted` family the rest of the app uses for
  * muted text (T-3907 gate note), applied here via Tailwind's `fill-*`
  * utilities since these are SVG text nodes, not HTML. */
 const PORT_BOX_CLASS: Record<CablingDiagramPort["linkState"], string> = {
@@ -153,7 +153,7 @@ export function CablingPlanView() {
         }
       />
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading the cabling plan…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading the cabling plan…</p>}
       {isError && <p className="text-sm text-red-600 dark:text-red-400">Could not load the topology data behind this plan.</p>}
 
       {data && rowCount === 0 && (
@@ -167,7 +167,7 @@ export function CablingPlanView() {
 
       {rowCount > 0 && (
         <>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
+          <p className="text-sm text-fg-muted">
             {rowCount} {rowCount === 1 ? "NIC" : "NICs"} across {plan.nodes.length}{" "}
             {plan.nodes.length === 1 ? "node" : "nodes"}
             {unknownCount > 0
@@ -178,10 +178,10 @@ export function CablingPlanView() {
           <div className="space-y-6">
             {plan.nodes.map((group) => (
               <section key={group.node} aria-label={`Cabling for ${group.node}`} className="space-y-2">
-                <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">{group.node}</h2>
-                <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+                <h2 className="text-base font-semibold text-fg">{group.node}</h2>
+                <div className="overflow-x-auto rounded-lg border border-border">
                   <table className="w-full border-collapse text-sm">
-                    <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
+                    <thead className="border-b border-border bg-slate-50 dark:bg-slate-900">
                       <tr>
                         <th className={th}>NIC</th>
                         <th className={th}>Attached to</th>
@@ -196,13 +196,13 @@ export function CablingPlanView() {
                           key={row.nicRef}
                           className="border-b border-slate-100 last:border-b-0 dark:border-slate-800"
                         >
-                          <td className={`${td} font-medium text-slate-700 dark:text-slate-200`}>{row.nicLabel}</td>
-                          <td className={`${td} text-slate-700 dark:text-slate-200`}>
-                            {row.bridgeName ?? <span className="text-slate-600 dark:text-slate-400">(unattached)</span>}
+                          <td className={`${td} font-medium text-fg-body`}>{row.nicLabel}</td>
+                          <td className={`${td} text-fg-body`}>
+                            {row.bridgeName ?? <span className="text-fg-muted">(unattached)</span>}
                             {row.bondLabel ? ` via ${row.bondLabel}` : ""}
                           </td>
-                          <td className={`${td} text-slate-700 dark:text-slate-200`}>{row.mediaPort ?? ""}</td>
-                          <td className={`${td} text-slate-700 dark:text-slate-200`}>
+                          <td className={`${td} text-fg-body`}>{row.mediaPort ?? ""}</td>
+                          <td className={`${td} text-fg-body`}>
                             {[speedLabel(row), row.duplex].filter(Boolean).join(" ") || ""}
                           </td>
                           <td className={td}>
@@ -224,7 +224,7 @@ export function CablingPlanView() {
            * PORT_BOX_CLASS/text classes above) since aria-hidden only
            * removes it from the accessibility tree, not from what a
            * sighted/low-vision reader (including on a printed page) sees. */}
-          <div aria-hidden="true" className="overflow-x-auto rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+          <div aria-hidden="true" className="overflow-x-auto rounded-lg border border-border p-2">
             <svg
               width={diagram.width}
               height={diagram.height}
@@ -251,7 +251,7 @@ export function CablingPlanView() {
             </svg>
           </div>
 
-          <p className="text-xs text-slate-600 dark:text-slate-400">Generated {generatedAt.toLocaleString()}</p>
+          <p className="text-xs text-fg-muted">Generated {generatedAt.toLocaleString()}</p>
         </>
       )}
     </div>

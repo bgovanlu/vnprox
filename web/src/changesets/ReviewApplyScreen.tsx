@@ -311,7 +311,7 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
         )}
 
         <RadixTabs.Root defaultValue="summary" className="mt-4 flex flex-1 flex-col">
-          <RadixTabs.List className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
+          <RadixTabs.List className="flex gap-1 border-b border-border">
             <RadixTabs.Trigger value="summary" className={tabTriggerClass}>
               Summary
             </RadixTabs.Trigger>
@@ -332,14 +332,14 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
           <RadixTabs.Content value="summary" className="mt-3 flex-1 overflow-y-auto">
             <ul className="space-y-2 text-sm">
               {changeset.ops.map((op, i) => (
-                <li key={i} className="rounded border border-slate-200 p-2 dark:border-slate-700">
+                <li key={i} className="rounded border border-border p-2">
                   <span className="mr-1.5 rounded bg-slate-200/70 px-1 py-0.5 text-[10px] uppercase text-fg-muted dark:bg-slate-700/70 dark:text-slate-300">
                     {opKindLabel(op)}
                   </span>
                   {summarizeOp(op)}
                 </li>
               ))}
-              {changeset.ops.length === 0 && <li className="text-slate-600 dark:text-slate-400">No operations.</li>}
+              {changeset.ops.length === 0 && <li className="text-fg-muted">No operations.</li>}
             </ul>
           </RadixTabs.Content>
 
@@ -362,9 +362,9 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
           </RadixTabs.Content>
 
           <RadixTabs.Content value="filediff" className="mt-3 flex-1 overflow-y-auto">
-            {diffLoading && <p className="text-xs text-slate-600 dark:text-slate-400">Loading diff…</p>}
+            {diffLoading && <p className="text-xs text-fg-muted">Loading diff…</p>}
             {diff && diff.files.length === 0 && (
-              <p className="text-xs text-slate-600 dark:text-slate-400">
+              <p className="text-xs text-fg-muted">
                 No node interfaces-file changes — this changeset only touches ops without a file representation yet
                 (e.g. SDN/firewall/guest-NIC ops).
               </p>
@@ -380,7 +380,7 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
                        * per-node interfaces-file entry. */}
                       {f.node ? `${f.node}: ${f.path}` : f.path} {!f.changed && "(unchanged)"}
                     </h3>
-                    <pre className="overflow-x-auto rounded border border-slate-200 bg-slate-50 p-2 font-mono text-[11px] leading-snug text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                    <pre className="overflow-x-auto rounded border border-border bg-slate-50 p-2 font-mono text-[11px] leading-snug text-fg-body dark:bg-slate-900">
                       {f.unified || "(no diff)"}
                     </pre>
                   </section>
@@ -391,7 +391,7 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
 
           <RadixTabs.Content value="plan" className="mt-3 flex-1 overflow-y-auto">
             {planIsPreview && planSteps.length > 0 && (
-              <p className="mb-2 text-xs text-slate-600 dark:text-slate-400">
+              <p className="mb-2 text-xs text-fg-muted">
                 Preview — the authoritative plan is finalized (and persisted) at apply time; these are the steps it
                 will contain for the ops as they stand.
               </p>
@@ -406,17 +406,17 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
             {planSteps.length > 0 ? (
               <ol className="space-y-1.5 text-sm">
                 {planSteps.map((s, i) => (
-                  <li key={i} className="rounded border border-slate-200 p-2 dark:border-slate-700">
+                  <li key={i} className="rounded border border-border p-2">
                     <span className="mr-1.5 rounded bg-sky-100 px-1 py-0.5 text-[10px] uppercase text-sky-700 dark:bg-sky-950 dark:text-sky-300">
                       {s.kind}
                     </span>
-                    {s.node && <span className="mr-1 text-xs text-slate-600 dark:text-slate-400">[{s.node}]</span>}
+                    {s.node && <span className="mr-1 text-xs text-fg-muted">[{s.node}]</span>}
                     {s.summary}
                   </li>
                 ))}
               </ol>
             ) : (
-              <p className="text-xs text-slate-600 dark:text-slate-400">No executable steps for the current op list.</p>
+              <p className="text-xs text-fg-muted">No executable steps for the current op list.</p>
             )}
           </RadixTabs.Content>
 
@@ -582,7 +582,7 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
                 // (the server rejects it anyway; the UI just never offers it).
                 setConfirmTimeoutSec(touchesMgmt ? Math.max(v, MGMT_CONFIRM_FLOOR_SEC) : v);
               }}
-              className="w-16 rounded border border-slate-300 px-1.5 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-800"
+              className="w-16 rounded border border-border-strong px-1.5 py-0.5 text-xs dark:bg-slate-800"
             />
           </label>
           <div className="ml-auto flex flex-col items-end gap-1">

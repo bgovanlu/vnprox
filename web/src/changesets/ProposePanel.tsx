@@ -75,14 +75,14 @@ export function ProposePanel({ changesetId }: ProposePanelProps) {
 
   return (
     <section
-      className="mt-3 rounded-md border border-slate-200 p-3 dark:border-slate-800"
+      className="mt-3 rounded-md border border-border p-3"
       aria-labelledby="propose-heading"
     >
       <h3 id="propose-heading" className="flex items-center gap-2 text-sm font-semibold">
         Propose as pull request
         <HelpAnchor topic="changeset-propose" />
       </h3>
-      <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+      <p className="mt-1 text-xs text-fg-muted">
         Renders this changeset as a commit against the spec repository and opens a pull request for it. This is{" "}
         <strong>not</strong> Apply — the cluster is never touched, and applying this changeset (now, later, or never)
         is a separate, unrelated step.
@@ -100,7 +100,7 @@ export function ProposePanel({ changesetId }: ProposePanelProps) {
           role="alert"
           className="mt-2 rounded-md border border-red-300 bg-red-50 p-2 text-xs dark:border-red-900 dark:bg-red-950/40"
         >
-          <p className="font-semibold text-slate-900 dark:text-slate-100">The daemon refused that proposal</p>
+          <p className="font-semibold text-fg">The daemon refused that proposal</p>
           <p className="mt-1 text-slate-800 dark:text-slate-100">{proposeError}</p>
         </div>
       )}
@@ -128,7 +128,7 @@ export function ProposePanel({ changesetId }: ProposePanelProps) {
         </p>
       )}
       {proposal !== null && proposal !== undefined && (
-        <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+        <p className="mt-2 text-xs text-fg-muted">
           Already proposed as{" "}
           {proposal.pullRequestUrl !== undefined && proposal.pullRequestUrl !== "" ? (
             <a
@@ -160,7 +160,7 @@ export function ProposePanel({ changesetId }: ProposePanelProps) {
             This renders the changeset as a spec delta, commits it on a branch, pushes it, and opens (or updates) a
             pull request on the spec repository.
           </DialogDescription>
-          <ul className="mt-3 flex list-disc flex-col gap-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+          <ul className="mt-3 flex list-disc flex-col gap-1 pl-5 text-sm text-fg-muted">
             <li>The cluster is not touched. No network change is staged, applied or scheduled by this.</li>
             <li>vnprox opens the request and stops — it never merges, approves or polls one.</li>
             <li>Applying this changeset, if you do, is a separate action from this one.</li>

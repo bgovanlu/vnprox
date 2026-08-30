@@ -20,7 +20,7 @@ export function Table({ className, density, children, ...props }: TableProps) {
   const resolved = useDensity(density);
   return (
     <DensityProvider density={resolved}>
-      <div className="w-full overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+      <div className="w-full overflow-x-auto rounded-xl border border-border">
         <table
           data-density={resolved}
           className={clsx("w-full border-collapse text-left", resolved === "compact" ? "text-xs" : "text-sm", className)}
@@ -51,7 +51,7 @@ export function TableHeader({ className, ...props }: HTMLAttributes<HTMLTableSec
     // slate-600 clears AA; dark mode (slate-400 on the slate-900/40 tint)
     // is unaffected.
     <thead
-      className={clsx("bg-slate-50/60 text-slate-600 dark:bg-slate-900/40 dark:text-slate-400", className)}
+      className={clsx("bg-slate-50/60 text-fg-muted dark:bg-slate-900/40", className)}
       {...props}
     />
   );
@@ -87,7 +87,7 @@ export function TableHead({
     <th
       className={clsx(
         resolved === "compact" ? "px-2 py-1" : "px-4 py-3",
-        "border-b border-slate-200 font-medium dark:border-slate-800",
+        "border-b border-border font-medium",
         className,
       )}
       {...props}
@@ -105,7 +105,7 @@ export function TableCell({
     <td
       className={clsx(
         resolved === "compact" ? "px-2 py-1" : "px-4 py-3",
-        "text-slate-700 dark:text-slate-200",
+        "text-fg-body",
         className,
       )}
       {...props}

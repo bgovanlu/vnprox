@@ -11,7 +11,7 @@ import { layerOf, buildPreview } from "./preview";
 import type { Blueprint } from "../api/types";
 
 const DEFAULT_COLOR =
-  "border-slate-300 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300";
+  "border-border-strong bg-slate-100 text-fg-muted dark:bg-slate-800";
 
 const KIND_COLORS: Record<string, string> = {
   input: DEFAULT_COLOR,

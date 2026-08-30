@@ -223,12 +223,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           onKeyDown={handleInputKeyDown}
           placeholder="Search entities or run a command…"
           aria-label="Command palette input"
-          className="mt-3 w-full rounded border border-slate-300 bg-transparent px-2 py-1.5 text-sm outline-none focus:border-accent-500 dark:border-slate-700"
+          className="mt-3 w-full rounded border border-border-strong bg-transparent px-2 py-1.5 text-sm outline-none focus:border-accent-500"
         />
         <ul className="mt-3 max-h-80 overflow-y-auto text-sm">
-          {isFetching && <li className="px-2 py-1.5 text-slate-600 dark:text-slate-400">Searching…</li>}
+          {isFetching && <li className="px-2 py-1.5 text-fg-muted">Searching…</li>}
           {!isFetching && query.trim() !== "" && items.length === 0 && (
-            <li className="px-2 py-1.5 text-slate-600 dark:text-slate-400">No matches.</li>
+            <li className="px-2 py-1.5 text-fg-muted">No matches.</li>
           )}
           {items.map((item, index) => (
             <li key={itemKey(item)}>
@@ -248,9 +248,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               >
                 <span className="truncate">
                   <span className="font-medium text-slate-800 dark:text-slate-100">{itemLabel(item)}</span>
-                  <span className="ml-2 text-xs text-slate-600 dark:text-slate-400">{itemMeta(item)}</span>
+                  <span className="ml-2 text-xs text-fg-muted">{itemMeta(item)}</span>
                 </span>
-                <span className="shrink-0 text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">{itemTag(item)}</span>
+                <span className="shrink-0 text-xs uppercase tracking-wide text-fg-muted">{itemTag(item)}</span>
               </button>
             </li>
           ))}

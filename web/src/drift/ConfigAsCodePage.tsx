@@ -65,9 +65,9 @@ export function ConfigAsCodePage() {
         />
         <dl className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
           {POSITIONS.map((p) => (
-            <div key={p} className="rounded-md border border-slate-200 p-2 dark:border-slate-800">
+            <div key={p} className="rounded-md border border-border p-2">
               <dt className="text-sm font-semibold">{POSITION_LABEL[p]}</dt>
-              <dd className="text-xs text-slate-600 dark:text-slate-300">{POSITION_MEANING[p]}</dd>
+              <dd className="text-xs text-fg-muted">{POSITION_MEANING[p]}</dd>
             </div>
           ))}
         </dl>
@@ -75,7 +75,7 @@ export function ConfigAsCodePage() {
 
       <GitSyncPanel state={gitSync} />
 
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-border" />
 
       <SpecDocumentPanel
         content={specDocument}
@@ -83,11 +83,11 @@ export function ConfigAsCodePage() {
         writeDisabledReason={writeDisabledReason}
       />
 
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-border" />
 
       <SpecPlanPanel content={specDocument} writeDisabledReason={writeDisabledReason} />
 
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-border" />
 
       <ThreeWayPanel gitSync={gitSync} specPresence={presence} writeDisabledReason={writeDisabledReason} />
     </div>

@@ -117,7 +117,7 @@ export function Minimap({ sceneNodes, mainViewport, mainView, onPan, theme }: Mi
       data-testid="topology-minimap"
       role="img"
       aria-label="Topology minimap: drag to pan the map"
-      className="absolute bottom-2 right-2 touch-none cursor-pointer overflow-hidden rounded border border-slate-300 bg-white/80 shadow dark:border-slate-700 dark:bg-slate-950/80"
+      className="absolute bottom-2 right-2 touch-none cursor-pointer overflow-hidden rounded border border-border-strong bg-white/80 shadow dark:bg-slate-950/80"
       style={{ width: MINIMAP_SIZE.width, height: MINIMAP_SIZE.height }}
       onPointerDown={(evt) => {
         evt.stopPropagation();

@@ -32,7 +32,7 @@ export interface ApplyStrategyPanelProps {
   confirmTimeoutSec: number;
 }
 
-const radioLabelClass = "flex items-start gap-2 text-xs text-slate-700 dark:text-slate-200";
+const radioLabelClass = "flex items-start gap-2 text-xs text-fg-body";
 
 export function ApplyStrategyPanel({
   planSteps,
@@ -55,7 +55,7 @@ export function ApplyStrategyPanel({
 
   return (
     <section
-      className="mt-3 rounded-md border border-slate-200 p-3 dark:border-slate-700"
+      className="mt-3 rounded-md border border-border p-3"
       aria-label="Apply strategy"
       data-testid="apply-strategy-panel"
     >
@@ -114,12 +114,12 @@ export function ApplyStrategyPanel({
       </div>
 
       {selection.mode === "canary" && eligibility.eligible && (
-        <div className="mt-3 flex flex-col gap-3 border-t border-slate-200 pt-3 dark:border-slate-700">
+        <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3">
           <fieldset>
             <legend className="text-xs font-medium text-fg-subtle">Canary nodes</legend>
             <div className="mt-1 flex flex-wrap gap-3">
               {eligibility.nodes.map((node) => (
-                <label key={node} className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-200">
+                <label key={node} className="flex items-center gap-1.5 text-xs text-fg-body">
                   <input
                     type="checkbox"
                     checked={selection.canaryNodes.includes(node)}
@@ -144,7 +144,7 @@ export function ApplyStrategyPanel({
               onChange={(e) => {
                 onSelectionChange({ ...selection, holdForSec: Number(e.target.value) });
               }}
-              className="w-16 rounded border border-slate-300 px-1.5 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-800"
+              className="w-16 rounded border border-border-strong px-1.5 py-0.5 text-xs dark:bg-slate-800"
             />
           </label>
 
@@ -200,7 +200,7 @@ export function ApplyStrategyPanel({
         </div>
       )}
 
-      <label className="mt-3 flex items-start gap-2 border-t border-slate-200 pt-3 text-xs text-slate-700 dark:border-slate-700 dark:text-slate-200">
+      <label className="mt-3 flex items-start gap-2 border-t border-border pt-3 text-xs text-fg-body">
         <input
           type="checkbox"
           className="mt-0.5"

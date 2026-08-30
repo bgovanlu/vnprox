@@ -108,7 +108,7 @@ export function NodeResultsList({ results }: { results: readonly { node: string;
   const failed = results.filter((r) => !r.ok);
   return (
     <div className="text-xs">
-      <p className="font-medium text-slate-700 dark:text-slate-200">
+      <p className="font-medium text-fg-body">
         {failed.length === 0
           ? `Succeeded on all ${String(results.length)} node${results.length === 1 ? "" : "s"}.`
           : `Failed on ${String(failed.length)} of ${String(results.length)} node${results.length === 1 ? "" : "s"}.`}
@@ -130,14 +130,14 @@ export function NodeResultsList({ results }: { results: readonly { node: string;
               aria-hidden
               className={`inline-block h-2 w-2 shrink-0 rounded-full ${r.ok ? "bg-status-ok" : "bg-status-critical"}`}
             />
-            <span className="font-mono text-slate-700 dark:text-slate-200">{r.node}</span>
+            <span className="font-mono text-fg-body">{r.node}</span>
             {/* The state in words as well as in the dot's colour — WCAG
                 1.4.1, the same rule the faceplate's LEDs follow. */}
             <span className={r.ok ? "text-status-ok" : "text-status-critical"}>
               {r.ok ? "ok" : "failed"}
             </span>
             {!r.ok && r.error !== undefined && r.error !== "" && (
-              <span className="text-slate-600 dark:text-slate-300">— {r.error}</span>
+              <span className="text-fg-muted">— {r.error}</span>
             )}
           </li>
         ))}

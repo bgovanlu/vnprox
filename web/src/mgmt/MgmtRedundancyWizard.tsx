@@ -193,13 +193,13 @@ export function MgmtRedundancyWizard({ node, open, onOpenChange }: MgmtRedundanc
               {S.picker.alreadyRedundant}
             </p>
           )}
-          <p className="text-slate-600 dark:text-slate-300">{S.picker.description}</p>
+          <p className="text-fg-muted">{S.picker.description}</p>
           <div className="space-y-2" role="radiogroup" aria-label="Redundancy option">
             {availableFlows.map((f) => (
               <label
                 key={f}
                 className={`flex cursor-pointer gap-2 rounded-lg border p-3 text-sm ${
-                  activeFlow === f ? "border-accent-500 bg-accent-soft" : "border-slate-200 dark:border-slate-700"
+                  activeFlow === f ? "border-accent-500 bg-accent-soft" : "border-border"
                 }`}
               >
                 <input
@@ -233,7 +233,7 @@ export function MgmtRedundancyWizard({ node, open, onOpenChange }: MgmtRedundanc
     if (activeFlow === "bond-uplink") {
       return (
         <div className="space-y-3 text-sm">
-          <p className="text-slate-600 dark:text-slate-300">{S.flowA.intro}</p>
+          <p className="text-fg-muted">{S.flowA.intro}</p>
           <Field label={S.flowA.pickCandidate} help={S.flowA.pickCandidateHelp}>
             <select
               className={inputClass}
@@ -278,7 +278,7 @@ export function MgmtRedundancyWizard({ node, open, onOpenChange }: MgmtRedundanc
     if (activeFlow === "add-slave") {
       return (
         <div className="space-y-3 text-sm">
-          <p className="text-slate-600 dark:text-slate-300">{S.flowB.intro}</p>
+          <p className="text-fg-muted">{S.flowB.intro}</p>
           <Field label={S.flowB.modeLabel}>
             <div className="flex gap-4">
               <label className="flex items-center gap-1.5">
@@ -315,7 +315,7 @@ export function MgmtRedundancyWizard({ node, open, onOpenChange }: MgmtRedundanc
     // dedicated-vlan
     return (
       <div className="space-y-3 text-sm">
-        <p className="text-slate-600 dark:text-slate-300">{S.flowC.intro}</p>
+        <p className="text-fg-muted">{S.flowC.intro}</p>
         <Field label={S.flowC.vidLabel} help={S.flowC.vidHelp}>
           <input
             className={inputClass}
@@ -354,12 +354,12 @@ export function MgmtRedundancyWizard({ node, open, onOpenChange }: MgmtRedundanc
 
 function PreviewPanel({ node, flow, ops }: { node: string; flow: Flow | undefined; ops: { op: string }[] }) {
   return (
-    <div className="h-full overflow-y-auto rounded border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-900">
-      <div className="font-medium text-slate-700 dark:text-slate-200">Draft for {node}</div>
+    <div className="h-full overflow-y-auto rounded border border-border bg-slate-50 p-3 text-xs dark:bg-slate-900">
+      <div className="font-medium text-fg-body">Draft for {node}</div>
       {ops.length === 0 ? (
-        <p className="mt-2 text-slate-600 dark:text-slate-400">Fill in the options on the left to see the exact steps this will draft.</p>
+        <p className="mt-2 text-fg-muted">Fill in the options on the left to see the exact steps this will draft.</p>
       ) : (
-        <ol className="mt-2 list-inside list-decimal space-y-1 text-slate-600 dark:text-slate-300">
+        <ol className="mt-2 list-inside list-decimal space-y-1 text-fg-muted">
           {ops.map((o, i) => (
             <li key={i}>
               <span className="rounded bg-sky-100 px-1 py-0.5 font-mono text-[10px] text-sky-700 dark:bg-sky-950 dark:text-sky-300">{o.op}</span>
@@ -367,9 +367,9 @@ function PreviewPanel({ node, flow, ops }: { node: string; flow: Flow | undefine
           ))}
         </ol>
       )}
-      <p className="mt-3 text-[11px] text-slate-600 dark:text-slate-400">{mgmtStrings.common.draftNotice}</p>
+      <p className="mt-3 text-[11px] text-fg-muted">{mgmtStrings.common.draftNotice}</p>
       {flow === "dedicated-vlan" && (
-        <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">Your management address is carried over unchanged.</p>
+        <p className="mt-1 text-[11px] text-fg-muted">Your management address is carried over unchanged.</p>
       )}
     </div>
   );

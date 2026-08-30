@@ -114,14 +114,14 @@ export function LacpHashSection({ node, fields, wsClient }: LacpHashSectionProps
   }
 
   return (
-    <div className="mt-4 space-y-2 border-t border-slate-200 pt-3 text-xs dark:border-slate-700">
-      <p className="flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300">
+    <div className="mt-4 space-y-2 border-t border-border pt-3 text-xs">
+      <p className="flex items-center gap-1 font-medium text-fg-muted">
         Predicted hash distribution
         <HelpAnchor topic="bond-hash-distribution" />
       </p>
 
       {!policy && (
-        <p className="text-slate-600 dark:text-slate-400">
+        <p className="text-fg-muted">
           {policyRaw
             ? `Unrecognized xmit_hash_policy "${policyRaw}" — nothing to predict.`
             : "No xmit_hash_policy configured on this bond — nothing to predict."}
@@ -129,7 +129,7 @@ export function LacpHashSection({ node, fields, wsClient }: LacpHashSectionProps
       )}
 
       {policy && !predictable && (
-        <p className="text-slate-600 dark:text-slate-400">
+        <p className="text-fg-muted">
           Cannot predict slave selection for <span className="font-mono">{policy}</span>: this policy hashes on
           Ethernet source/destination MAC addresses, which vnprox&apos;s flow records (sFlow/NetFlow/IPFIX/conntrack)
           never carry. Only <span className="font-mono">layer3+4</span>/<span className="font-mono">encap3+4</span>{" "}
@@ -138,11 +138,11 @@ export function LacpHashSection({ node, fields, wsClient }: LacpHashSectionProps
       )}
 
       {policy && predictable && !slaves.some((s) => s.up) && (
-        <p className="text-slate-600 dark:text-slate-400">No eligible (up) slaves to predict against.</p>
+        <p className="text-fg-muted">No eligible (up) slaves to predict against.</p>
       )}
 
       {policy && predictable && slaves.some((s) => s.up) && flowsLoading && (
-        <p className="text-slate-600 dark:text-slate-400">Loading recent flow data…</p>
+        <p className="text-fg-muted">Loading recent flow data…</p>
       )}
 
       {policy &&
@@ -150,7 +150,7 @@ export function LacpHashSection({ node, fields, wsClient }: LacpHashSectionProps
         slaves.some((s) => s.up) &&
         !flowsLoading &&
         nodeFlows.length === 0 && (
-          <p className="text-slate-600 dark:text-slate-400">
+          <p className="text-fg-muted">
             No flow records observed for this bond&apos;s node yet — flow ingestion may be disabled for this node, or
             no traffic has been sampled in the retained window.
           </p>
@@ -205,14 +205,14 @@ function PredictionTable({
               actualPct !== undefined && Math.abs(actualPct - r.predictedPct) > DIVERGENCE_THRESHOLD_PCT;
             return (
               <tr key={r.ref} className="border-t border-slate-100 dark:border-slate-800">
-                <td className="py-1 pr-2 text-slate-700 dark:text-slate-200">{r.name}</td>
-                <td className="py-1 pr-2 text-slate-700 dark:text-slate-200">
+                <td className="py-1 pr-2 text-fg-body">{r.name}</td>
+                <td className="py-1 pr-2 text-fg-body">
                   {r.flows} flow{r.flows === 1 ? "" : "s"} ({r.predictedPct.toFixed(0)}%)
                 </td>
                 <td
                   className={clsx(
                     "py-1",
-                    divergent ? "font-medium text-amber-600 dark:text-amber-400" : "text-slate-700 dark:text-slate-200",
+                    divergent ? "font-medium text-amber-600 dark:text-amber-400" : "text-fg-body",
                   )}
                 >
                   {actualBps === undefined

@@ -40,7 +40,7 @@ function eventTs(evt: WsServerEvent): number | undefined {
 export function EventAnnotationsPanel({ events }: EventAnnotationsPanelProps) {
   if (events.length === 0) {
     return (
-      <p className="text-sm text-slate-600 dark:text-slate-400" data-testid="event-annotations-empty">
+      <p className="text-sm text-fg-muted" data-testid="event-annotations-empty">
         No events yet.
       </p>
     );
@@ -52,15 +52,15 @@ export function EventAnnotationsPanel({ events }: EventAnnotationsPanelProps) {
         const ts = eventTs(evt);
         return (
           <li key={`${evt.event}-${String(i)}`} className="flex items-center gap-2 text-sm">
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-fg-muted dark:bg-slate-800">
               {evt.event}
             </span>
             {ts !== undefined ? (
-              <time className="text-xs text-slate-600 dark:text-slate-400" dateTime={new Date(ts * 1000).toISOString()}>
+              <time className="text-xs text-fg-muted" dateTime={new Date(ts * 1000).toISOString()}>
                 {new Date(ts * 1000).toISOString()}
               </time>
             ) : null}
-            <span className="text-slate-700 dark:text-slate-200">{summarize(evt)}</span>
+            <span className="text-fg-body">{summarize(evt)}</span>
           </li>
         );
       })}

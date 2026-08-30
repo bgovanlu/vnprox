@@ -88,7 +88,7 @@ export function SimpleZoneWizard({ open, onOpenChange }: SimpleZoneWizardProps) 
       isValid: zoneId.trim().length > 0 && memberNodes.length > 0 && !sdnNameError(zoneId),
       content: (
         <div className="space-y-3">
-          <p className="text-slate-600 dark:text-slate-300">{S.simple.intro}</p>
+          <p className="text-fg-muted">{S.simple.intro}</p>
           <SdnNameField label="Name" help={S.common.zoneNameHelp} value={zoneId} onChange={setZoneId} placeholder="homelab" />
           <NodeCheckboxList
             label="Member nodes"
@@ -109,7 +109,7 @@ export function SimpleZoneWizard({ open, onOpenChange }: SimpleZoneWizardProps) 
       isValid: vnetId.trim().length > 0 && !sdnNameError(vnetId),
       content: (
         <div className="space-y-3">
-          <p className="text-slate-600 dark:text-slate-300">
+          <p className="text-fg-muted">
             VMs plug into a VNet, not the zone directly — the zone is the mechanism, the VNet is what you actually attach a VM's network card to.
           </p>
           <SdnNameField label="Name" help={S.common.vnetNameHelp} value={vnetId} onChange={setVnetId} placeholder="vnet1" />
@@ -131,7 +131,7 @@ export function SimpleZoneWizard({ open, onOpenChange }: SimpleZoneWizardProps) 
       isValid: !cap.denied,
       invalidReason: cap.reason,
       content: (
-        <div className="space-y-2 text-slate-600 dark:text-slate-300">
+        <div className="space-y-2 text-fg-muted">
           <p>This will draft:</p>
           <ul className="list-inside list-disc space-y-1">
             <li>Zone &quot;{zoneId}&quot; on {memberNodes.join(", ") || "no nodes selected"}</li>

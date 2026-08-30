@@ -152,7 +152,7 @@ export function HistoryPage() {
               }}
               placeholder="Note (optional)"
               aria-label="Snapshot note"
-              className="h-9 w-56 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className="h-9 w-56 rounded-md border border-border-strong bg-white px-3 text-sm dark:bg-slate-900"
             />
             <Tooltip content={writeDisabledReason}>
               <span>
@@ -175,7 +175,7 @@ export function HistoryPage() {
         {/* Timeline */}
         <section className="flex min-h-0 flex-col gap-2 overflow-y-auto pr-1" aria-label="Snapshot timeline">
           {snapshotsQuery.isLoading ? (
-            <p className="text-sm text-slate-600 dark:text-slate-400">Loading snapshots…</p>
+            <p className="text-sm text-fg-muted">Loading snapshots…</p>
           ) : snapshotsQuery.isError ? (
             <EmptyState
               icon="node"
@@ -202,13 +202,13 @@ export function HistoryPage() {
               {groups.map((group) => (
                 <article
                   key={group.key}
-                  className="rounded-lg border border-slate-200 p-3 dark:border-slate-800"
+                  className="rounded-lg border border-border p-3"
                 >
                   <header className="mb-2 flex items-center justify-between gap-2">
                     <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
                       {group.changesetId ? `Changeset ${group.changesetId}` : "Standalone snapshot"}
                     </span>
-                    <time className="text-xs text-slate-600 dark:text-slate-400">{formatTime(group.at)}</time>
+                    <time className="text-xs text-fg-muted">{formatTime(group.at)}</time>
                   </header>
                   <ul className="flex flex-col gap-1.5">
                     {group.snapshots.map((snap) => (
@@ -217,11 +217,11 @@ export function HistoryPage() {
                         className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-slate-50 px-2 py-1.5 dark:bg-slate-900/60"
                       >
                         <div className="flex min-w-0 flex-col">
-                          <span className="text-sm text-slate-700 dark:text-slate-200">
+                          <span className="text-sm text-fg-body">
                             {kindLabel(snap.kind)}
                             {snap.note ? ` — ${snap.note}` : ""}
                           </span>
-                          <span className="truncate text-xs text-slate-600 dark:text-slate-400">
+                          <span className="truncate text-xs text-fg-muted">
                             {snap.id} · {formatTime(snap.takenAt)} · {snap.nodes.join(", ")}
                           </span>
                         </div>
@@ -292,7 +292,7 @@ export function HistoryPage() {
         <section className="flex min-h-0 flex-col gap-2 overflow-y-auto" aria-label="Snapshot diff">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Diff</h2>
+              <h2 className="text-sm font-semibold text-fg-body">Diff</h2>
               <HelpAnchor topic="topology-point-in-time-diff" />
               <div className="flex items-center gap-1" role="group" aria-label="Diff view">
                 <Button
@@ -315,7 +315,7 @@ export function HistoryPage() {
                 </Button>
               </div>
             </div>
-            <span className="text-xs text-slate-600 dark:text-slate-400">
+            <span className="text-xs text-fg-muted">
               {selection.from ?? "(pick From)"} → {selection.to ?? "(pick To or vs live)"}
             </span>
           </div>
@@ -327,7 +327,7 @@ export function HistoryPage() {
               description='Choose a "From" and a "To" snapshot on the timeline, or use "vs live" to compare a snapshot with the current configuration.'
             />
           ) : diffQuery.isLoading ? (
-            <p className="text-sm text-slate-600 dark:text-slate-400">Computing diff…</p>
+            <p className="text-sm text-fg-muted">Computing diff…</p>
           ) : diffQuery.isError ? (
             <EmptyState
               icon="node"
@@ -343,7 +343,7 @@ export function HistoryPage() {
           ) : (
             (diffQuery.data?.files ?? []).map((file) => (
               <div key={`${file.node}:${file.path}`} className="flex flex-col gap-1">
-                <h3 className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                <h3 className="text-xs font-medium text-fg-muted">
                   {file.node} · {file.path}
                   {file.changed ? "" : " (unchanged)"}
                 </h3>

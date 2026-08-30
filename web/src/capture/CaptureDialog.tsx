@@ -90,10 +90,10 @@ function SessionPane({ groupId, session }: { groupId: string; session: CaptureSe
   }
 
   return (
-    <div className="space-y-2 rounded border border-slate-200 p-2 dark:border-slate-700" data-testid={`session-pane-${session.id}`}>
+    <div className="space-y-2 rounded border border-border p-2" data-testid={`session-pane-${session.id}`}>
       <SessionStatusLine session={session} />
       {session.filter && (
-        <p className="font-mono text-[11px] text-slate-600 dark:text-slate-400">filter: {session.filter}</p>
+        <p className="font-mono text-[11px] text-fg-muted">filter: {session.filter}</p>
       )}
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" disabled={!terminal || decoding} onClick={() => { void handleDecode(); }}>
@@ -104,7 +104,7 @@ function SessionPane({ groupId, session }: { groupId: string; session: CaptureSe
           download={`${session.id}.pcap`}
           className={
             terminal
-              ? "inline-flex h-8 items-center rounded-md bg-slate-200 px-2.5 text-sm text-slate-900 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+              ? "inline-flex h-8 items-center rounded-md bg-slate-200 px-2.5 text-sm text-fg hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700"
               : "pointer-events-none inline-flex h-8 items-center rounded-md bg-slate-200/50 px-2.5 text-sm text-slate-400 dark:bg-slate-800/50"
           }
           aria-disabled={!terminal}

@@ -21,7 +21,7 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
     <div
       role="radiogroup"
       aria-label="Topology view mode"
-      className="flex gap-0.5 rounded-md border border-slate-200 bg-white/90 p-0.5 shadow-sm dark:border-slate-700 dark:bg-slate-900/90"
+      className="flex gap-0.5 rounded-md border border-border bg-white/90 p-0.5 shadow-sm dark:bg-slate-900/90"
     >
       {MODES.map(({ mode, label }) => {
         const active = value === mode;

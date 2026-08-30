@@ -99,9 +99,9 @@ export function ToolsPage() {
         actions={
           nodes.length > 0 && (
             <label className="flex items-center gap-2 text-sm">
-              <span className="text-slate-600 dark:text-slate-400">Node</span>
+              <span className="text-fg-muted">Node</span>
               <select
-                className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                className="h-9 rounded-md border border-border-strong bg-white px-2 text-sm dark:bg-slate-900"
                 value={node}
                 onChange={(e) => {
                   setNode(e.target.value);
@@ -120,7 +120,7 @@ export function ToolsPage() {
 
       <SimulatorPage />
 
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-border" />
 
       {node ? (
         <RawEditorPanel key={node} node={node} />
@@ -138,14 +138,14 @@ export function ToolsPage() {
         />
       )}
 
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-border" />
 
       <div>
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           Findings
           <HelpAnchor topic="findings-stream" />
         </h2>
-        <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
+        <p className="mb-3 text-sm text-fg-muted">
           One stream for drift, LLDP VLAN mismatches, IPAM conflicts, and continuous health checks
           (docs/features/monitoring.md §5), re-evaluated on a ~30s cycle. Affected entities are also outlined with a
           dashed border on the topology map.
@@ -153,30 +153,30 @@ export function ToolsPage() {
         <FindingsStreamPanel />
       </div>
 
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-border" />
 
       <MacFdbBrowser />
 
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-border" />
 
       <MulticastMdbBrowser />
 
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-border" />
 
       <NeighborHistoryTimeline />
 
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-border" />
 
       <FwLogViewer />
 
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-border" />
 
       <div>
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           Export documentation
           <HelpAnchor topic="doc-export" />
         </h2>
-        <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
+        <p className="mb-3 text-sm text-fg-muted">
           A timestamped as-built document of the cluster network (docs/features/blueprints.md §4): rendered topology,
           per-node interface tables, VLAN matrix, SDN inventory, firewall summaries, and the LLDP wiring table. This
           is a read-only, GET-only export — no capability gating needed beyond ordinary network-read access.
@@ -191,14 +191,14 @@ export function ToolsPage() {
           <a
             href="/api/v1/export/doc?format=md"
             download
-            className="inline-flex h-9 items-center justify-center rounded-md bg-slate-200 px-3.5 text-sm font-medium text-slate-900 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+            className="inline-flex h-9 items-center justify-center rounded-md bg-slate-200 px-3.5 text-sm font-medium text-fg hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700"
           >
             Download Markdown
           </a>
           <a
             href="/api/v1/export/doc?format=html"
             download
-            className="inline-flex h-9 items-center justify-center rounded-md bg-slate-200 px-3.5 text-sm font-medium text-slate-900 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+            className="inline-flex h-9 items-center justify-center rounded-md bg-slate-200 px-3.5 text-sm font-medium text-fg hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700"
           >
             Download HTML
           </a>

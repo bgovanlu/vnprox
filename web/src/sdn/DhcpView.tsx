@@ -144,7 +144,7 @@ export function DhcpView() {
         </select>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading DHCP data…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading DHCP data…</p>}
       {isError && (
         <EmptyState
           icon="sdn-subnet"
@@ -162,12 +162,12 @@ export function DhcpView() {
       {data && (
         <>
           <section>
-            <h3 className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">Static reservations</h3>
+            <h3 className="mb-2 text-sm font-medium text-fg-muted">Static reservations</h3>
             <ReservationsTable reservations={data.reservations} onGoToIpam={() => void navigate("/ipam")} />
           </section>
 
           <section>
-            <h3 className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">Live leases</h3>
+            <h3 className="mb-2 text-sm font-medium text-fg-muted">Live leases</h3>
             <LeasesTable leases={data.leases} />
           </section>
         </>

@@ -113,7 +113,7 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
       isValid: zoneId.trim().length > 0 && memberNodes.length > 0 && !sdnNameError(zoneId) && memberNodes.every((n) => !ipError(peers[n] ?? "")),
       content: (
         <div className="space-y-3">
-          <p className="text-slate-600 dark:text-slate-300">{S.vxlan.intro}</p>
+          <p className="text-fg-muted">{S.vxlan.intro}</p>
           <SdnNameField label="Name" help={S.common.zoneNameHelp} value={zoneId} onChange={setZoneId} placeholder="overlay1" />
           <NodeCheckboxList
             label="Member nodes"
@@ -125,7 +125,7 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
           {memberNodes.length > 0 && (
             <div>
               <p className="mb-1 text-xs text-fg-subtle">{S.vxlan.peersStepHelp}</p>
-              <p className="mb-1.5 text-[11px] text-slate-600 dark:text-slate-400">{S.vxlan.peersAutoSuggestNote}</p>
+              <p className="mb-1.5 text-[11px] text-fg-muted">{S.vxlan.peersAutoSuggestNote}</p>
               <div className="space-y-1.5">
                 {memberNodes.map((node) => {
                   const peerErr = ipError(peers[node] ?? "");
@@ -165,12 +165,12 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
           </Field>
 
           <div>
-            <h4 className="mb-1 text-xs font-medium text-slate-600 dark:text-slate-300">{S.vxlan.mtuHeading}</h4>
+            <h4 className="mb-1 text-xs font-medium text-fg-muted">{S.vxlan.mtuHeading}</h4>
             <p className="mb-1.5 text-xs text-fg-subtle">{S.vxlan.mtuExplain}</p>
             <Field label="Zone MTU (leave blank for PVE's default)">
               <input type="number" className={inputClass} value={mtu || ""} onChange={(e) => { setMtu(Number(e.target.value)); }} />
             </Field>
-            <p className="mt-1 rounded bg-slate-100 p-1.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300" data-testid="vxlan-mtu-math">
+            <p className="mt-1 rounded bg-slate-100 p-1.5 text-xs text-fg-muted dark:bg-slate-800" data-testid="vxlan-mtu-math">
               {S.vxlan.mtuMath(derivation.underlayMtu, derivation.overhead, derivation.safeMtu)}
             </p>
             {derivation.warn ? (
@@ -207,7 +207,7 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
       isValid: !cap.denied,
       invalidReason: cap.reason,
       content: (
-        <div className="space-y-2 text-slate-600 dark:text-slate-300">
+        <div className="space-y-2 text-fg-muted">
           <p>This will draft:</p>
           <ul className="list-inside list-disc space-y-1">
             <li>VXLAN zone &quot;{zoneId}&quot; on {memberNodes.join(", ") || "no nodes"}, MTU {mtu || derivation.safeMtu}</li>

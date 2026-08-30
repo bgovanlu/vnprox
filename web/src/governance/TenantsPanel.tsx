@@ -76,20 +76,20 @@ export function TenantsPanel() {
         <h2 className="text-base font-semibold">Tenants</h2>
         <HelpAnchor topic="tenants-panel" />
       </div>
-      <p className="text-sm text-slate-600 dark:text-slate-300">
+      <p className="text-sm text-fg-muted">
         Delegated, server-side-scoped views: a tenant's members see only the resources listed in its scope, and can
         request changes that route to one of its approvers. Scoping is enforced in the daemon at the data-access layer
         — it only ever narrows a member's view, and it adds no mutation path around the change engine.
       </p>
-      <p className="text-xs text-slate-600 dark:text-slate-400">
+      <p className="text-xs text-fg-muted">
         There is no tenant self-service request or approval route in this API. A member requests a change by staging a
         changeset against the tenant; an approver converts it to an ordinary draft from the changeset itself, and then
         drives the usual review flow. Nothing on this screen approves anything.
       </p>
 
-      {tenantsQuery.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Reading tenants…</p>}
+      {tenantsQuery.isLoading && <p className="text-sm text-fg-muted">Reading tenants…</p>}
       {tenantsQuery.error !== null && (
-        <p className="text-sm text-slate-700 dark:text-slate-200" role="status">
+        <p className="text-sm text-fg-body" role="status">
           The tenant list could not be read, so which tenants exist is unknown. The daemon said:{" "}
           {tenantsQuery.error instanceof Error ? tenantsQuery.error.message : "the read failed"}
         </p>
@@ -98,7 +98,7 @@ export function TenantsPanel() {
       <div className="grid gap-4 sm:grid-cols-[minmax(0,18rem)_1fr]">
         <div className="flex flex-col gap-2">
           {tenantsQuery.data !== undefined && tenants.length === 0 && (
-            <p className="text-sm text-slate-600 dark:text-slate-400">No tenants are defined.</p>
+            <p className="text-sm text-fg-muted">No tenants are defined.</p>
           )}
           <ul className="flex flex-col gap-1" data-testid="tenant-list">
             {tenants.map((t) => (
@@ -112,17 +112,17 @@ export function TenantsPanel() {
                   className={
                     selectedId === t.id
                       ? "w-full rounded-md border border-accent-600 px-2 py-1 text-left text-sm"
-                      : "w-full rounded-md border border-slate-200 px-2 py-1 text-left text-sm dark:border-slate-800"
+                      : "w-full rounded-md border border-border px-2 py-1 text-left text-sm"
                   }
                 >
                   <span className="font-medium">{t.name}</span>
-                  <span className="block font-mono text-xs text-slate-600 dark:text-slate-400">{t.id}</span>
+                  <span className="block font-mono text-xs text-fg-muted">{t.id}</span>
                 </button>
               </li>
             ))}
           </ul>
 
-          <div className="rounded-md border border-slate-200 p-2 dark:border-slate-800">
+          <div className="rounded-md border border-border p-2">
             <label className="flex flex-col gap-1 text-xs">
               <span className="font-medium">New tenant name</span>
               <input
@@ -131,7 +131,7 @@ export function TenantsPanel() {
                   setNewName(e.target.value);
                 }}
                 aria-label="New tenant name"
-                className="rounded border border-slate-300 px-1.5 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+                className="rounded border border-border-strong px-1.5 py-1 text-xs dark:bg-slate-900"
               />
             </label>
             <Button
@@ -163,25 +163,25 @@ export function TenantsPanel() {
 
         <div className="flex flex-col gap-3">
           {selectedId === undefined && (
-            <p className="text-sm text-slate-600 dark:text-slate-400">
+            <p className="text-sm text-fg-muted">
               Select a tenant to read its scopes and members. The list above carries neither: the list route reports
               both as empty without consulting the store, so nothing may be concluded from it either way.
             </p>
           )}
 
           {selectedId !== undefined && detail.isLoading && (
-            <p className="text-sm text-slate-600 dark:text-slate-400">Reading the tenant…</p>
+            <p className="text-sm text-fg-muted">Reading the tenant…</p>
           )}
 
           {notFound && (
-            <p className="text-sm text-slate-700 dark:text-slate-200" role="status" data-testid="tenant-not-found">
+            <p className="text-sm text-fg-body" role="status" data-testid="tenant-not-found">
               No such tenant. An out-of-scope object is reported as not found rather than refused, so this answer does
               not distinguish "it does not exist" from "it is not yours" — by design.
             </p>
           )}
 
           {detail.error !== null && !notFound && (
-            <p className="text-sm text-slate-700 dark:text-slate-200" role="status">
+            <p className="text-sm text-fg-body" role="status">
               The tenant could not be read, so its scopes and members are unknown. The daemon said:{" "}
               {detail.error instanceof Error ? detail.error.message : "the read failed"}
             </p>
@@ -191,8 +191,8 @@ export function TenantsPanel() {
             <>
               <div>
                 <h3 className="text-sm font-semibold">{detail.data.name}</h3>
-                <p className="font-mono text-xs text-slate-600 dark:text-slate-400">{detail.data.id}</p>
-                <p className="text-xs text-slate-600 dark:text-slate-400">
+                <p className="font-mono text-xs text-fg-muted">{detail.data.id}</p>
+                <p className="text-xs text-fg-muted">
                   Created by {detail.data.createdBy === "" ? "an unrecorded principal" : detail.data.createdBy}
                   {detail.data.createdAt === 0
                     ? " at an unrecorded time"
@@ -202,12 +202,12 @@ export function TenantsPanel() {
 
               <div data-testid="tenant-scopes">
                 <h4 className="text-sm font-medium">Visible resources</h4>
-                <p className="text-xs text-slate-600 dark:text-slate-400">
+                <p className="text-xs text-fg-muted">
                   Inventory Ref strings. A coarse ref (a VLAN or VNet) is expanded to its members live at read time, so
                   this list is what was declared, not necessarily its full expansion.
                 </p>
                 {detail.data.scopes.length === 0 ? (
-                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                  <p className="mt-1 text-sm text-fg-muted">
                     This tenant has no scope, so its members see nothing.
                   </p>
                 ) : (
@@ -239,7 +239,7 @@ export function TenantsPanel() {
                       }}
                       placeholder="guest:pve1:101"
                       aria-label="Scope ref"
-                      className="w-64 rounded border border-slate-300 px-1.5 py-1 font-mono text-xs dark:border-slate-700 dark:bg-slate-900"
+                      className="w-64 rounded border border-border-strong px-1.5 py-1 font-mono text-xs dark:bg-slate-900"
                     />
                   </label>
                   <Button
@@ -270,7 +270,7 @@ export function TenantsPanel() {
               <div data-testid="tenant-members">
                 <h4 className="text-sm font-medium">Members</h4>
                 {detail.data.members.length === 0 ? (
-                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                  <p className="mt-1 text-sm text-fg-muted">
                     This tenant has no members, so nobody reads through its scope.
                   </p>
                 ) : (
@@ -280,7 +280,7 @@ export function TenantsPanel() {
                       return (
                         <li key={m.identity} className="flex items-center gap-2 text-sm">
                           <span className="font-mono">{m.identity}</span>
-                          <span className="text-xs text-slate-600 dark:text-slate-400">
+                          <span className="text-xs text-fg-muted">
                             {role === undefined
                               ? `unrecognised role "${m.role}" — this build cannot say what it permits`
                               : `${role}: ${ROLE_NOTE[role]}`}
@@ -310,7 +310,7 @@ export function TenantsPanel() {
                       }}
                       placeholder="alice@pve"
                       aria-label="Member identity"
-                      className="w-48 rounded border border-slate-300 px-1.5 py-1 font-mono text-xs dark:border-slate-700 dark:bg-slate-900"
+                      className="w-48 rounded border border-border-strong px-1.5 py-1 font-mono text-xs dark:bg-slate-900"
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -321,7 +321,7 @@ export function TenantsPanel() {
                       onChange={(e) => {
                         setNewRole(classifyRole(e.target.value) ?? "member");
                       }}
-                      className="rounded border border-slate-300 px-1.5 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+                      className="rounded border border-border-strong px-1.5 py-1 text-xs dark:bg-slate-900"
                     >
                       <option value="member">member</option>
                       <option value="approver">approver</option>

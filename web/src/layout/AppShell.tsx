@@ -45,7 +45,7 @@ export function AppShell() {
     // above it at `surface-raised` (Sidebar.tsx/TopBar.tsx); floating
     // layers (dialogs, drawers, the inspector stack) sit above that at
     // `surface-overlay`. Correct in both themes with no `dark:` prefix.
-    <div className="flex h-dvh w-full bg-surface-page text-slate-900 dark:text-slate-100">
+    <div className="flex h-dvh w-full bg-surface-page text-fg">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar onOpenHelp={() => { setHelpOpen(true); }} onOpenPageHelp={openPageHelp} />
@@ -100,7 +100,7 @@ export function AppShell() {
                 <button
                   type="button"
                   onClick={() => { window.location.reload(); }}
-                  className="mt-4 rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                  className="mt-4 rounded-md border border-border-strong px-3 py-1.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
                   Reload
                 </button>

@@ -69,7 +69,7 @@ function Attribution({ row }: { row: TopologyEntityDiff }) {
   }
   const { changesetId, changesetTitle, actor } = row.attribution;
   return (
-    <span className="text-xs text-slate-600 dark:text-slate-300">
+    <span className="text-xs text-fg-muted">
       by {actor ?? "vnprox"} in{" "}
       {changesetId ? (
         <Link className="underline" to={`/changesets?id=${encodeURIComponent(changesetId)}`}>
@@ -84,7 +84,7 @@ function Attribution({ row }: { row: TopologyEntityDiff }) {
 
 function DiffRow({ row }: { row: TopologyEntityDiff }) {
   return (
-    <li className="rounded-md border border-slate-200 px-3 py-2 dark:border-slate-800">
+    <li className="rounded-md border border-border px-3 py-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${changeClasses(row.change)}`}>
@@ -93,13 +93,13 @@ function DiffRow({ row }: { row: TopologyEntityDiff }) {
           <span className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
             {row.name ?? row.ref}
           </span>
-          <span className="truncate text-xs text-slate-600 dark:text-slate-400">{row.ref}</span>
+          <span className="truncate text-xs text-fg-muted">{row.ref}</span>
         </div>
         <Attribution row={row} />
       </div>
       {row.fields.length > 0 && (
         <table className="mt-2 w-full table-fixed text-xs">
-          <thead className="text-slate-600 dark:text-slate-400">
+          <thead className="text-fg-muted">
             <tr>
               <th className="w-1/3 text-left font-normal">Field</th>
               <th className="w-1/3 text-left font-normal">Before</th>
@@ -109,9 +109,9 @@ function DiffRow({ row }: { row: TopologyEntityDiff }) {
           <tbody>
             {row.fields.map((f) => (
               <tr key={f.field}>
-                <td className="truncate pr-2 text-slate-700 dark:text-slate-200">{f.field}</td>
-                <td className="truncate pr-2 font-mono text-slate-600 dark:text-slate-300">{f.before || "—"}</td>
-                <td className="truncate font-mono text-slate-900 dark:text-slate-100">{f.after || "—"}</td>
+                <td className="truncate pr-2 text-fg-body">{f.field}</td>
+                <td className="truncate pr-2 font-mono text-fg-muted">{f.before || "—"}</td>
+                <td className="truncate font-mono text-fg">{f.after || "—"}</td>
               </tr>
             ))}
           </tbody>
@@ -139,7 +139,7 @@ export function TopologyDiffPanel({ from, to }: TopologyDiffPanelProps) {
     );
   }
   if (query.isLoading) {
-    return <p className="text-sm text-slate-600 dark:text-slate-400">Computing topology diff…</p>;
+    return <p className="text-sm text-fg-muted">Computing topology diff…</p>;
   }
   if (query.isError) {
     // The server's message is shown verbatim on purpose: for an uncovered
@@ -166,7 +166,7 @@ export function TopologyDiffPanel({ from, to }: TopologyDiffPanelProps) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
         <HelpAnchor topic="topology-point-in-time-diff" />
         <span>
           {rows.length} {rows.length === 1 ? "difference" : "differences"} across{" "}

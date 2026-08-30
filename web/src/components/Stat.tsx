@@ -63,9 +63,9 @@ export function Stat({ value, description, label, status, size = "md", density, 
     <div data-density={resolvedDensity} className={clsx("flex items-start", OUTER_GAP[resolvedDensity], className)}>
       {status ? <span aria-hidden className={clsx("mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full", DOT_CLASSES[status])} /> : null}
       <div className={clsx("flex flex-col", INNER_GAP[resolvedDensity])}>
-        {label ? <p className="text-xs font-medium text-slate-600 dark:text-slate-400">{label}</p> : null}
+        {label ? <p className="text-xs font-medium text-fg-muted">{label}</p> : null}
         <p className={clsx("font-semibold tabular-nums text-slate-800 dark:text-slate-100", VALUE_SIZE[size])}>{value}</p>
-        {description ? <p className="text-xs text-slate-600 dark:text-slate-400">{description}</p> : null}
+        {description ? <p className="text-xs text-fg-muted">{description}</p> : null}
       </div>
     </div>
   );

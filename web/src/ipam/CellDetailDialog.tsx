@@ -74,33 +74,33 @@ export function CellDetailDialog({ open, onOpenChange, cell, subnetCidr, readOnl
         <dl className="mt-3 space-y-1 text-sm">
           {cell.hostname && (
             <div className="flex justify-between gap-4">
-              <dt className="text-slate-600 dark:text-slate-400">Hostname</dt>
+              <dt className="text-fg-muted">Hostname</dt>
               <dd>{cell.hostname}</dd>
             </div>
           )}
           {cell.mac && (
             <div className="flex justify-between gap-4">
-              <dt className="text-slate-600 dark:text-slate-400">MAC</dt>
+              <dt className="text-fg-muted">MAC</dt>
               <dd className="font-mono">{cell.mac}</dd>
             </div>
           )}
           {cell.vmid !== undefined && cell.vmid > 0 && (
             <div className="flex justify-between gap-4">
-              <dt className="text-slate-600 dark:text-slate-400">VMID</dt>
+              <dt className="text-fg-muted">VMID</dt>
               <dd>{cell.vmid}</dd>
             </div>
           )}
           {cell.sources && cell.sources.length > 0 && (
             <div className="flex justify-between gap-4">
-              <dt className="text-slate-600 dark:text-slate-400">Source</dt>
+              <dt className="text-fg-muted">Source</dt>
               <dd>{cell.sources.join(", ")}</dd>
             </div>
           )}
         </dl>
 
         {canReserve && (
-          <div className="mt-4 space-y-2 border-t border-slate-200 pt-3 dark:border-slate-700">
-            <p className="text-xs font-medium text-slate-600 dark:text-slate-300">Reserve this address</p>
+          <div className="mt-4 space-y-2 border-t border-border pt-3">
+            <p className="text-xs font-medium text-fg-muted">Reserve this address</p>
             <input
               className={inputClass}
               placeholder="Hostname (optional)"
@@ -135,7 +135,7 @@ export function CellDetailDialog({ open, onOpenChange, cell, subnetCidr, readOnl
         )}
 
         {canRelease && (
-          <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700">
+          <div className="mt-4 border-t border-border pt-3">
             <Button variant="destructive" size="sm" onClick={() => void handleRelease()}>
               Release {cell.ip}
             </Button>

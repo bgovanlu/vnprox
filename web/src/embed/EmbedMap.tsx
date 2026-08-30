@@ -47,7 +47,7 @@ export function EmbedMap() {
   }, [data]);
 
   if (isLoading) {
-    return <p className="text-sm text-slate-600 dark:text-slate-400">Loading topology…</p>;
+    return <p className="text-sm text-fg-muted">Loading topology…</p>;
   }
   if (error) {
     return (
@@ -57,13 +57,13 @@ export function EmbedMap() {
     );
   }
   if (groups.length === 0) {
-    return <p className="text-sm text-slate-600 dark:text-slate-400">No topology entities to display.</p>;
+    return <p className="text-sm text-fg-muted">No topology entities to display.</p>;
   }
 
   return (
     <div className="flex flex-col gap-4" data-testid="embed-map">
       {groups.map(([group, nodes]) => (
-        <section key={group} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+        <section key={group} className="rounded-lg border border-border p-3">
           <h2 className="mb-2 text-sm font-semibold">{groupLabel(group)}</h2>
           <ul className="flex flex-col gap-1">
             {nodes.map((n) => (
@@ -73,12 +73,12 @@ export function EmbedMap() {
                   className={`h-2.5 w-2.5 shrink-0 rounded-full ${STATUS_DOT[n.status]}`}
                   title={STATUS_LABEL[n.status]}
                 />
-                <span className="text-slate-600 dark:text-slate-400">{n.kind}</span>
+                <span className="text-fg-muted">{n.kind}</span>
                 <span className="font-medium">{n.label}</span>
                 {n.badges.map((b) => (
                   <span
                     key={b}
-                    className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                    className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-fg-muted dark:bg-slate-800"
                   >
                     {b}
                   </span>

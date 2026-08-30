@@ -67,13 +67,13 @@ export function QosShapesPanel() {
           QoS shaping
           <HelpAnchor topic="qos-shaping" />
         </h2>
-        <p className="text-sm text-slate-600 dark:text-slate-400">
+        <p className="text-sm text-fg-muted">
           Every shape vnprox has applied, read from its own store rather than from live <code>tc</code>. Creating,
           editing and removing a shape stages an ordinary changeset — this panel never writes anything itself.
         </p>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading…</p>}
       {error && (
         <EmptyState
           icon="guest-nic"
@@ -291,7 +291,7 @@ function CreateShapeForm({ canWrite, writeDisabledReason }: { canWrite: boolean;
             setSelected(e.target.value);
           }}
           disabled={!canWrite}
-          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+          className="rounded border border-border-strong bg-white px-2 py-1 text-xs dark:bg-slate-900"
         >
           {bridges.map((b) => (
             <option key={optionValue(b)} value={optionValue(b)}>
@@ -350,7 +350,7 @@ function EditShapeForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2" aria-label={`Edit QoS shape ${shape.id}`}>
-      <p className="w-full text-xs text-slate-600 dark:text-slate-400">
+      <p className="w-full text-xs text-fg-muted">
         Editing <span className="font-mono">{shape.id}</span> on {shape.node} / {shape.bridge}. Changing which traffic a
         shape selects is a remove-and-recreate, not an edit, so the match fields are not offered here.
       </p>
@@ -408,7 +408,7 @@ function TextField({
         }}
         disabled={disabled}
         placeholder={placeholder}
-        className="w-32 rounded border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+        className="w-32 rounded border border-border-strong bg-white px-2 py-1 text-xs dark:bg-slate-900"
       />
     </Field>
   );

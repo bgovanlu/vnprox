@@ -41,10 +41,10 @@ export function UnrefFindingsBanner({ findings, remediationCtx, pendingId, resul
           ? "border-status-critical"
           : worst === "warning"
             ? "border-status-degraded"
-            : "border-slate-300 dark:border-slate-700"
+            : "border-border-strong"
       } bg-slate-50 dark:bg-slate-900`}
     >
-      <p className="font-medium text-slate-700 dark:text-slate-200">
+      <p className="font-medium text-fg-body">
         {findings.length === 1
           ? "1 finding is not tied to any map entity:"
           : `${String(findings.length)} findings are not tied to any map entity:`}
@@ -83,7 +83,7 @@ export function UnrefFindingsBanner({ findings, remediationCtx, pendingId, resul
             >
               {findingChipText({ source: f.source, severity: f.severity })}
             </span>
-            <span className="text-slate-600 dark:text-slate-300">{f.detail || f.check}</span>
+            <span className="text-fg-muted">{f.detail || f.check}</span>
             {f.nodes.length > 0 && (
               <span className="text-fg-subtle">
                 (on {f.nodes.join(", ")})

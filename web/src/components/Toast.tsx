@@ -36,7 +36,7 @@ const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 // variants intentionally stay off the neutral ladder: their whole job is
 // to read as a status colour, not a neutral surface.
 const variantClasses: Record<ToastVariant, string> = {
-  default: "border-slate-200 bg-surface-overlay dark:border-slate-800",
+  default: "border-border bg-surface-overlay",
   success: "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950",
   error: "border-red-300 bg-red-50 dark:border-red-700 dark:bg-red-950",
 };
@@ -103,11 +103,11 @@ export function ToastProvider({ children, density }: ToastProviderProps) {
                 variantClasses[t.variant],
               )}
             >
-              <RadixToast.Title className="text-sm font-medium text-slate-900 dark:text-slate-100">
+              <RadixToast.Title className="text-sm font-medium text-fg">
                 {t.title}
               </RadixToast.Title>
               {t.description ? (
-                <RadixToast.Description className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                <RadixToast.Description className="mt-1 text-sm text-fg-muted">
                   {t.description}
                 </RadixToast.Description>
               ) : null}

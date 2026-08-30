@@ -108,7 +108,7 @@ function UsageTable({ items, onNavigate, onInspect }: UsageTableProps) {
               <TableCell>{item.comment ?? "—"}</TableCell>
               <TableCell>
                 {item.count === 0 ? (
-                  <span className="text-slate-600 dark:text-slate-400">not referenced</span>
+                  <span className="text-fg-muted">not referenced</span>
                 ) : (
                   <button
                     type="button"
@@ -119,7 +119,7 @@ function UsageTable({ items, onNavigate, onInspect }: UsageTableProps) {
                   </button>
                 )}
                 {isExpanded && item.referencedBy && item.referencedBy.length > 0 && (
-                  <ul className="mt-1 flex flex-col gap-0.5 text-xs text-slate-600 dark:text-slate-400">
+                  <ul className="mt-1 flex flex-col gap-0.5 text-xs text-fg-muted">
                     {item.referencedBy.map((rr, i) => (
                       <li key={`${rr.ref}-${String(rr.pos)}-${String(i)}`}>
                         {onNavigate ? (
@@ -170,7 +170,7 @@ function UsageTable({ items, onNavigate, onInspect }: UsageTableProps) {
                     </button>
                   ) : (
                     !onInspect && (
-                      <span className="text-xs text-slate-600 dark:text-slate-400" title="Delete node/guest-scope objects from that scope's own rule table">—</span>
+                      <span className="text-xs text-fg-muted" title="Delete node/guest-scope objects from that scope's own rule table">—</span>
                     )
                   )}
                 </div>

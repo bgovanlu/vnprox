@@ -63,7 +63,7 @@ export function DrawerContent({ className, side = "right", density, children, ..
           // does, so it takes the same top-of-ladder `surface-overlay`.
           "fixed z-50 flex flex-col overflow-y-auto shadow-lg",
           DENSITY_PADDING[resolvedDensity],
-          "border-slate-200 bg-surface-overlay dark:border-slate-800",
+          "border-border bg-surface-overlay",
           "focus:outline-none",
           sideClasses[side],
           className,

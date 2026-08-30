@@ -41,7 +41,7 @@ function CountTile({
         ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
         : tone === "ok"
           ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
-          : "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300";
+          : "border-border-strong bg-slate-50 text-slate-700 dark:bg-slate-900/40 dark:text-slate-300";
   return (
     <div className={`flex min-w-[9rem] flex-col rounded-lg border px-3 py-2 ${toneClass}`}>
       <span className="text-2xl font-semibold tabular-nums">{count.toLocaleString()}</span>
@@ -114,7 +114,7 @@ export function DryRunReport({ report, heldOut = false }: DryRunReportProps) {
         className={
           hasCannot
             ? "rounded-lg border border-amber-300 bg-amber-50/60 p-3 dark:border-amber-800 dark:bg-amber-950/20"
-            : "rounded-lg border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-700 dark:bg-slate-900/20"
+            : "rounded-lg border border-border bg-slate-50/60 p-3 dark:bg-slate-900/20"
         }
       >
         <h4 className="mb-1 text-sm font-semibold">
@@ -126,7 +126,7 @@ export function DryRunReport({ report, heldOut = false }: DryRunReportProps) {
             allowed — treat each as a potential break until resolved.
           </p>
         ) : (
-          <p className="mb-2 text-sm text-slate-600 dark:text-slate-400">
+          <p className="mb-2 text-sm text-fg-muted">
             Every governed flow had a definitive verdict.
           </p>
         )}
@@ -135,7 +135,7 @@ export function DryRunReport({ report, heldOut = false }: DryRunReportProps) {
 
       {/* Would-allow: the reassuring bucket. Collapsed by default so it never
           competes for attention with the two sections above. */}
-      <section aria-label="Would-allow flows" className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+      <section aria-label="Would-allow flows" className="rounded-lg border border-border p-3">
         <button
           type="button"
           onClick={() => { setShowAllowed((v) => !v); }}
@@ -143,7 +143,7 @@ export function DryRunReport({ report, heldOut = false }: DryRunReportProps) {
           className="flex w-full items-center justify-between text-sm font-semibold"
         >
           <span>Would-allow flows ({report.wouldAllow.length})</span>
-          <span aria-hidden className="text-xs text-slate-600 dark:text-slate-400">{showAllowed ? "Hide" : "Show"}</span>
+          <span aria-hidden className="text-xs text-fg-muted">{showAllowed ? "Hide" : "Show"}</span>
         </button>
         {showAllowed && (
           <div className="mt-2">

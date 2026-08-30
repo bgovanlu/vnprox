@@ -80,7 +80,7 @@ export function ParamForm({
         <input
           id="bp-nodes"
           type="text"
-          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+          className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
           placeholder="every cluster node"
           value={nodesValue}
           onChange={(e) => {
@@ -100,7 +100,7 @@ export function ParamForm({
             <input
               id={`bp-param-${def.name}`}
               type="text"
-              className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className="w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
               value={values[def.name] ?? ""}
               onChange={(e) => {
                 setValue(def.name, e.target.value);
@@ -111,7 +111,7 @@ export function ParamForm({
             {def.addressSuggest ? (
               <button
                 type="button"
-                className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                className="shrink-0 rounded-md border border-border-strong px-2 py-1 text-xs font-medium text-fg-muted hover:bg-slate-100 dark:hover:bg-slate-800"
                 onClick={() => {
                   void handleSuggest(def);
                 }}

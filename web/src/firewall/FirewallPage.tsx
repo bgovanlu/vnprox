@@ -64,7 +64,7 @@ interface ClusterPanelProps {
 function ClusterPanel({ focusPos }: ClusterPanelProps) {
   const { data, isLoading, error, refetch } = useClusterRulesetQuery();
   const { data: objects } = useFirewallObjectsQuery();
-  if (isLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading datacenter firewall…</p>;
+  if (isLoading) return <p className="text-sm text-fg-muted">Loading datacenter firewall…</p>;
   if (error || !data) {
     return (
       <EmptyState
@@ -108,7 +108,7 @@ function NodePanel({ selected, onSelect, focusPos }: NodePanelProps) {
 
   const { data: ruleset, isLoading: rulesetLoading } = useNodeRulesetQuery(selected);
 
-  if (listLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading nodes…</p>;
+  if (listLoading) return <p className="text-sm text-fg-muted">Loading nodes…</p>;
   if (nodes.length === 0) {
     return (
       <EmptyState
@@ -123,7 +123,7 @@ function NodePanel({ selected, onSelect, focusPos }: NodePanelProps) {
     <div className="flex flex-col gap-3">
       <select
         aria-label="Select node"
-        className="w-fit rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+        className="w-fit rounded border border-border-strong px-2 py-1 text-sm dark:bg-slate-800"
         value={selected ?? ""}
         onChange={(e) => { onSelect(e.target.value); }}
       >
@@ -133,7 +133,7 @@ function NodePanel({ selected, onSelect, focusPos }: NodePanelProps) {
           </option>
         ))}
       </select>
-      {rulesetLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
+      {rulesetLoading && <p className="text-sm text-fg-muted">Loading…</p>}
       {ruleset && (
         <>
           <ScopeToggle scope="node" target={ruleset.ref} enabled={ruleset.enabled} node={selected} />
@@ -196,7 +196,7 @@ function GuestPanel({ selected, onSelect, focusRule }: GuestPanelProps) {
   const focusRuleMissing =
     focusRule !== undefined && detail !== undefined && !detail.resolved.rules.some((r) => matchesFocus(r, focusRule));
 
-  if (listLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading guests…</p>;
+  if (listLoading) return <p className="text-sm text-fg-muted">Loading guests…</p>;
   if (guests.length === 0) {
     return (
       <EmptyState
@@ -211,7 +211,7 @@ function GuestPanel({ selected, onSelect, focusRule }: GuestPanelProps) {
     <div className="flex flex-col gap-3">
       <select
         aria-label="Select guest"
-        className="w-fit rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+        className="w-fit rounded border border-border-strong px-2 py-1 text-sm dark:bg-slate-800"
         value={selected ?? ""}
         onChange={(e) => { onSelect(e.target.value); }}
       >
@@ -221,7 +221,7 @@ function GuestPanel({ selected, onSelect, focusRule }: GuestPanelProps) {
           </option>
         ))}
       </select>
-      {detailLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
+      {detailLoading && <p className="text-sm text-fg-muted">Loading…</p>}
       {deepLinkGuestMissing && (
         <EmptyState
           title="Linked guest not found"
@@ -260,7 +260,7 @@ function GuestPanel({ selected, onSelect, focusRule }: GuestPanelProps) {
             <ResolvedViewTable resolved={detail.resolved} focusRule={focusRule} />
           </div>
           {selected && (
-            <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <div className="rounded-lg border border-border p-3">
               <MicrosegPlanner guestRef={selected} />
             </div>
           )}
@@ -300,7 +300,7 @@ function VNetPanel({ selected, onSelect }: VNetPanelProps) {
 
   const { data: ruleset, isLoading: rulesetLoading } = useVnetRulesetQuery(selected);
 
-  if (listLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading vnets…</p>;
+  if (listLoading) return <p className="text-sm text-fg-muted">Loading vnets…</p>;
   if (vnets.length === 0) {
     return (
       <EmptyState
@@ -320,7 +320,7 @@ function VNetPanel({ selected, onSelect }: VNetPanelProps) {
     <div className="flex flex-col gap-3">
       <select
         aria-label="Select vnet"
-        className="w-fit rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+        className="w-fit rounded border border-border-strong px-2 py-1 text-sm dark:bg-slate-800"
         value={selected ?? ""}
         onChange={(e) => { onSelect(e.target.value); }}
       >
@@ -330,7 +330,7 @@ function VNetPanel({ selected, onSelect }: VNetPanelProps) {
           </option>
         ))}
       </select>
-      {rulesetLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
+      {rulesetLoading && <p className="text-sm text-fg-muted">Loading…</p>}
       {ruleset && (
         <>
           <ScopeToggle scope="vnet" target={ruleset.ref} enabled={ruleset.enabled} vnetLabel={vnetLabelFromRef(ruleset.vnet) ?? ruleset.vnet} />
@@ -361,7 +361,7 @@ interface ObjectsTabProps {
 
 function ObjectsTab({ onNavigate, onInspectGroup }: ObjectsTabProps) {
   const { data, isLoading, error, refetch } = useFirewallObjectsQuery();
-  if (isLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading objects…</p>;
+  if (isLoading) return <p className="text-sm text-fg-muted">Loading objects…</p>;
   if (error || !data) {
     return (
       <EmptyState

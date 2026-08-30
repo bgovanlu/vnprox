@@ -52,16 +52,16 @@ export function DigestSchedulePanel() {
         <h2 className="text-base font-semibold">Digest schedule</h2>
         <HelpAnchor topic="digest-schedule-panel" />
       </div>
-      <p className="text-sm text-slate-600 dark:text-slate-300">
+      <p className="text-sm text-fg-muted">
         A periodic summary delivered through the alert rules you already have. A period with nothing to report renders
         as one line rather than a page of "none observed" — a digest that arrives full every week regardless is one
         people learn to delete unread.
       </p>
 
-      {query.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Reading the schedule…</p>}
+      {query.isLoading && <p className="text-sm text-fg-muted">Reading the schedule…</p>}
 
       {notImplemented && (
-        <p className="text-sm text-slate-600 dark:text-slate-300" data-testid="digest-unavailable">
+        <p className="text-sm text-fg-muted" data-testid="digest-unavailable">
           Scheduled digests are not available on this deployment. That is a property of the daemon, not an empty
           schedule — nothing is scheduled and nothing can be. The daemon said:{" "}
           {query.error instanceof Error ? query.error.message : ""}
@@ -69,25 +69,25 @@ export function DigestSchedulePanel() {
       )}
 
       {unreadable && (
-        <p className="text-sm text-slate-700 dark:text-slate-200" role="status">
+        <p className="text-sm text-fg-body" role="status">
           The schedule could not be read, so whether a digest is running is unknown. The daemon said:{" "}
           {query.error instanceof Error ? query.error.message : "the read failed"}
         </p>
       )}
 
       {stored !== undefined && (
-        <div className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-800" data-testid="digest-stored">
+        <div className="rounded-md border border-border p-3 text-sm" data-testid="digest-stored">
           <p className="font-medium">{stored.enabled ? "Enabled" : "Disabled"}</p>
-          <p className="mt-0.5 text-slate-600 dark:text-slate-300">{cadenceLabel(stored.everySec, stored.enabled)}</p>
-          <p className="mt-0.5 text-slate-600 dark:text-slate-300">{ruleFilterLabel(stored.ruleIds)}</p>
-          <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+          <p className="mt-0.5 text-fg-muted">{cadenceLabel(stored.everySec, stored.enabled)}</p>
+          <p className="mt-0.5 text-fg-muted">{ruleFilterLabel(stored.ruleIds)}</p>
+          <p className="mt-0.5 text-xs text-fg-muted">
             {stored.updatedBy === "" && stored.updatedAt === 0
               ? "Nobody has ever written this schedule."
               : `Last written by ${stored.updatedBy === "" ? "an unrecorded principal" : stored.updatedBy}${
                   stored.updatedAt === 0 ? "" : ` on ${new Date(stored.updatedAt * 1000).toLocaleString()}`
                 }.`}
           </p>
-          <p className="mt-1 text-xs text-slate-600 dark:text-slate-300" data-testid="digest-last-run">
+          <p className="mt-1 text-xs text-fg-muted" data-testid="digest-last-run">
             {stored.lastRun === null
               ? "No tick has run yet, so there is no outcome to report."
               : `Last run ${stored.lastRun.status}${stored.lastRun.quiet ? " (quiet — nothing to report that period)" : ""}${
@@ -121,7 +121,7 @@ export function DigestSchedulePanel() {
                 onChange={(e) => {
                   setForm({ ...form, everySec: e.target.value });
                 }}
-                className="w-32 rounded border border-slate-300 px-1.5 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                className="w-32 rounded border border-border-strong px-1.5 py-1 text-sm dark:bg-slate-900"
               />
               {CADENCE_CHOICES.map((choice) => (
                 <Button
@@ -136,7 +136,7 @@ export function DigestSchedulePanel() {
                 </Button>
               ))}
             </div>
-            <span className="text-xs text-slate-600 dark:text-slate-400">
+            <span className="text-xs text-fg-muted">
               An enabled schedule needs at least {MIN_DIGEST_EVERY_SEC} seconds. A disabled one may carry any cadence,
               including none — disabling is how you silence a digest without losing the cadence you chose.
             </span>
@@ -150,9 +150,9 @@ export function DigestSchedulePanel() {
               onChange={(e) => {
                 setForm({ ...form, ruleIds: e.target.value });
               }}
-              className="w-full rounded border border-slate-300 px-1.5 py-1 font-mono text-sm dark:border-slate-700 dark:bg-slate-900"
+              className="w-full rounded border border-border-strong px-1.5 py-1 font-mono text-sm dark:bg-slate-900"
             />
-            <span className="text-xs text-slate-600 dark:text-slate-400">
+            <span className="text-xs text-fg-muted">
               Comma separated. Leave empty for no filter, which means every alert rule — not "no recipients". A digest
               carries no target of its own; it is delivered through the rules' existing ones, with their quiet hours
               and retries.

@@ -49,7 +49,7 @@ export function NewEntityMenu({ nodes }: NewEntityMenuProps) {
         <RadixDropdown.Content
           align="end"
           sideOffset={6}
-          className="z-50 max-h-80 min-w-[12rem] overflow-y-auto rounded-md border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+          className="z-50 max-h-80 min-w-[12rem] overflow-y-auto rounded-md border border-border bg-white p-1 shadow-lg dark:bg-slate-900"
         >
           {CREATABLE_KINDS.map((kind) => (
             <RadixDropdown.Sub key={kind}>
@@ -57,7 +57,7 @@ export function NewEntityMenu({ nodes }: NewEntityMenuProps) {
                 {KIND_LABEL[kind]}
               </RadixDropdown.SubTrigger>
               <RadixDropdown.Portal>
-                <RadixDropdown.SubContent className="z-50 min-w-[8rem] rounded-md border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                <RadixDropdown.SubContent className="z-50 min-w-[8rem] rounded-md border border-border bg-white p-1 shadow-lg dark:bg-slate-900">
                   {writableNodes.map((node) => (
                     <RadixDropdown.Item
                       key={node}
@@ -79,7 +79,7 @@ export function NewEntityMenu({ nodes }: NewEntityMenuProps) {
               {mgmtStrings.launch.button}
             </RadixDropdown.SubTrigger>
             <RadixDropdown.Portal>
-              <RadixDropdown.SubContent className="z-50 min-w-[8rem] rounded-md border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+              <RadixDropdown.SubContent className="z-50 min-w-[8rem] rounded-md border border-border bg-white p-1 shadow-lg dark:bg-slate-900">
                 {writableNodes.map((node) => (
                   <RadixDropdown.Item
                     key={node}
@@ -99,7 +99,7 @@ export function NewEntityMenu({ nodes }: NewEntityMenuProps) {
               Connect two clusters (WireGuard)
             </RadixDropdown.SubTrigger>
             <RadixDropdown.Portal>
-              <RadixDropdown.SubContent className="z-50 min-w-[8rem] rounded-md border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+              <RadixDropdown.SubContent className="z-50 min-w-[8rem] rounded-md border border-border bg-white p-1 shadow-lg dark:bg-slate-900">
                 {writableNodes.map((node) => (
                   <RadixDropdown.Item
                     key={node}

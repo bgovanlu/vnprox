@@ -29,13 +29,13 @@ export function PbsPanel() {
           Backup paths (PBS)
           <HelpAnchor topic="pbs-awareness" />
         </h2>
-        <p className="text-sm text-slate-600 dark:text-slate-400">
+        <p className="text-sm text-fg-muted">
           Which link your backup traffic actually crosses, and whether it is sized for the schedule. Discovered from
           PVE&apos;s own storage configuration — vnprox stores no PBS credentials and changes nothing here.
         </p>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading…</p>}
       {error && (
         <EmptyState
           icon="static-route"
@@ -139,14 +139,14 @@ function PbsPathsTable({ paths, hostCount }: { paths: PbsPath[]; hostCount: numb
                 {p.carrier ? (
                   <MapLink entityRef={p.carrier} />
                 ) : (
-                  <span className="text-slate-600 dark:text-slate-400">unresolved</span>
+                  <span className="text-fg-muted">unresolved</span>
                 )}
               </TableCell>
               <TableCell className="tabular-nums">
                 {p.linkSpeedKnown && p.linkMbps !== undefined ? (
                   `${String(p.linkMbps)} Mbit/s`
                 ) : (
-                  <span className="text-slate-600 dark:text-slate-400">unknown</span>
+                  <span className="text-fg-muted">unknown</span>
                 )}
               </TableCell>
               <TableCell>{p.jobs === undefined || p.jobs.length === 0 ? "—" : describeJobs(p)}</TableCell>

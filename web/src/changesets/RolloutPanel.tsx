@@ -22,7 +22,7 @@ const STATUS_LABEL: Record<NodeRolloutStatus, string> = {
 
 const STATUS_CLASS: Record<NodeRolloutStatus, string> = {
   done: "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200",
-  pending: "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200",
+  pending: "border-border-strong bg-slate-50 text-fg-body dark:bg-slate-900",
   // Deliberately loud. An unknown node is the state an operator most needs
   // to notice, so it must never read like a quiet "pending".
   unknown: "border-amber-400 bg-amber-50 text-amber-900 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-100",
@@ -66,7 +66,7 @@ export function RolloutPanel({ changeset }: RolloutPanelProps) {
         </p>
       )}
 
-      <p className="mt-1 text-slate-600 dark:text-slate-300">
+      <p className="mt-1 text-fg-muted">
         {deadlineText("Hold ends in", rollout.holdDeadline)} · {deadlineText("Confirm window closes in", rollout.confirmDeadline)}
       </p>
 

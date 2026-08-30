@@ -89,8 +89,8 @@ export function VlanZoneWizard({ open, onOpenChange }: VlanZoneWizardProps) {
       isValid: zoneId.trim().length > 0 && bridgeName.trim().length > 0 && memberNodes.length > 0 && !sdnNameError(zoneId),
       content: (
         <div className="space-y-3">
-          <p className="text-slate-600 dark:text-slate-300">{S.vlan.intro}</p>
-          <p className="text-slate-600 dark:text-slate-300">{S.vlan.bridgeStepHelp}</p>
+          <p className="text-fg-muted">{S.vlan.intro}</p>
+          <p className="text-fg-muted">{S.vlan.bridgeStepHelp}</p>
           <SdnNameField label="Name" help={S.common.zoneNameHelp} value={zoneId} onChange={setZoneId} placeholder="prodnet" />
           <Field label="VLAN-aware bridge" help="Must exist, with this exact name, on every member node.">
             <input className={inputClass} value={bridgeName} onChange={(e) => { setBridgeName(e.target.value); }} placeholder="vmbr0" />
@@ -127,10 +127,10 @@ export function VlanZoneWizard({ open, onOpenChange }: VlanZoneWizardProps) {
           </Field>
 
           <div>
-            <h4 className="mb-1 text-xs font-medium text-slate-600 dark:text-slate-300">{S.vlan.trunkCheckHeading}</h4>
+            <h4 className="mb-1 text-xs font-medium text-fg-muted">{S.vlan.trunkCheckHeading}</h4>
             <p className="mb-1.5 text-xs text-fg-subtle">{S.vlan.trunkCheckExplain}</p>
-            {vid <= 0 && <p className="text-xs text-slate-600 dark:text-slate-400">Enter a VLAN ID above to run the check.</p>}
-            {vid > 0 && !trunkCheck.ready && <p className="text-xs text-slate-600 dark:text-slate-400">{S.common.previewLoading}</p>}
+            {vid <= 0 && <p className="text-xs text-fg-muted">Enter a VLAN ID above to run the check.</p>}
+            {vid > 0 && !trunkCheck.ready && <p className="text-xs text-fg-muted">{S.common.previewLoading}</p>}
             {vid > 0 && trunkCheck.ready && !trunkCheck.hasData && (
               <p className="text-xs text-fg-subtle">{S.vlan.trunkCheckNoData}</p>
             )}
@@ -167,7 +167,7 @@ export function VlanZoneWizard({ open, onOpenChange }: VlanZoneWizardProps) {
       isValid: !cap.denied,
       invalidReason: cap.reason,
       content: (
-        <div className="space-y-2 text-slate-600 dark:text-slate-300">
+        <div className="space-y-2 text-fg-muted">
           <p>This will draft:</p>
           <ul className="list-inside list-disc space-y-1">
             <li>VLAN zone &quot;{zoneId}&quot; on bridge {bridgeName || "?"}, nodes {memberNodes.join(", ") || "none"}</li>

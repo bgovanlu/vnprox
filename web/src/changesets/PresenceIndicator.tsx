@@ -45,7 +45,7 @@ export function PresenceIndicator({ changesetId, currentUser }: PresenceIndicato
   return (
     <p
       data-testid="presence-indicator"
-      className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400"
+      className="flex items-center gap-1.5 text-xs text-fg-muted"
       // A status, not an alert: presence changing must never steal focus or
       // interrupt a screen reader mid-sentence.
       role="status"

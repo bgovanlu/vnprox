@@ -66,7 +66,7 @@ function ManagementPathSection({ node }: { node: string }) {
   const nodePaths = mgmtStatus?.nodes[node] ?? [];
 
   if (!mgmtStatus || nodePaths.length === 0) {
-    return <p className="text-xs text-slate-600 dark:text-slate-400">No management/corosync path resolved for this node yet.</p>;
+    return <p className="text-xs text-fg-muted">No management/corosync path resolved for this node yet.</p>;
   }
 
   // Whether any mgmt-role carrier for this node is non-redundant — the
@@ -113,14 +113,14 @@ function ManagementPathSection({ node }: { node: string }) {
         </div>
       )}
       {nodePaths.map((p) => (
-        <div key={p.ref} className="rounded border border-slate-200 p-2 dark:border-slate-700">
-          <div className="font-medium text-slate-700 dark:text-slate-200">
-            {p.ref} <span className="font-normal text-slate-600 dark:text-slate-400">({p.roles.join(", ")})</span>
+        <div key={p.ref} className="rounded border border-border p-2">
+          <div className="font-medium text-fg-body">
+            {p.ref} <span className="font-normal text-fg-muted">({p.roles.join(", ")})</span>
           </div>
           <div className="mt-1 text-fg-subtle">
             Path: {p.path.length > 0 ? p.path.join(" → ") : "(no physical interface resolved)"}
           </div>
-          <div className="mt-1 text-slate-600 dark:text-slate-300">
+          <div className="mt-1 text-fg-muted">
             {describeMgmtPathRedundancy(p.path, p.redundant)}
           </div>
         </div>
@@ -252,7 +252,7 @@ export function InspectorPanel({
           // own aria-label (set by the embedded branch below) supplies the
           // accessible name instead of Radix's aria-labelledby wiring.
           <div>
-            <h2 className="flex items-center gap-1.5 text-base font-semibold text-slate-900 dark:text-slate-100">
+            <h2 className="flex items-center gap-1.5 text-base font-semibold text-fg">
               {data?.label ?? "Inspector"}
               <HelpAnchor topic="topology-inspector" />
             </h2>
@@ -327,7 +327,7 @@ export function InspectorPanel({
                       align="end"
                       sideOffset={6}
                       // T-4203: a floating menu above the inspector — `surface-overlay`.
-                      className="z-50 min-w-[12rem] rounded-md border border-slate-200 bg-surface-overlay p-1 shadow-lg dark:border-slate-700"
+                      className="z-50 min-w-[12rem] rounded-md border border-border bg-surface-overlay p-1 shadow-lg"
                     >
                       <RadixDropdown.Item
                         className="cursor-pointer rounded px-2 py-1.5 text-sm outline-none hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -407,7 +407,7 @@ export function InspectorPanel({
         )}
       </div>
 
-      {isLoading && <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
+      {isLoading && <p className="mt-4 text-sm text-fg-muted">Loading…</p>}
       {isError && (
         <EmptyState
           className="mt-4"
@@ -425,7 +425,7 @@ export function InspectorPanel({
 
         {data && (
           <RadixTabs.Root defaultValue="fields" className="mt-4 flex flex-1 flex-col">
-            <RadixTabs.List className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
+            <RadixTabs.List className="flex gap-1 border-b border-border">
               <RadixTabs.Trigger value="fields" className={tabTriggerClass}>
                 Fields
               </RadixTabs.Trigger>
@@ -480,8 +480,8 @@ export function InspectorPanel({
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
                 {fieldRows(data.fields).map(([k, v]) => (
                   <div className="contents" key={k}>
-                    <dt className="text-slate-600 dark:text-slate-400">{k}</dt>
-                    <dd className="break-all text-slate-700 dark:text-slate-200">{v}</dd>
+                    <dt className="text-fg-muted">{k}</dt>
+                    <dd className="break-all text-fg-body">{v}</dd>
                   </div>
                 ))}
               </dl>
@@ -497,7 +497,7 @@ export function InspectorPanel({
 
             <RadixTabs.Content value="raw" className="mt-3 flex-1 overflow-y-auto">
               {rawSourceEntries.length === 0 ? (
-                <p className="text-xs text-slate-600 dark:text-slate-400">
+                <p className="text-xs text-fg-muted">
                   No raw source retained for this entity — none of its contributing sources kept original
                   config text (common for purely observed entities).
                 </p>
@@ -507,7 +507,7 @@ export function InspectorPanel({
                     <section key={source}>
                       <h3 className="mb-1 text-xs font-medium text-fg-subtle">{source}</h3>
                       {/* T-4203: an inset code block — `surface-sunken`. */}
-                      <pre className="overflow-x-auto rounded border border-slate-200 bg-surface-sunken p-2 font-mono text-[11px] leading-snug text-slate-700 dark:border-slate-700 dark:text-slate-200">
+                      <pre className="overflow-x-auto rounded border border-border bg-surface-sunken p-2 font-mono text-[11px] leading-snug text-fg-body">
                         {text}
                       </pre>
                     </section>
@@ -517,14 +517,14 @@ export function InspectorPanel({
             </RadixTabs.Content>
 
             <RadixTabs.Content value="provenance" className="mt-3 flex-1 overflow-y-auto">
-              <p className="mb-2 text-xs text-slate-600 dark:text-slate-400">
+              <p className="mb-2 text-xs text-fg-muted">
                 Resolved-field provenance: which poll source won each field, and any disagreeing values.
               </p>
               <ul className="space-y-2 text-xs">
                 {Object.entries(data.provenance).map(([field, prov]) => (
-                  <li key={field} className="rounded border border-slate-200 p-2 dark:border-slate-700">
-                    <div className="font-medium text-slate-700 dark:text-slate-200">
-                      {field} <span className="font-normal text-slate-600 dark:text-slate-400">← {prov.owner}</span>
+                  <li key={field} className="rounded border border-border p-2">
+                    <div className="font-medium text-fg-body">
+                      {field} <span className="font-normal text-fg-muted">← {prov.owner}</span>
                     </div>
                     {prov.conflicts && prov.conflicts.length > 0 && (
                       <ul className="mt-1 space-y-0.5 pl-3 text-amber-600 dark:text-amber-400">
@@ -538,7 +538,7 @@ export function InspectorPanel({
                   </li>
                 ))}
                 {Object.keys(data.provenance).length === 0 && (
-                  <li className="text-slate-600 dark:text-slate-400">No per-field provenance recorded.</li>
+                  <li className="text-fg-muted">No per-field provenance recorded.</li>
                 )}
               </ul>
             </RadixTabs.Content>
@@ -557,14 +557,14 @@ export function InspectorPanel({
                         "hover:bg-slate-100 dark:hover:bg-slate-800",
                       )}
                     >
-                      <span className="truncate text-slate-700 dark:text-slate-200">{r.ref}</span>
-                      <span className="shrink-0 text-slate-600 dark:text-slate-400">
+                      <span className="truncate text-fg-body">{r.ref}</span>
+                      <span className="shrink-0 text-fg-muted">
                         {r.edgeKind} ({r.direction})
                       </span>
                     </button>
                   </li>
                 ))}
-                {data.related.length === 0 && <li className="text-slate-600 dark:text-slate-400">No related entities.</li>}
+                {data.related.length === 0 && <li className="text-fg-muted">No related entities.</li>}
               </ul>
             </RadixTabs.Content>
 
@@ -580,7 +580,7 @@ export function InspectorPanel({
 
             {isBridgeKind && (
               <RadixTabs.Content value="fdb" className="mt-3 flex-1 overflow-y-auto">
-                <p className="mb-2 text-xs text-slate-600 dark:text-slate-400">
+                <p className="mb-2 text-xs text-fg-muted">
                   This bridge's forwarding-database table (docs/features/lldp-discovery.md §4), owner-labeled
                   against the cluster-wide inventory.
                 </p>
@@ -591,8 +591,8 @@ export function InspectorPanel({
                       className="flex items-center justify-between gap-2 rounded px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800"
                     >
                       <span className="flex items-center gap-2">
-                        <span className="font-mono text-slate-700 dark:text-slate-200">{r.mac}</span>
-                        {r.port && <span className="text-slate-600 dark:text-slate-400">on {r.port}</span>}
+                        <span className="font-mono text-fg-body">{r.mac}</span>
+                        {r.port && <span className="text-fg-muted">on {r.port}</span>}
                         {r.stale && <span className="text-amber-600 dark:text-amber-400">stale</span>}
                       </span>
                       {r.ownerRef ? (
@@ -608,11 +608,11 @@ export function InspectorPanel({
                           {r.ownerLabel ? ` (${r.ownerLabel})` : ""}
                         </button>
                       ) : (
-                        <span className="shrink-0 text-slate-600 dark:text-slate-400">{r.owner}</span>
+                        <span className="shrink-0 text-fg-muted">{r.owner}</span>
                       )}
                     </li>
                   ))}
-                  {fdbRows.length === 0 && <li className="text-slate-600 dark:text-slate-400">No FDB entries learned on this bridge.</li>}
+                  {fdbRows.length === 0 && <li className="text-fg-muted">No FDB entries learned on this bridge.</li>}
                 </ul>
               </RadixTabs.Content>
             )}
@@ -651,7 +651,7 @@ export function InspectorPanel({
         aria-label={data ? `${data.label} inspector` : "Inspector"}
         // T-4203: an embedded pane floats over the canvas the same way the
         // single-pane Drawer variant below does — `surface-overlay`.
-        className="flex h-full w-96 shrink-0 flex-col overflow-y-auto rounded-md border border-slate-200 bg-surface-overlay p-4 shadow dark:border-slate-700"
+        className="flex h-full w-96 shrink-0 flex-col overflow-y-auto rounded-md border border-border bg-surface-overlay p-4 shadow"
       >
         {body}
       </div>

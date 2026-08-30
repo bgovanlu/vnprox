@@ -52,7 +52,7 @@ export function FlowPairPanel({ edge, onClose }: FlowPairPanelProps) {
       // edge (z-50, docs/features/topology.md's map toolbar sits above the
       // canvas) and InspectorStack anchors bottom-right — this is the one
       // fixed-position corner neither of those already claims.
-      className="fixed right-4 top-20 z-30 w-80 max-w-full rounded-lg border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
+      className="fixed right-4 top-20 z-30 w-80 max-w-full rounded-lg border border-border bg-white/95 p-4 shadow-xl backdrop-blur dark:bg-slate-900/95"
     >
       <div className="flex items-start justify-between gap-2">
         <h3 className="flex items-center gap-1.5 text-sm font-semibold">
@@ -63,7 +63,7 @@ export function FlowPairPanel({ edge, onClose }: FlowPairPanelProps) {
           type="button"
           aria-label="Close"
           onClick={onClose}
-          className="rounded px-1.5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          className="rounded px-1.5 text-fg-muted hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
         >
           ×
         </button>

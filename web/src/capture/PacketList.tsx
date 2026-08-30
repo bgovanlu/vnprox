@@ -19,14 +19,14 @@ export function PacketList({ packets, paneLabel }: PacketListProps) {
   const selected = packets.find((p) => p.index === selectedIndex);
 
   if (packets.length === 0) {
-    return <p className="text-xs text-slate-600 dark:text-slate-400">No packets in this capture.</p>;
+    return <p className="text-xs text-fg-muted">No packets in this capture.</p>;
   }
 
   return (
     <div className="space-y-1" data-testid="packet-list">
-      {paneLabel && <h4 className="text-xs font-semibold text-slate-600 dark:text-slate-300">{paneLabel}</h4>}
+      {paneLabel && <h4 className="text-xs font-semibold text-fg-muted">{paneLabel}</h4>}
       <div className="grid grid-cols-2 gap-2">
-        <div className="max-h-64 overflow-y-auto rounded border border-slate-200 dark:border-slate-700">
+        <div className="max-h-64 overflow-y-auto rounded border border-border">
           <table className="w-full text-left text-[11px]">
             <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800">
               <tr>
@@ -65,11 +65,11 @@ export function PacketList({ packets, paneLabel }: PacketListProps) {
             </tbody>
           </table>
         </div>
-        <div className="max-h-64 overflow-y-auto rounded border border-slate-200 p-1.5 text-[11px] dark:border-slate-700">
-          {!selected && <p className="text-slate-600 dark:text-slate-400">Select a packet to see its decoded fields.</p>}
+        <div className="max-h-64 overflow-y-auto rounded border border-border p-1.5 text-[11px]">
+          {!selected && <p className="text-fg-muted">Select a packet to see its decoded fields.</p>}
           {selected?.layers.map((layer) => (
             <div key={layer.name} className="mb-2">
-              <p className="font-semibold text-slate-700 dark:text-slate-200">{layer.name}</p>
+              <p className="font-semibold text-fg-body">{layer.name}</p>
               <ul className="ml-2 space-y-0.5">
                 {Object.entries(layer.fields).map(([k, v]) => (
                   <li key={k} className="font-mono text-fg-subtle">

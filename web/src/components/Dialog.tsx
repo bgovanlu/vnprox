@@ -72,7 +72,7 @@ export function DialogContent({
           "motion-dialog-surface fixed left-1/2 top-1/2 z-50 w-full rounded-xl border shadow-lg",
           DENSITY_PADDING[resolvedDensity],
           widthClassName,
-          "border-slate-200 bg-surface-overlay dark:border-slate-800",
+          "border-border bg-surface-overlay",
           "focus:outline-none",
           className,
         )}
@@ -87,7 +87,7 @@ export function DialogContent({
 export function DialogTitle({ className, ...props }: ComponentPropsWithoutRef<typeof RadixDialog.Title>) {
   return (
     <RadixDialog.Title
-      className={clsx("text-base font-semibold text-slate-900 dark:text-slate-100", className)}
+      className={clsx("text-base font-semibold text-fg", className)}
       {...props}
     />
   );

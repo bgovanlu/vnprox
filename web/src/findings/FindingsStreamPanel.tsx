@@ -219,7 +219,7 @@ export function FindingsStreamPanel() {
   }
 
   if (isLoading) {
-    return <p className="text-sm text-slate-600 dark:text-slate-400">Loading findings…</p>;
+    return <p className="text-sm text-fg-muted">Loading findings…</p>;
   }
   if (error) {
     return <p className="text-sm text-status-critical">Could not load findings.</p>;
@@ -229,7 +229,7 @@ export function FindingsStreamPanel() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter findings">
         <HelpAnchor topic="findings-stream" />
-        <label className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
+        <label className="flex items-center gap-1 text-xs text-fg-muted">
           Source
           <select
             aria-label="Filter by source"
@@ -237,7 +237,7 @@ export function FindingsStreamPanel() {
             onChange={(e) => {
               setFilter((f) => ({ ...f, source: e.target.value as FindingSource | "" }));
             }}
-            className="rounded border border-slate-200 bg-transparent px-1.5 py-0.5 text-xs outline-none focus:border-accent-500 dark:border-slate-700"
+            className="rounded border border-border bg-transparent px-1.5 py-0.5 text-xs outline-none focus:border-accent-500"
           >
             <option value="">All</option>
             {(Object.keys(SOURCE_LABELS) as FindingSource[]).map((s) => (
@@ -247,7 +247,7 @@ export function FindingsStreamPanel() {
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
+        <label className="flex items-center gap-1 text-xs text-fg-muted">
           Severity
           <select
             aria-label="Filter by severity"
@@ -255,7 +255,7 @@ export function FindingsStreamPanel() {
             onChange={(e) => {
               setFilter((f) => ({ ...f, severity: e.target.value as Severity | "" }));
             }}
-            className="rounded border border-slate-200 bg-transparent px-1.5 py-0.5 text-xs outline-none focus:border-accent-500 dark:border-slate-700"
+            className="rounded border border-border bg-transparent px-1.5 py-0.5 text-xs outline-none focus:border-accent-500"
           >
             <option value="">All</option>
             {(Object.keys(SEVERITY_LABELS) as Severity[]).map((s) => (
@@ -265,7 +265,7 @@ export function FindingsStreamPanel() {
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
+        <label className="flex items-center gap-1 text-xs text-fg-muted">
           Node
           <select
             aria-label="Filter by node"
@@ -273,7 +273,7 @@ export function FindingsStreamPanel() {
             onChange={(e) => {
               setFilter((f) => ({ ...f, node: e.target.value }));
             }}
-            className="rounded border border-slate-200 bg-transparent px-1.5 py-0.5 text-xs outline-none focus:border-accent-500 dark:border-slate-700"
+            className="rounded border border-border bg-transparent px-1.5 py-0.5 text-xs outline-none focus:border-accent-500"
           >
             <option value="">All</option>
             {availableNodes.map((n) => (

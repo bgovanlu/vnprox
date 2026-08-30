@@ -80,7 +80,7 @@ export function EndpointPicker({ label, value, onChange, topologyNodes = [] }: E
 
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className="text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-400">
+      <legend className="text-xs font-medium uppercase tracking-wide text-fg-muted">
         {label}
       </legend>
       <div role="radiogroup" aria-label={`${label} endpoint kind`} className="flex gap-1">
@@ -97,7 +97,7 @@ export function EndpointPicker({ label, value, onChange, topologyNodes = [] }: E
               "rounded px-2 py-1 text-xs font-medium",
               mode === t.kind
                 ? "bg-accent-600 text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700",
+                : "bg-slate-100 text-fg-muted hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700",
             )}
           >
             {t.short}
@@ -108,7 +108,7 @@ export function EndpointPicker({ label, value, onChange, topologyNodes = [] }: E
       {mode === "guest-nic" && (
         <div className="flex flex-col gap-1">
           {value?.kind === "guest-nic" ? (
-            <div className="flex items-center justify-between gap-2 rounded border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700">
+            <div className="flex items-center justify-between gap-2 rounded border border-border-strong px-2 py-1.5 text-sm">
               <span className="truncate font-mono text-xs">{selectedLabel ?? value.ref}</span>
               <button
                 type="button"
@@ -131,7 +131,7 @@ export function EndpointPicker({ label, value, onChange, topologyNodes = [] }: E
                 onChange={(e) => {
                   setQuery(e.target.value);
                 }}
-                className="w-full rounded border border-slate-300 bg-transparent px-2 py-1.5 text-sm outline-none focus:border-accent-500 dark:border-slate-700"
+                className="w-full rounded border border-border-strong bg-transparent px-2 py-1.5 text-sm outline-none focus:border-accent-500"
               />
               {/* aria-label distinguishes this results list from the map's own
                   node buttons (which share the same "<guest>/<nic>" text) so
@@ -141,11 +141,11 @@ export function EndpointPicker({ label, value, onChange, topologyNodes = [] }: E
               {query.trim() !== "" && (
                 <ul
                   aria-label={`${label} guest NIC results`}
-                  className="max-h-40 overflow-y-auto rounded border border-slate-200 text-sm dark:border-slate-700"
+                  className="max-h-40 overflow-y-auto rounded border border-border text-sm"
                 >
-                  {isFetching && <li className="px-2 py-1 text-slate-600 dark:text-slate-400">Searching…</li>}
+                  {isFetching && <li className="px-2 py-1 text-fg-muted">Searching…</li>}
                   {!isFetching && results.length === 0 && (
-                    <li className="px-2 py-1 text-slate-600 dark:text-slate-400">No matching guest NICs.</li>
+                    <li className="px-2 py-1 text-fg-muted">No matching guest NICs.</li>
                   )}
                   {results.map((r) => (
                     <li key={r.ref}>
@@ -159,7 +159,7 @@ export function EndpointPicker({ label, value, onChange, topologyNodes = [] }: E
                         className="flex w-full items-center justify-between gap-2 px-2 py-1 text-left hover:bg-slate-100 dark:hover:bg-slate-800"
                       >
                         <span className="truncate">{r.label}</span>
-                        <span className="shrink-0 text-xs text-slate-600 dark:text-slate-400">{r.node}</span>
+                        <span className="shrink-0 text-xs text-fg-muted">{r.node}</span>
                       </button>
                     </li>
                   ))}
@@ -188,16 +188,16 @@ export function EndpointPicker({ label, value, onChange, topologyNodes = [] }: E
                 commitIp(ipDraft);
               }
             }}
-            className="w-full rounded border border-slate-300 bg-transparent px-2 py-1.5 font-mono text-sm outline-none focus:border-accent-500 dark:border-slate-700"
+            className="w-full rounded border border-border-strong bg-transparent px-2 py-1.5 font-mono text-sm outline-none focus:border-accent-500"
           />
           {ipDraft.trim() !== "" && (
-            <p className="text-xs text-slate-600 dark:text-slate-400">{describeIpSubnetContext(ipDraft.trim(), topologyNodes)}</p>
+            <p className="text-xs text-fg-muted">{describeIpSubnetContext(ipDraft.trim(), topologyNodes)}</p>
           )}
         </div>
       )}
 
       {mode === "external" && (
-        <p className="text-xs text-slate-600 dark:text-slate-400">Represents traffic to/from outside the cluster (the WAN/internet).</p>
+        <p className="text-xs text-fg-muted">Represents traffic to/from outside the cluster (the WAN/internet).</p>
       )}
     </fieldset>
   );

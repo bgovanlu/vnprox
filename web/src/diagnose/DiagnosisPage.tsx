@@ -82,7 +82,7 @@ function StepRow({ step }: { step: DiagnoseStep }) {
 
   return (
     <li
-      className="rounded-md border border-slate-200 dark:border-slate-700"
+      className="rounded-md border border-border"
       data-testid={`diagnose-step-${step.name}`}
       data-status={step.status}
     >
@@ -106,9 +106,9 @@ function StepRow({ step }: { step: DiagnoseStep }) {
           <span className="text-xs text-fg-muted">{expanded ? "Hide detail" : "Show detail"}</span>
         )}
       </button>
-      <p className="px-3 pb-2 text-sm text-slate-600 dark:text-slate-300">{step.summary}</p>
+      <p className="px-3 pb-2 text-sm text-fg-muted">{step.summary}</p>
       {expanded && hasDetail && (
-        <pre className="overflow-x-auto border-t border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950">
+        <pre className="overflow-x-auto border-t border-border bg-slate-50 px-3 py-2 text-xs dark:bg-slate-950">
           {JSON.stringify(step.detail, null, 2)}
         </pre>
       )}
@@ -124,9 +124,9 @@ function verdictClassName(confidence: DiagnoseConfidence): string {
     case "low":
       return `${base} border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200`;
     case "none":
-      return `${base} border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300`;
+      return `${base} border-border-strong bg-slate-50 text-slate-700 dark:bg-slate-900 dark:text-slate-300`;
     default:
-      return `${base} border-slate-300 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300`;
+      return `${base} border-border-strong bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-300`;
   }
 }
 
@@ -225,7 +225,7 @@ export function DiagnosisPage({ targetRef: targetRefProp }: DiagnosisPageProps =
       {diagnoseMutation.isPending && (
         <ul className="space-y-1" data-testid="diagnose-progress" aria-live="polite">
           {STEP_ORDER.map((name) => (
-            <li key={name} className="text-sm text-slate-600 dark:text-slate-400">
+            <li key={name} className="text-sm text-fg-muted">
               {STEP_LABELS[name]} — running…
             </li>
           ))}

@@ -70,7 +70,7 @@ import {
 const STATE_BADGE_CLASS: Record<WgTunnelState, string> = {
   up: "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200",
   down: "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200",
-  unknown: "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  unknown: "border-border-strong bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
 };
 
 const STATE_LABEL: Record<WgTunnelState, string> = { up: "up", down: "down", unknown: "unknown" };
@@ -233,7 +233,7 @@ function DeleteTunnelDialog({
       submitLabel="Delete"
       disabledReason={!capsForNode(session, tunnel.node).netWrite ? disabledReason : undefined}
     >
-      <p className="text-sm text-slate-600 dark:text-slate-400">Nothing is removed until the changeset applies.</p>
+      <p className="text-sm text-fg-muted">Nothing is removed until the changeset applies.</p>
     </EditorDialog>
   );
 }
@@ -364,7 +364,7 @@ function RemovePeerDialog({
       submitLabel="Remove"
       disabledReason={!capsForNode(session, tunnel.node).netWrite ? missingCapTooltip(session, tunnel.node, "netWrite") : undefined}
     >
-      <p className="text-sm text-slate-600 dark:text-slate-400">The remaining peers on this tunnel are unaffected.</p>
+      <p className="text-sm text-fg-muted">The remaining peers on this tunnel are unaffected.</p>
     </EditorDialog>
   );
 }
@@ -442,7 +442,7 @@ function PeerRow({
   return (
     <TableRow>
       <TableCell className="font-mono text-xs">{peer.publicKey.slice(0, 12)}…</TableCell>
-      <TableCell>{peer.endpoint ?? <span className="text-slate-600 dark:text-slate-400">no fixed endpoint</span>}</TableCell>
+      <TableCell>{peer.endpoint ?? <span className="text-fg-muted">no fixed endpoint</span>}</TableCell>
       <TableCell>{peer.allowedIps.join(", ") || "—"}</TableCell>
       <TableCell>
         {peer.endpointDrifted && (
@@ -485,13 +485,13 @@ function TunnelSection({ tunnel, tunnelsUnavailable }: { tunnel: WireGuardTunnel
   const gateTitle = canWrite ? undefined : missingCapTooltip(session, tunnel.node, "netWrite");
 
   return (
-    <div className="rounded-md border border-slate-200 dark:border-slate-700">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 p-3 dark:border-slate-700">
+    <div className="rounded-md border border-border">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-3">
         <div className="flex items-center gap-3">
           <StateBadge state={state} />
           <div>
             <div className="font-medium">{tunnelTitle(tunnel)}</div>
-            <div className="text-xs text-slate-600 dark:text-slate-400">
+            <div className="text-xs text-fg-muted">
               {tunnel.addresses.join(", ") || "no address"} · UDP {tunnel.listenPort} · {tunnel.peers.length} peer{tunnel.peers.length === 1 ? "" : "s"}
               {tunnel.carrier ? ` · via ${tunnel.carrier}` : ""}
             </div>
@@ -513,7 +513,7 @@ function TunnelSection({ tunnel, tunnelsUnavailable }: { tunnel: WireGuardTunnel
         </div>
       </div>
       {tunnel.peers.length === 0 ? (
-        <p className="p-3 text-sm text-slate-600 dark:text-slate-400">No peers configured yet.</p>
+        <p className="p-3 text-sm text-fg-muted">No peers configured yet.</p>
       ) : (
         <Table aria-label={`Peers on ${tunnelTitle(tunnel)}`}>
           <TableHeader>
@@ -597,7 +597,7 @@ export function WireGuardPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-slate-600 dark:text-slate-400">Loading WireGuard tunnels…</p>
+        <p className="text-sm text-fg-muted">Loading WireGuard tunnels…</p>
       ) : !tunnels ? (
         <EmptyState
           icon="wg-tunnel"

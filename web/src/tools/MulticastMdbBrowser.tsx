@@ -68,14 +68,14 @@ function SnoopingBridgesTable({ bridges }: { bridges: MDBBridge[] }) {
               {b.snooping ? (
                 <span className="text-emerald-700 dark:text-emerald-300">enabled</span>
               ) : (
-                <span className="text-slate-600 dark:text-slate-400">disabled</span>
+                <span className="text-fg-muted">disabled</span>
               )}
             </TableCell>
             <TableCell>
               {b.querier ? (
                 <span className="text-emerald-700 dark:text-emerald-300">yes</span>
               ) : (
-                <span className="text-slate-600 dark:text-slate-400">no</span>
+                <span className="text-fg-muted">no</span>
               )}
             </TableCell>
             <TableCell>
@@ -116,7 +116,7 @@ export function MulticastMdbBrowser() {
     <div className="flex flex-col gap-3">
       <div>
         <h2 className="text-base font-semibold">Multicast / MDB browser</h2>
-        <p className="text-sm text-slate-600 dark:text-slate-400">
+        <p className="text-sm text-fg-muted">
           Bridge multicast forwarding-database (MDB) entries and IGMP/MLD-snooping configuration, across every
           reachable node — cluster-wide, live. Leave the group box blank to browse everything.
         </p>
@@ -129,7 +129,7 @@ export function MulticastMdbBrowser() {
         }}
         placeholder="224.0.0.251, or ff02::fb"
         aria-label="Search multicast group"
-        className="w-full max-w-md rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-accent-500 dark:border-slate-700 dark:bg-slate-900"
+        className="w-full max-w-md rounded-md border border-border-strong bg-white px-2.5 py-1.5 text-sm outline-none focus:border-accent-500 dark:bg-slate-900"
       />
 
       {data?.partial && data.failedNodes && data.failedNodes.length > 0 && (
@@ -138,7 +138,7 @@ export function MulticastMdbBrowser() {
         </p>
       )}
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading…</p>}
       {isError && (
         <EmptyState
           icon="bridge"

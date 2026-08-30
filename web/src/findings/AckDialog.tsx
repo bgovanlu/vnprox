@@ -48,7 +48,7 @@ export function AckDialog({ finding, onCancel, onConfirm, pending }: AckDialogPr
     >
       <DialogContent aria-label="Acknowledge finding">
         <h2 className="text-base font-semibold">Acknowledge this finding</h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{finding?.detail}</p>
+        <p className="mt-1 text-sm text-fg-muted">{finding?.detail}</p>
         <p className="mt-3 text-xs text-fg-subtle">
           Acknowledging does not hide the finding or stop the check running. It records that this
           state is deliberate, so the stream can be triaged.
@@ -63,7 +63,7 @@ export function AckDialog({ finding, onCancel, onConfirm, pending }: AckDialogPr
             rows={3}
             onChange={(e) => { setReason(e.target.value); }}
             placeholder="Why is this state intentional?"
-            className="rounded border border-slate-300 bg-transparent px-2 py-1 text-sm outline-none focus:border-accent-500 dark:border-slate-700"
+            className="rounded border border-border-strong bg-transparent px-2 py-1 text-sm outline-none focus:border-accent-500"
           />
         </label>
 
@@ -73,7 +73,7 @@ export function AckDialog({ finding, onCancel, onConfirm, pending }: AckDialogPr
             aria-label="Acknowledgement expiry"
             value={days}
             onChange={(e) => { setDays(Number(e.target.value)); }}
-            className="rounded border border-slate-300 bg-transparent px-1.5 py-0.5 text-sm outline-none focus:border-accent-500 dark:border-slate-700"
+            className="rounded border border-border-strong bg-transparent px-1.5 py-0.5 text-sm outline-none focus:border-accent-500"
           >
             {EXPIRY_CHOICES.map((c) => (
               <option key={c.days} value={c.days}>

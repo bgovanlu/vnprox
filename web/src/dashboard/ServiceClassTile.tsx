@@ -61,7 +61,7 @@ export function ServiceClassTile() {
         <ul className="flex flex-col gap-1">
           {result.entries.map((e) => (
             <li key={e.serviceClass} className="flex items-center justify-between gap-2 text-sm">
-              <span className="truncate text-slate-700 dark:text-slate-200">
+              <span className="truncate text-fg-body">
                 {SERVICE_CLASS_LABELS[e.serviceClass]}
               </span>
               <span className="shrink-0 tabular-nums text-fg-subtle">

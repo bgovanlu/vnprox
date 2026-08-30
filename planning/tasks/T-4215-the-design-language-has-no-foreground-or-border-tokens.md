@@ -1,8 +1,8 @@
 # T-4215 — The design language has no foreground or border tokens, which is why ~1000 `dark:` pairs survive
 
 **Phase:** 42 (Design language)
-**Status:** criteria 1–3 and 5 done (commit `8635f2fc`); criterion 4 partially done — the 186
-contrast failures are fixed, the 824 AA-clearing text pairs and 43 border pairs are not
+**Status:** done. Criterion 4's remainder converted (1284 pairs -> 82) and criterion 5's gate
+rebuilt, after finding that what shipped as "5 done" measured contrast rather than adoption
 **Depends on:** T-4203 (surface ladder), T-4204 (status scale)
 **Blocks:** the remaining T-4203/T-4204 adoption sweep, and T-4301 (canvas palette)
 
@@ -140,3 +140,78 @@ is a visible change to fix a contrast failure that was never in the background.
 This card is the reason to be sceptical of the phrase "the remainder is mechanical" in T-4204's
 commit message — which I wrote. The remainder was not mechanical; it was blocked, and counting
 only the patterns that *had* a token made the blockage invisible for the whole phase.
+
+
+## Criterion 4's remainder, and what it turned up
+
+**1284 convertible pairs -> 82.** Done in two passes, and the split between them is the point.
+
+**Pass 1 (900 sites, 172 files) changed no pixel.** Five pairings are byte-identical to a token in
+*both* themes — `text-slate-900 dark:text-slate-100` **is** `--color-fg`, and so on for `fg-body`,
+`fg-muted`, `border` and `border-strong`. Those needed no judgement, only care in the mechanics:
+substitution is per-string-literal and by exact token equality, so a light step in one class list
+can never pair with a dark step in another and `group-hover:text-slate-600` is never mistaken for
+`text-slate-600`. `--color-fg-subtle` is deliberately absent from that list — its light value
+(`#5f6e85`) was *solved* for contrast and is not a slate step, so converting to it would be a
+visible change and belongs with pass 2, not pass 1.
+
+**Pass 2 (301 sites) needed two decisions, and both were asked rather than assumed.**
+
+- 180 sites spelled muted text as `text-slate-600 dark:text-slate-300` — the same role as the 487
+  already converted, in a second spelling. Converted; dark-mode secondary text dims from 9.55 to
+  5.53, both comfortably AA.
+- 109 sites used `border-slate-200 dark:border-slate-700`, which is `--color-border`'s light value
+  with `--color-border-strong`'s dark value. **Neither token spelled the app's most common border
+  idiom**, and converting to `border` as it stood would have pushed dark borders from 1.72 to
+  **1.22** — a border that is not a border.
+
+### The border tokens were solved against a floor nobody was failing
+
+`--color-border` measured **1.03** against its worst dark surface. Meanwhile 109 call sites had
+independently written `dark:border-slate-700` and 12 more `dark:border-slate-600`: the codebase's
+own idiom was a step lighter than the token, in both roles, and *no call site had adopted the
+derived value*. That is this card's own finding turned around and pointed at the token — a value
+correct against a denominator someone picked, while the thing it described sat elsewhere.
+
+Both re-pointed one step lighter (`border` -> slate-700, `border-strong` -> slate-600). It had to
+move as a **ladder**: `border-strong` was already slate-700, so lifting `border` alone would have
+collapsed two roles into one colour in dark while leaving them distinct in light. Worst-case dark
+contrast is now 1.37 / 1.87, still under the `<2` hairline ceiling `index.css.test.ts` holds
+`border` to, and 121 sites convert with zero visual change instead of regressing.
+
+### The re-point found a third thing
+
+`canvasPalette`'s badge pair dropped to **4.04** in dark. The cause is not the re-point — which
+*improved* the badge's contrast against the node it sits on, 1.23 to 1.56, and that same value
+doubles as the stale-node fill. The cause is that **`--color-border` is a hairline token being used
+as a fill**, and `index.css.test.ts` holds it under 2:1 against every surface precisely so it stays
+a hairline. Nothing in that contract makes it a legible background for text, so a foreground solved
+against *surfaces* was never safe on it. Fixed on the text side (`badgeText` -> `--color-fg-body`,
+8.40 in both themes) rather than by moving the fill, which measured 1.08/1.19 against the node and
+would have made a stale node harder to see.
+
+## Criterion 5: what shipped as "done" was measuring the other property
+
+`slateContrast.test.ts` fails on slate that fails **AA**. Criterion 5 asks for a gate that fails on
+**reintroduction**. Those are different properties, and the contrast gate would have stayed at zero
+offences while every call site drifted back off the tokens, because a legible slate pair is still a
+slate pair.
+
+`slateAdoption.test.ts` is the missing half. It asserts something narrower than the criterion's
+literal words, on purpose: not "no slate anywhere" — 82 pairs remain that no token spells exactly,
+and converting those means choosing a visible change — but **"if a token already spells this exact
+pairing, use the token."** Those conversions are byte-identical, so there is never a reason to write
+the long form.
+
+Its token->slate mapping is derived from `index.css`, which matters more than usual here: a
+hand-written table would have gone on policing the pre-re-point border pairing. A guard-the-guard
+asserts the derivation is non-empty, since a renamed token would otherwise make every assertion
+pass vacuously. Verified by writing a converted pairing back out — it fails, naming the file and
+the utility to use.
+
+### What the 82 are
+
+`text-slate-800 dark:text-slate-100` is the largest group (42): slate-800 sits between
+`--color-fg` and `--color-fg-body` and matches neither. The rest are similar near-misses. Each
+needs a decision about which token it should become and an accepted visible change — a design
+question per group, not a sweep, which is why the count stops here rather than at zero.

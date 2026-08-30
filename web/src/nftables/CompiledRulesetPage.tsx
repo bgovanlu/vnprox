@@ -28,7 +28,7 @@ import { useRouteNodesQuery } from "../routeexplorer/routeQueries";
 import { useCompiledRulesetQuery } from "./nftablesQueries";
 
 const inputClass =
-  "rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900";
+  "rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900";
 
 function tableKey(t: NftTable): string {
   return `${t.family} ${t.name}`;
@@ -85,7 +85,7 @@ function AttributionCell({ rule, node }: AttributionCellProps) {
     );
   }
   return (
-    <span className="text-xs text-slate-600 dark:text-slate-400">
+    <span className="text-xs text-fg-muted">
       Not vnprox-authored{a.reason ? ` — ${a.reason}` : ""}
     </span>
   );
@@ -109,13 +109,13 @@ function ChainSection({ chain, rules, focusKey, node }: ChainSectionProps) {
           </span>
         )}
         {chain.hook && (
-          <span className="text-[10px] font-normal text-slate-600 dark:text-slate-400">
+          <span className="text-[10px] font-normal text-fg-muted">
             hook={chain.hook} policy={chain.policy ?? "—"} priority={chain.priority ?? "—"}
           </span>
         )}
       </h4>
       {rules.length === 0 ? (
-        <p className="text-xs text-slate-600 dark:text-slate-400">No rules in this chain.</p>
+        <p className="text-xs text-fg-muted">No rules in this chain.</p>
       ) : (
         <Table>
           <TableHeader>
@@ -246,7 +246,7 @@ export function CompiledRulesetPage() {
         }
       />
 
-      {rulesetQuery.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading compiled ruleset…</p>}
+      {rulesetQuery.isLoading && <p className="text-sm text-fg-muted">Loading compiled ruleset…</p>}
       {rulesetQuery.error && (
         <EmptyState
           icon="fw-ruleset"
@@ -278,7 +278,7 @@ export function CompiledRulesetPage() {
             <section key={tableKey(table)} aria-labelledby={tableDomId(table)} className="flex flex-col gap-3">
               <h3
                 id={tableDomId(table)}
-                className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100"
+                className="flex items-center gap-2 text-sm font-semibold text-fg"
               >
                 <span className="font-mono">{tableKey(table)}</span>
                 {!table.pveAuthored && (
@@ -288,7 +288,7 @@ export function CompiledRulesetPage() {
                 )}
               </h3>
               {chains.length === 0 ? (
-                <p className="text-xs text-slate-600 dark:text-slate-400">No chains in this table.</p>
+                <p className="text-xs text-fg-muted">No chains in this table.</p>
               ) : (
                 chains.map((c) => (
                   <ChainSection

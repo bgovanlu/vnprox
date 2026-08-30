@@ -103,7 +103,7 @@ export function LayerToggleBar({
   onToggleReplay,
 }: LayerToggleBarProps) {
   return (
-    <div className="flex gap-1 rounded-md border border-slate-200 bg-white/90 p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900/90">
+    <div className="flex gap-1 rounded-md border border-border bg-white/90 p-1 shadow-sm dark:bg-slate-900/90">
       {layerOrder.map((layer) => {
         const active = activeLayers.has(layer);
         return (

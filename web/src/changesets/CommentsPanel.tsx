@@ -46,16 +46,16 @@ function CommentThread({
       {comments.map((c) => (
         <li
           key={c.id}
-          className="rounded border border-slate-200 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-900"
+          className="rounded border border-border bg-white p-2 text-xs dark:bg-slate-900"
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="font-medium text-slate-700 dark:text-slate-200">{c.author}</span>
+            <span className="font-medium text-fg-body">{c.author}</span>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-slate-600 dark:text-slate-400">{formatTimestamp(c.createdAt)}</span>
+              <span className="text-[10px] text-fg-muted">{formatTimestamp(c.createdAt)}</span>
               <button
                 type="button"
                 aria-label="Delete comment"
-                className="text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                className="text-fg-muted hover:text-red-600 dark:hover:text-red-400"
                 disabled={deleteMutation.isPending}
                 onClick={() => {
                   deleteMutation.mutate({ id: changesetId, commentId: c.id });
@@ -65,7 +65,7 @@ function CommentThread({
               </button>
             </div>
           </div>
-          <p className="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{c.body}</p>
+          <p className="mt-1 whitespace-pre-wrap text-fg-muted">{c.body}</p>
         </li>
       ))}
     </ul>
@@ -98,7 +98,7 @@ function AddCommentForm({ changesetId, opId }: { changesetId: string; opId?: str
         placeholder={opId ? "Comment on this operation…" : "Add a comment…"}
         aria-label={opId ? "Comment on this operation" : "Add a changeset-level comment"}
         rows={2}
-        className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800"
+        className="flex-1 rounded border border-border-strong px-2 py-1 text-xs dark:bg-slate-800"
       />
       <Button
         variant="secondary"
@@ -161,8 +161,8 @@ export function CommentsPanel({ changeset }: CommentsPanelProps) {
           <h3 className="text-xs font-medium text-fg-subtle">Per-operation comments</h3>
           <ul className="mt-1.5 space-y-3">
             {opSections.map(({ op, comments: opComments }, i) => (
-              <li key={op.id ?? i} className="rounded border border-slate-200 p-2 dark:border-slate-700">
-                <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+              <li key={op.id ?? i} className="rounded border border-border p-2">
+                <p className="text-xs font-medium text-fg-muted">
                   <span className="mr-1 rounded bg-slate-200/70 px-1 py-0.5 text-[10px] uppercase text-fg-muted dark:bg-slate-700/70 dark:text-slate-300">
                     {opKindLabel(op)}
                   </span>
@@ -180,7 +180,7 @@ export function CommentsPanel({ changeset }: CommentsPanelProps) {
                 {op.id ? (
                   <AddCommentForm changesetId={changeset.id} opId={op.id} />
                 ) : (
-                  <p className="mt-1 text-[11px] italic text-slate-600 dark:text-slate-400">Save this draft to enable commenting.</p>
+                  <p className="mt-1 text-[11px] italic text-fg-muted">Save this draft to enable commenting.</p>
                 )}
               </li>
             ))}
@@ -193,12 +193,12 @@ export function CommentsPanel({ changeset }: CommentsPanelProps) {
           <h3 className="text-xs font-medium text-amber-700 dark:text-amber-400">
             Comments on removed operations
           </h3>
-          <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">
+          <p className="mt-1 text-[11px] text-fg-muted">
             These operations are no longer part of the changeset; their comment threads are kept for history.
           </p>
           <ul className="mt-1.5 space-y-3">
             {orphaned.map(([opId, list]) => (
-              <li key={opId} className="rounded border border-dashed border-slate-300 p-2 dark:border-slate-700">
+              <li key={opId} className="rounded border border-dashed border-border-strong p-2">
                 <CommentThread changesetId={changeset.id} comments={list} label="Comments on a removed operation" />
               </li>
             ))}
@@ -207,7 +207,7 @@ export function CommentsPanel({ changeset }: CommentsPanelProps) {
       )}
 
       {comments.length === 0 && changeset.ops.length === 0 && (
-        <p className="text-xs text-slate-600 dark:text-slate-400">No comments yet.</p>
+        <p className="text-xs text-fg-muted">No comments yet.</p>
       )}
     </div>
   );

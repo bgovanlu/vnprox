@@ -24,7 +24,7 @@ const OWNER_LABEL: Record<FDBOwner, string> = {
 
 const OWNER_BADGE_CLASS: Record<FDBOwner, string> = {
   guest: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
-  "vnprox-known": "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+  "vnprox-known": "bg-slate-100 text-fg-muted dark:bg-slate-800",
   unknown: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
 };
 
@@ -50,7 +50,7 @@ function OwnerBadge({ row }: { row: FDBRow }) {
       className="flex items-center gap-1.5 rounded hover:underline"
     >
       {badge}
-      {row.ownerLabel && <span className="text-xs text-slate-600 dark:text-slate-400">{row.ownerLabel}</span>}
+      {row.ownerLabel && <span className="text-xs text-fg-muted">{row.ownerLabel}</span>}
     </button>
   );
 }
@@ -69,7 +69,7 @@ export function MacFdbBrowser() {
     <div className="flex flex-col gap-3">
       <div>
         <h2 className="text-base font-semibold">MAC / FDB browser</h2>
-        <p className="text-sm text-slate-600 dark:text-slate-400">
+        <p className="text-sm text-fg-muted">
           Search any MAC (full or partial) across every reachable node's bridge forwarding tables — cluster-wide,
           ranked by match quality. Leave blank to browse every learned entry.
         </p>
@@ -82,10 +82,10 @@ export function MacFdbBrowser() {
         }}
         placeholder="aa:bb:cc:dd:ee:ff, or just aabb"
         aria-label="Search MAC address"
-        className="w-full max-w-md rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-accent-500 dark:border-slate-700 dark:bg-slate-900"
+        className="w-full max-w-md rounded-md border border-border-strong bg-white px-2.5 py-1.5 text-sm outline-none focus:border-accent-500 dark:bg-slate-900"
       />
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading…</p>}
       {isError && (
         <EmptyState
           icon="bridge"
@@ -146,7 +146,7 @@ export function MacFdbBrowser() {
                   {r.stale ? (
                     <span className="text-amber-600 dark:text-amber-400">stale</span>
                   ) : (
-                    <span className="text-slate-600 dark:text-slate-400">fresh</span>
+                    <span className="text-fg-muted">fresh</span>
                   )}
                 </TableCell>
               </TableRow>

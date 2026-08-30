@@ -79,31 +79,31 @@ function UtilizationStrip({ counts, onPick, active }: { counts: IpamCounts; onPi
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex h-3 overflow-hidden rounded-md border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800">
+      <div className="flex h-3 overflow-hidden rounded-md border border-border bg-slate-100 dark:bg-slate-800">
         {segments.map((s) =>
           s.count > 0 ? (
             <div key={s.state} className={clsx("h-full", stateSwatchClasses[s.state])} style={{ width: `${String(pct(s.count))}%` }} title={`${stateLabel(s.state)}: ${String(s.count)}`} />
           ) : null,
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-fg-muted">
         {segments.map((s) => (
           <button
             key={s.state}
             type="button"
             onClick={() => { onPick(active === s.state ? "all" : s.state); }}
-            className={clsx("inline-flex items-center gap-1.5 rounded px-1 hover:text-slate-900 dark:hover:text-slate-100", active === s.state && "font-semibold text-slate-900 dark:text-slate-100")}
+            className={clsx("inline-flex items-center gap-1.5 rounded px-1 hover:text-slate-900 dark:hover:text-slate-100", active === s.state && "font-semibold text-fg")}
           >
             <span className={clsx("h-2.5 w-2.5 rounded-sm", stateSwatchClasses[s.state])} />
-            {stateLabel(s.state).replace(" (unallocated)", "")} <span className="font-medium text-slate-700 tabular-nums dark:text-slate-200">{s.count}</span>
+            {stateLabel(s.state).replace(" (unallocated)", "")} <span className="font-medium text-fg-body tabular-nums">{s.count}</span>
           </button>
         ))}
         <span className="inline-flex items-center gap-1.5">
           <span className={clsx("h-2.5 w-2.5 rounded-sm", stateSwatchClasses.free)} />
-          Free <span className="font-medium text-slate-700 tabular-nums dark:text-slate-200">{counts.free.toLocaleString()}</span>
+          Free <span className="font-medium text-fg-body tabular-nums">{counts.free.toLocaleString()}</span>
         </span>
         <span className="ml-auto tabular-nums">
-          Total <span className="font-medium text-slate-700 dark:text-slate-200">{total.toLocaleString()}</span> · {total > 0 ? Math.round((used / total) * 100) : 0}% used
+          Total <span className="font-medium text-fg-body">{total.toLocaleString()}</span> · {total > 0 ? Math.round((used / total) * 100) : 0}% used
         </span>
       </div>
     </div>
@@ -130,13 +130,13 @@ function EntryRow({ cell, onOpen }: { cell: IpamCell; onOpen: (cell: IpamCell) =
         {cell.hostname ? (
           <>
             {cell.hostname}
-            {desc && <span className="text-slate-600 dark:text-slate-400"> · {desc}</span>}
+            {desc && <span className="text-fg-muted"> · {desc}</span>}
           </>
         ) : (
-          <span className="text-slate-600 dark:text-slate-400">{cell.state === "observed" ? "unknown host — not in IPAM" : desc || "—"}</span>
+          <span className="text-fg-muted">{cell.state === "observed" ? "unknown host — not in IPAM" : desc || "—"}</span>
         )}
       </span>
-      <span className="hidden justify-end font-mono text-[11px] text-slate-600 sm:flex dark:text-slate-400">
+      <span className="hidden justify-end font-mono text-[11px] text-fg-muted sm:flex">
         {cell.mac ?? (cell.sources && cell.sources.length > 0 ? cell.sources.join(" · ") : "")}
       </span>
     </button>
@@ -146,12 +146,12 @@ function EntryRow({ cell, onOpen }: { cell: IpamCell; onOpen: (cell: IpamCell) =
 function FreeRow({ range, readOnly, onReserve }: { range: IpamFreeRange; readOnly?: boolean; onReserve: (ip: string) => void }) {
   return (
     <div className="grid grid-cols-[minmax(120px,168px)_1fr_auto] items-center gap-3 bg-slate-50/60 px-4 py-1.5 text-sm dark:bg-slate-900/40">
-      <span className="flex items-center gap-2.5 font-mono text-slate-600 tabular-nums dark:text-slate-400">
+      <span className="flex items-center gap-2.5 font-mono text-fg-muted tabular-nums">
         <span className="h-5 w-1 rounded-sm bg-slate-200 dark:bg-slate-700" />
         {range.start} – {range.end}
       </span>
-      <span className="text-xs text-slate-600 dark:text-slate-400">
-        <span className="font-semibold text-slate-700 tabular-nums dark:text-slate-200">{range.count.toLocaleString()}</span> address{range.count === 1 ? "" : "es"} free
+      <span className="text-xs text-fg-muted">
+        <span className="font-semibold text-fg-body tabular-nums">{range.count.toLocaleString()}</span> address{range.count === 1 ? "" : "es"} free
       </span>
       {!readOnly && (
         <Button variant="ghost" size="sm" onClick={() => { onReserve(range.start); }}>
@@ -195,7 +195,7 @@ export function AddressList({ subnetCidr, readOnly }: AddressListProps) {
   }, [data, filter, search]);
 
   if (isLoading) {
-    return <p className="text-sm text-slate-600 dark:text-slate-400">Loading addresses…</p>;
+    return <p className="text-sm text-fg-muted">Loading addresses…</p>;
   }
   if (isError || !data) {
     return (
@@ -217,7 +217,7 @@ export function AddressList({ subnetCidr, readOnly }: AddressListProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-fg-muted">
         Addresses in {subnetCidr}
         <HelpAnchor topic="ipam-address-list" />
       </p>
@@ -249,7 +249,7 @@ export function AddressList({ subnetCidr, readOnly }: AddressListProps) {
           onChange={(e) => { setSearch(e.target.value); }}
           placeholder="Filter by IP, hostname, MAC, or VMID…"
           aria-label="Filter addresses"
-          className="min-w-[180px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm outline-none focus:border-accent-500 dark:border-slate-700 dark:bg-slate-800"
+          className="min-w-[180px] flex-1 rounded-lg border border-border bg-slate-50 px-3 py-1.5 text-sm outline-none focus:border-accent-500 dark:bg-slate-800"
         />
         <div className="flex flex-wrap gap-1.5">
           {FILTERS.map((f) => (
@@ -262,7 +262,7 @@ export function AddressList({ subnetCidr, readOnly }: AddressListProps) {
                 "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
                 filter === f.key
                   ? "border-accent-500 bg-accent-soft text-accent-fg"
-                  : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/60",
+                  : "border-border text-fg-muted hover:bg-slate-50 dark:hover:bg-slate-800/60",
               )}
             >
               {f.label}
@@ -276,9 +276,9 @@ export function AddressList({ subnetCidr, readOnly }: AddressListProps) {
         )}
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
+      <div className="overflow-hidden rounded-lg border border-border">
         {rows.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-slate-600 dark:text-slate-400">No addresses match this filter.</p>
+          <p className="px-4 py-6 text-center text-sm text-fg-muted">No addresses match this filter.</p>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
             {rows.map((row) =>

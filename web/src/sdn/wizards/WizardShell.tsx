@@ -97,7 +97,7 @@ export function WizardShell({
                   i === stepIndex
                     ? "font-semibold text-slate-800 dark:text-slate-100"
                     : i < stepIndex
-                      ? "text-slate-600 line-through decoration-1 dark:text-slate-400"
+                      ? "text-fg-muted line-through decoration-1"
                       : ""
                 }
               >
@@ -119,7 +119,7 @@ export function WizardShell({
             <ErrorBoundary
               label="wizard-preview"
               fallback={
-                <div className="flex h-full items-center justify-center rounded-lg border border-slate-200 p-4 text-center text-xs text-slate-600 dark:text-slate-400 dark:border-slate-800">
+                <div className="flex h-full items-center justify-center rounded-lg border border-border p-4 text-center text-xs text-fg-muted">
                   Preview unavailable for this configuration — the form still works; continue to draft your changes.
                 </div>
               }

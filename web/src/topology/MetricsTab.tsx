@@ -25,9 +25,9 @@ function formatPerSec(v: number): string {
 
 function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
-    <div className="rounded border border-slate-200 p-1.5 dark:border-slate-700">
-      <div className="text-slate-600 dark:text-slate-400">{label}</div>
-      <div className={clsx("font-medium", warn ? "text-amber-600 dark:text-amber-400" : "text-slate-700 dark:text-slate-200")}>
+    <div className="rounded border border-border p-1.5">
+      <div className="text-fg-muted">{label}</div>
+      <div className={clsx("font-medium", warn ? "text-amber-600 dark:text-amber-400" : "text-fg-body")}>
         {value}
       </div>
     </div>
@@ -51,7 +51,7 @@ export function MetricsTab({ entityRef, kind, wsClient }: MetricsTabProps) {
   return (
     <div className="space-y-4">
       {!metric && (
-        <p className="text-xs text-slate-600 dark:text-slate-400">
+        <p className="text-xs text-fg-muted">
           No live rate yet — this entity needs at least two 5s samples before a rate is computable.
         </p>
       )}
@@ -85,7 +85,7 @@ export function MetricsTab({ entityRef, kind, wsClient }: MetricsTabProps) {
           </ResponsiveContainer>
         </div>
       ) : (
-        <p className="text-xs text-slate-600 dark:text-slate-400">
+        <p className="text-xs text-fg-muted">
           Not enough history yet to chart (need at least two 30s-resolution samples).
         </p>
       )}
@@ -109,7 +109,7 @@ export function MetricsTab({ entityRef, kind, wsClient }: MetricsTabProps) {
                     )}
                     title={s.active ? "active" : "inactive"}
                   />
-                  <span className="truncate text-slate-700 dark:text-slate-200">{s.ref}</span>
+                  <span className="truncate text-fg-body">{s.ref}</span>
                 </span>
                 <span className="shrink-0 text-fg-subtle">
                   {formatBps(s.rates.rxBps)} rx / {formatBps(s.rates.txBps)} tx

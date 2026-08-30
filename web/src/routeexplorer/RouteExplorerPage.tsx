@@ -23,7 +23,7 @@ import { NextHopGraph } from "./NextHopGraph";
 import { useRouteLookupQuery, useRouteNodesQuery, useRouteSnapshotQuery } from "./routeQueries";
 
 const inputClass =
-  "rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900";
+  "rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900";
 
 function fibRouteDisplayKey(r: FIBRoute): string {
   return `${r.afi}|${r.table}|${r.type}|${r.dst}|${r.dev}|${r.gateway ?? ""}`;
@@ -141,7 +141,7 @@ export function RouteExplorerPage() {
         </button>
       </form>
 
-      {lookupQuery.isFetching && <p className="text-sm text-slate-600 dark:text-slate-400">Looking up…</p>}
+      {lookupQuery.isFetching && <p className="text-sm text-fg-muted">Looking up…</p>}
       {lookupQuery.error && (
         <p role="alert" className="rounded-md bg-red-50 px-3 py-1.5 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-300">
           {lookupQuery.error instanceof Error ? lookupQuery.error.message : "Lookup failed."}
@@ -150,7 +150,7 @@ export function RouteExplorerPage() {
       {lookup && !lookupQuery.isFetching && (
         <div
           role="status"
-          className="rounded-md border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-900"
+          className="rounded-md border border-border bg-white p-3 text-sm dark:bg-slate-900"
         >
           {lookup.reachable && lookup.matchedRoute ? (
             <p>
@@ -194,8 +194,8 @@ export function RouteExplorerPage() {
           )}
           {lookup.trace && lookup.trace.length > 0 && (
             <details className="mt-2">
-              <summary className="cursor-pointer text-xs text-slate-600 dark:text-slate-400">Why</summary>
-              <ol className="mt-1 list-decimal pl-5 text-xs text-slate-600 dark:text-slate-400">
+              <summary className="cursor-pointer text-xs text-fg-muted">Why</summary>
+              <ol className="mt-1 list-decimal pl-5 text-xs text-fg-muted">
                 {lookup.trace.map((step, i) => (
                   <li key={i}>{step}</li>
                 ))}
@@ -205,7 +205,7 @@ export function RouteExplorerPage() {
         </div>
       )}
 
-      {snapshotQuery.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading routing state…</p>}
+      {snapshotQuery.isLoading && <p className="text-sm text-fg-muted">Loading routing state…</p>}
       {snapshotQuery.error && (
         <EmptyState
           icon="static-route"
@@ -223,14 +223,14 @@ export function RouteExplorerPage() {
       {snapshot && (
         <>
           <section aria-labelledby="next-hop-graph-heading" className="flex flex-col gap-2">
-            <h2 id="next-hop-graph-heading" className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <h2 id="next-hop-graph-heading" className="text-sm font-semibold text-fg">
               Next-hop graph
             </h2>
             <NextHopGraph routes={snapshot.fib} highlighted={highlightedRoute} />
           </section>
 
           <section aria-labelledby="fib-heading" className="flex flex-col gap-2">
-            <h2 id="fib-heading" className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <h2 id="fib-heading" className="text-sm font-semibold text-fg">
               Kernel FIB
             </h2>
             {snapshot.fib.length === 0 ? (
@@ -270,7 +270,7 @@ export function RouteExplorerPage() {
           </section>
 
           <section aria-labelledby="rules-heading" className="flex flex-col gap-2">
-            <h2 id="rules-heading" className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <h2 id="rules-heading" className="text-sm font-semibold text-fg">
               Policy rules
             </h2>
             {snapshot.rules.length === 0 ? (
@@ -300,7 +300,7 @@ export function RouteExplorerPage() {
           </section>
 
           <section aria-labelledby="rib-heading" className="flex flex-col gap-2">
-            <h2 id="rib-heading" className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <h2 id="rib-heading" className="text-sm font-semibold text-fg">
               FRR RIB
             </h2>
             {snapshot.frrUnavailable ? (

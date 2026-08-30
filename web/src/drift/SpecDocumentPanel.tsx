@@ -79,31 +79,31 @@ export function SpecDocumentPanel({ content, onContentChange, writeDisabledReaso
         <HelpAnchor topic="spec-pin" />
       </h2>
 
-      {isLoading && <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Reading the pinned document…</p>}
+      {isLoading && <p className="mt-1 text-sm text-fg-muted">Reading the pinned document…</p>}
 
       {error !== null && (
         <div
           role="alert"
-          className="mt-2 rounded-md border border-slate-300 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900"
+          className="mt-2 rounded-md border border-border-strong bg-slate-50 p-3 dark:bg-slate-900"
         >
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+          <p className="text-sm font-semibold text-fg">
             Could not read whether a document is pinned
           </p>
-          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+          <p className="mt-1 text-xs text-fg-muted">
             That is not the same as nothing being pinned — vnprox could not ask.
           </p>
         </div>
       )}
 
       {pin !== undefined && !pin.pinned && (
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+        <p className="mt-1 text-sm text-fg-muted">
           No document is pinned. Without one, and without a git sync, there is no spec position to compare
           against — only config and live.
         </p>
       )}
 
       {pin !== undefined && pin.pinned && (
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+        <p className="mt-1 text-sm text-fg-muted">
           Pinned by <strong>{pin.pinnedBy ?? "an unrecorded user"}</strong> at{" "}
           {instantLabel(pin.pinnedAt, "an unrecorded time")}. Drift checks compare live state against exactly this
           document.
@@ -115,7 +115,7 @@ export function SpecDocumentPanel({ content, onContentChange, writeDisabledReaso
           role="alert"
           className="mt-2 rounded-md border border-status-critical bg-status-critical-soft p-3 text-sm"
         >
-          <p className="font-semibold text-slate-900 dark:text-slate-100">The daemon refused that</p>
+          <p className="font-semibold text-fg">The daemon refused that</p>
           <p className="mt-1 text-slate-800 dark:text-slate-100">{actionError}</p>
         </div>
       )}
@@ -178,7 +178,7 @@ export function SpecDocumentPanel({ content, onContentChange, writeDisabledReaso
             onContentChange(e.target.value);
           }}
           placeholder="Paste a specVersion: 1 document, or render the live cluster as one."
-          className="rounded border border-slate-300 bg-transparent px-2 py-1 font-mono text-xs outline-none focus:border-accent-500 dark:border-slate-700"
+          className="rounded border border-border-strong bg-transparent px-2 py-1 font-mono text-xs outline-none focus:border-accent-500"
         />
       </label>
 
@@ -195,7 +195,7 @@ export function SpecDocumentPanel({ content, onContentChange, writeDisabledReaso
           <DialogDescription>
             The drift checks lose their spec position: entities stop being compared against any declared intent.
           </DialogDescription>
-          <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+          <p className="mt-3 text-sm text-fg-muted">
             Nothing on the cluster changes, and no changeset is created. Pinning a document again restores the
             comparison.
           </p>

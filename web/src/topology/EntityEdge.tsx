@@ -179,7 +179,7 @@ export function EntityEdge({
         <EdgeLabelRenderer>
           <div
             className={clsx(
-              "pointer-events-none absolute rounded bg-white/90 px-1 text-[9px] text-slate-600 shadow-sm dark:bg-slate-900/90 dark:text-slate-300",
+              "pointer-events-none absolute rounded bg-white/90 px-1 text-[9px] text-fg-muted shadow-sm dark:bg-slate-900/90",
               dimmed && !highlighted && "opacity-15",
             )}
             style={{ transform: `translate(-50%, -50%) translate(${String(labelX)}px,${String(labelY)}px)` }}

@@ -71,7 +71,24 @@ const ROLE: Record<keyof SceneTheme, string> = {
   statusUnknown: "--color-status-unknown",
   statusOk: "--color-status-ok",
   badgeBg: "--color-border",
-  badgeText: "--color-fg-muted",
+  // T-4215's border re-point measured this pair and found it at 4.04 in dark,
+  // under AA. Not because the re-point was wrong — it lifted `badgeBg` from
+  // 1.23 to 1.56 against the node it sits on, which this badge needs, since
+  // the same value doubles as the STALE NODE fill (canvasDraw.ts's
+  // `d.stale ? theme.badgeBg : theme.nodeFill`).
+  //
+  // The real finding is that `--color-border` is a hairline token being used
+  // as a FILL, and index.css.test.ts holds it under 2:1 against every surface
+  // precisely so it stays a hairline. Nothing about that contract makes it a
+  // legible background for text, so a foreground solved against SURFACES was
+  // never going to be safe on it — the phase's recurring shape, one more time.
+  //
+  // Fixed on the text side rather than by moving the fill: `--color-fg-body`
+  // measures 8.40 on it in both themes, and chip text is small enough to want
+  // the headroom. Moving the fill to `--color-surface-sunken` was the other
+  // candidate and is worse where it matters — 1.08/1.19 against the node,
+  // which would make a stale node harder to pick out than it is now.
+  badgeText: "--color-fg-body",
   minimapBg: "--color-surface-sunken",
   minimapDot: "--color-fg-subtle",
   edgeDefault: "--color-outline",

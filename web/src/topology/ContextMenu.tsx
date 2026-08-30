@@ -59,7 +59,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
     <div
       role="menu"
       style={{ position: "fixed", left: x, top: y, zIndex: 60 }}
-      className="min-w-[12rem] rounded-md border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+      className="min-w-[12rem] rounded-md border border-border bg-white p-1 shadow-lg dark:bg-slate-900"
       onClick={(e) => {
         e.stopPropagation();
       }}

@@ -41,7 +41,7 @@ export function PageHeader({ title, description, actions, tabs, className }: Pag
     <div className={clsx("flex flex-col gap-3", className)}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="flex items-center gap-2 text-xl font-semibold text-slate-900 dark:text-slate-100">
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-fg">
             {title}
           </h1>
           {description !== undefined && (
@@ -59,7 +59,7 @@ export function PageHeader({ title, description, actions, tabs, className }: Pag
             // clears AA against slate-100 with margin; dark mode is
             // unaffected (dark:bg-slate-900 already gives slate-400 plenty
             // of contrast).
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{description}</p>
+            <p className="mt-1 text-sm text-fg-muted">{description}</p>
           )}
         </div>
         {actions !== undefined && (

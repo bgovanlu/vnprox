@@ -178,7 +178,7 @@ export function SimulatorPage() {
             Path simulator
             <HelpAnchor topic="path-simulator" />
           </h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
+          <p className="text-sm text-fg-muted">
             "Why can't VM A reach VM B?" — static analysis over configured state (docs/features/firewall.md §5). Every
             result below is labeled Simulated and lists what wasn't (or couldn't be) evaluated.
           </p>
@@ -195,14 +195,14 @@ export function SimulatorPage() {
 
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs">
-          <span className="font-medium uppercase tracking-wide text-slate-600 dark:text-slate-400">Protocol</span>
+          <span className="font-medium uppercase tracking-wide text-fg-muted">Protocol</span>
           <select
             aria-label="Protocol"
             value={proto ?? ""}
             onChange={(e) => {
               setProto(e.target.value || undefined);
             }}
-            className="h-8 rounded border border-slate-300 bg-transparent px-2 text-sm dark:border-slate-700"
+            className="h-8 rounded border border-border-strong bg-transparent px-2 text-sm"
           >
             {PROTO_OPTIONS.map((p) => (
               <option key={p} value={p}>
@@ -212,7 +212,7 @@ export function SimulatorPage() {
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs">
-          <span className="font-medium uppercase tracking-wide text-slate-600 dark:text-slate-400">Port</span>
+          <span className="font-medium uppercase tracking-wide text-fg-muted">Port</span>
           <input
             aria-label="Port"
             type="number"
@@ -224,11 +224,11 @@ export function SimulatorPage() {
               setPort(e.target.value === "" ? undefined : Number.isFinite(n) ? n : undefined);
             }}
             placeholder="Any"
-            className="h-8 w-24 rounded border border-slate-300 bg-transparent px-2 text-sm dark:border-slate-700"
+            className="h-8 w-24 rounded border border-border-strong bg-transparent px-2 text-sm"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs">
-          <span className="font-medium uppercase tracking-wide text-slate-600 dark:text-slate-400">Service preset</span>
+          <span className="font-medium uppercase tracking-wide text-fg-muted">Service preset</span>
           <select
             aria-label="Service preset"
             defaultValue=""
@@ -236,7 +236,7 @@ export function SimulatorPage() {
               if (e.target.value) applyPreset(e.target.value);
               e.target.value = "";
             }}
-            className="h-8 rounded border border-slate-300 bg-transparent px-2 text-sm dark:border-slate-700"
+            className="h-8 rounded border border-border-strong bg-transparent px-2 text-sm"
           >
             <option value="" disabled>
               Choose a preset…
@@ -253,7 +253,7 @@ export function SimulatorPage() {
       {!request && (
         <EmptyState title="Pick both endpoints" description="Choose a source and destination above to run a simulation." />
       )}
-      {request && isFetching && <p className="text-sm text-slate-600 dark:text-slate-400">Simulating…</p>}
+      {request && isFetching && <p className="text-sm text-fg-muted">Simulating…</p>}
       {request && !isFetching && error && (
         <EmptyState
           icon="static-route"
@@ -276,8 +276,8 @@ export function SimulatorPage() {
       )}
 
       <div>
-        <h3 className="mb-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">Map</h3>
-        <div className="h-[420px] rounded-lg border border-slate-200 dark:border-slate-800">
+        <h3 className="mb-1.5 text-sm font-semibold text-fg-body">Map</h3>
+        <div className="h-[420px] rounded-lg border border-border">
           {topology && topology.nodes.length > 0 ? (
             <ReactFlowProvider>
               <TopologyCanvas

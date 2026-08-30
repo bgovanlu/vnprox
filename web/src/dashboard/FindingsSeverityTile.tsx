@@ -59,7 +59,7 @@ export function FindingsSeverityTile() {
         {SEVERITY_ORDER.filter((s) => counts[s] > 0).map((s) => (
           <li key={s} className="flex items-center gap-2 text-sm">
             <span aria-hidden className={`h-2.5 w-2.5 shrink-0 rounded-full ${SEVERITY_DOT[s]}`} />
-            <span className="text-slate-700 dark:text-slate-200">{SEVERITY_LABELS[s]}</span>
+            <span className="text-fg-body">{SEVERITY_LABELS[s]}</span>
             <span className="ml-auto font-semibold tabular-nums">{counts[s]}</span>
           </li>
         ))}

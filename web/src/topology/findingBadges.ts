@@ -199,7 +199,7 @@ export const MGMT_BADGE_CLASS = "bg-amber-200 text-amber-800 dark:bg-amber-900 d
 export function mgmtBadgeClass(badge: string): string {
   return isMgmtBadge(badge)
     ? MGMT_BADGE_CLASS
-    : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300";
+    : "bg-slate-200 text-fg-muted dark:bg-slate-700";
 }
 
 /** The chip's visible text: glyph + source name (e.g. "▲ health",

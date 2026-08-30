@@ -75,7 +75,7 @@ export function EdgeCockpit() {
           edited via an ordinary staged changeset, never from this page directly."
       />
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading…</p>}
       {error && (
         <EmptyState
           icon="gateway"
@@ -96,13 +96,13 @@ export function EdgeCockpit() {
             {Array.from(summary.entries()).map(([node, count]) => (
               <div
                 key={node}
-                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                className="rounded-md border border-border bg-white px-3 py-2 text-sm dark:bg-slate-900"
               >
                 <span className="font-medium">{node}</span>: {count} port{count === 1 ? "" : "s"} exposed
               </div>
             ))}
             {exposedCount > 0 && (
-              <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+              <div className="rounded-md border border-border bg-white px-3 py-2 text-sm dark:bg-slate-900">
                 {exposedCount} port-forward{exposedCount === 1 ? "" : "s"} total
                 {poweredOffCount > 0 && (
                   <span className="ml-1 text-amber-700 dark:text-amber-400">
@@ -272,10 +272,10 @@ function PortForwardsTable({ rules }: { rules: EdgePortForward[] }) {
                         {r.targetGuestRef} — powered off
                       </span>
                     ) : (
-                      <span className="text-slate-600 dark:text-slate-300">{r.targetGuestRef}</span>
+                      <span className="text-fg-muted">{r.targetGuestRef}</span>
                     )
                   ) : (
-                    <span className="text-slate-600 dark:text-slate-400">unresolved</span>
+                    <span className="text-fg-muted">unresolved</span>
                   )}
                 </TableCell>
                 <TableCell>{r.comment ?? "—"}</TableCell>
@@ -329,7 +329,7 @@ function IngressSection() {
   return (
     <section aria-label="Ingress visibility">
       <h3 className="mb-2 text-sm font-semibold">Ingress visibility</h3>
-      <p className="mb-3 text-xs text-slate-600 dark:text-slate-400">
+      <p className="mb-3 text-xs text-fg-muted">
         Read-only reverse-proxy discovery — only for targets added below. Draws the full inbound path when a
         port-forward and a target line up: WAN → port-forward → proxy guest → backend guest.
       </p>
@@ -357,7 +357,7 @@ function IngressChainList({ chains }: { chains: IngressChain[] }) {
           key={c.portForwardId}
           role="group"
           aria-label={`Ingress chain for port forward ${c.portForwardId}`}
-          className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900"
+          className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs dark:bg-slate-900"
         >
           <ChainHop label="WAN" />
           <ChainArrow />
@@ -369,7 +369,7 @@ function IngressChainList({ chains }: { chains: IngressChain[] }) {
           {c.backends.length === 0 ? (
             <>
               <ChainArrow />
-              <span className="text-slate-600 dark:text-slate-400">no backends discovered</span>
+              <span className="text-fg-muted">no backends discovered</span>
             </>
           ) : (
             c.backends.map((b) => (
@@ -387,7 +387,7 @@ function IngressChainList({ chains }: { chains: IngressChain[] }) {
 
 function ChainArrow() {
   return (
-    <span aria-hidden="true" className="text-slate-600 dark:text-slate-400">
+    <span aria-hidden="true" className="text-fg-muted">
       →
     </span>
   );
@@ -414,7 +414,7 @@ function IngressTargetsPanel({ targets }: { targets: IngressTarget[] }) {
 
   return (
     <div>
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">
         Discovery targets
       </h4>
       {targets.length === 0 ? (
@@ -502,7 +502,7 @@ function AddIngressTargetForm({ canWrite, writeDisabledReason }: { canWrite: boo
             setKind(e.target.value as IngressTargetKind);
           }}
           disabled={!canWrite}
-          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+          className="rounded border border-border-strong bg-white px-2 py-1 text-xs dark:bg-slate-900"
         >
           {INGRESS_KINDS.map((k) => (
             <option key={k} value={k}>
@@ -521,7 +521,7 @@ function AddIngressTargetForm({ canWrite, writeDisabledReason }: { canWrite: boo
           }}
           disabled={!canWrite}
           placeholder="http://10.0.0.5:8404"
-          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+          className="rounded border border-border-strong bg-white px-2 py-1 text-xs dark:bg-slate-900"
         />
       </label>
       <label className="flex flex-col gap-1 text-xs">
@@ -533,7 +533,7 @@ function AddIngressTargetForm({ canWrite, writeDisabledReason }: { canWrite: boo
             setCredential(e.target.value);
           }}
           disabled={!canWrite}
-          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+          className="rounded border border-border-strong bg-white px-2 py-1 text-xs dark:bg-slate-900"
         />
       </label>
       <Button type="submit" size="sm" disabled={!canWrite || !address || createMutation.isPending} title={writeDisabledReason}>

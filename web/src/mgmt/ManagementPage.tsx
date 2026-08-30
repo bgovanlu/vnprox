@@ -44,8 +44,8 @@ function AspectRow({ label, value }: { label: string; value: string }) {
   if (!value) return null;
   return (
     <div className="flex gap-2">
-      <span className="w-24 shrink-0 text-slate-600 dark:text-slate-400">{label}</span>
-      <span className="min-w-0 break-words font-medium text-slate-700 dark:text-slate-200">{value}</span>
+      <span className="w-24 shrink-0 text-fg-muted">{label}</span>
+      <span className="min-w-0 break-words font-medium text-fg-body">{value}</span>
     </div>
   );
 }
@@ -79,7 +79,7 @@ function MgmtCarrierCard({ node, pathRef }: { node: string; pathRef: ManagementP
   );
 
   return (
-    <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+    <div className="rounded-lg border border-border p-3">
       <div className="mb-2 flex items-center gap-2">
         <span className="font-medium text-slate-800 dark:text-slate-100">{detail?.label ?? pathRef.ref}</span>
         {pathRef.roles.map((role) => (
@@ -106,7 +106,7 @@ function MgmtCarrierCard({ node, pathRef }: { node: string; pathRef: ManagementP
         />
       </div>
 
-      <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+      <p className="mt-2 text-xs text-fg-muted">
         {describeMgmtPathRedundancy(pathRef.path, pathRef.redundant)}
       </p>
 
@@ -155,7 +155,7 @@ export function ManagementPage() {
           confirm it, exactly like every other change in vnprox."
       />
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading management interfaces…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading management interfaces…</p>}
       {isError && <p className="text-sm text-red-600 dark:text-red-400">Could not load the management-interface status.</p>}
 
       {mgmtStatus?.staleProtected && (
@@ -204,7 +204,7 @@ export function ManagementPage() {
         if (paths.length === 0) return null;
         return (
           <section key={node} className="space-y-2">
-            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">{node}</h2>
+            <h2 className="text-sm font-semibold text-fg-body">{node}</h2>
             <div className="space-y-2">
               {paths.map((p) => (
                 <MgmtCarrierCard key={p.ref} node={node} pathRef={p} />

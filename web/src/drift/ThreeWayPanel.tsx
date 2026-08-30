@@ -129,7 +129,7 @@ export function ThreeWayPanel({ gitSync, specPresence, writeDisabledReason }: Th
         Spec, config and live
         <HelpAnchor topic="spec-reconciliation" />
       </h2>
-      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+      <p className="mt-1 text-sm text-fg-muted">
         One row per entity the document declares whose three positions disagree. All three pairwise comparisons
         are shown, including the ones that agree — which pair agrees is what identifies the odd position out.
       </p>
@@ -139,33 +139,33 @@ export function ThreeWayPanel({ gitSync, specPresence, writeDisabledReason }: Th
           role="alert"
           className="mt-3 rounded-md border border-status-critical bg-status-critical-soft p-3 text-sm"
         >
-          <p className="font-semibold text-slate-900 dark:text-slate-100">The daemon refused that action</p>
+          <p className="font-semibold text-fg">The daemon refused that action</p>
           <p className="mt-1 text-slate-800 dark:text-slate-100">{actionError}</p>
         </div>
       )}
 
-      {isLoading && <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Loading the drift report…</p>}
+      {isLoading && <p className="mt-2 text-sm text-fg-muted">Loading the drift report…</p>}
 
       {error !== null && (
         <div
           role="alert"
-          className="mt-2 rounded-md border border-slate-300 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900"
+          className="mt-2 rounded-md border border-border-strong bg-slate-50 p-3 dark:bg-slate-900"
         >
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+          <p className="text-sm font-semibold text-fg">
             Could not read the drift report
           </p>
-          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+          <p className="mt-1 text-xs text-fg-muted">
             No conclusion can be drawn about spec, config or live from this screen until it can be read again.
           </p>
         </div>
       )}
 
       {!isLoading && error === null && reconciliations.length === 0 && (
-        <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/60">
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+        <div className="mt-2 rounded-md border border-border bg-slate-50 p-3 dark:bg-slate-900/60">
+          <p className="text-sm font-semibold text-fg">
             {emptyStateCopy(specPresence).title}
           </p>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{emptyStateCopy(specPresence).detail}</p>
+          <p className="mt-1 text-sm text-fg-muted">{emptyStateCopy(specPresence).detail}</p>
         </div>
       )}
 
@@ -206,7 +206,7 @@ export function ThreeWayPanel({ gitSync, specPresence, writeDisabledReason }: Th
                 <code className="font-mono">{pending.finding.reconciliation?.ref ?? pending.finding.id}</code> as
                 the cluster currently has it, as a pull request on the spec repository.
               </DialogDescription>
-              <ul className="mt-3 flex list-disc flex-col gap-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+              <ul className="mt-3 flex list-disc flex-col gap-1 pl-5 text-sm text-fg-muted">
                 <li>The cluster is not touched. No network change is staged, applied or scheduled.</li>
                 <li>vnprox opens the request and stops — it never merges, approves or polls one.</li>
                 <li>Whoever reviews that request is deciding that the current cluster state is the intent.</li>
@@ -237,7 +237,7 @@ export function ThreeWayPanel({ gitSync, specPresence, writeDisabledReason }: Th
                   <code className="font-mono">{pending.finding.reconciliation?.ref ?? pending.finding.id}</code>{" "}
                   back to what the document declares.
                 </DialogDescription>
-                <ul className="mt-3 flex list-disc flex-col gap-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+                <ul className="mt-3 flex list-disc flex-col gap-1 pl-5 text-sm text-fg-muted">
                   <li>Nothing is applied by this step. You get a draft, in the ordinary review screen.</li>
                   <li>Applying it later changes the network — validate and read the blast radius there first.</li>
                   <li>The document is not touched; this moves the cluster, not the intent.</li>

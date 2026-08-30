@@ -32,11 +32,11 @@ export function ShortcutHelpDialog({ open, onOpenChange }: ShortcutHelpDialogPro
           {SHORTCUTS.map((shortcut) => (
             <div key={shortcut.id} className="contents">
               <dt>
-                <kbd className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:border-slate-700 dark:bg-slate-800">
+                <kbd className="rounded border border-border-strong bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">
                   {shortcut.keys}
                 </kbd>
               </dt>
-              <dd className="text-slate-600 dark:text-slate-300">{shortcut.description}</dd>
+              <dd className="text-fg-muted">{shortcut.description}</dd>
             </div>
           ))}
         </dl>
@@ -49,11 +49,11 @@ export function ShortcutHelpDialog({ open, onOpenChange }: ShortcutHelpDialogPro
               {paletteActions.map((action) => (
                 <div key={action.id} className="contents">
                   <dt>
-                    <kbd className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:border-slate-700 dark:bg-slate-800">
+                    <kbd className="rounded border border-border-strong bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">
                       ⌘K
                     </kbd>
                   </dt>
-                  <dd className="text-slate-600 dark:text-slate-300">{action.label}</dd>
+                  <dd className="text-fg-muted">{action.label}</dd>
                 </div>
               ))}
             </dl>

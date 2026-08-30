@@ -128,13 +128,13 @@ export function AnnotationLayer({ regions, notes, anchors, viewport }: Annotatio
       {orphanNotes.length > 0 && (
         <div
           data-testid="orphan-notes"
-          className="absolute bottom-2 left-2 max-w-[280px] rounded border border-slate-300 bg-white/95 p-2 text-[10px] text-slate-700 shadow dark:border-slate-600 dark:bg-slate-900/95 dark:text-slate-200"
+          className="absolute bottom-2 left-2 max-w-[280px] rounded border border-border-strong bg-white/95 p-2 text-[10px] text-fg-body shadow dark:bg-slate-900/95"
         >
           <p className="mb-1 font-medium">Notes on entities that no longer exist</p>
           <ul className="space-y-1">
             {orphanNotes.map((note) => (
               <li key={note.id}>
-                <span className="text-slate-600 dark:text-slate-400">{note.ref}</span> {note.content}
+                <span className="text-fg-muted">{note.ref}</span> {note.content}
               </li>
             ))}
           </ul>

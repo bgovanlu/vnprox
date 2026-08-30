@@ -41,13 +41,13 @@ function emptyBuilderForm(): RuleFormValues {
 function EffectsPreview({ group }: { group: string }) {
   const { data, isLoading } = useFirewallEffectsQuery(group);
   if (!group) return null;
-  if (isLoading) return <p className="text-xs text-slate-600 dark:text-slate-400">Computing matched guests…</p>;
+  if (isLoading) return <p className="text-xs text-fg-muted">Computing matched guests…</p>;
   if (!data) return null;
   if (data.guests.length === 0) {
     return <p className="text-xs text-amber-600 dark:text-amber-400">Matches no guests yet (group not referenced anywhere reachable).</p>;
   }
   return (
-    <p className="text-xs text-slate-600 dark:text-slate-400">
+    <p className="text-xs text-fg-muted">
       Matches {data.guests.length} guest{data.guests.length === 1 ? "" : "s"}: {data.guests.join(", ")}
     </p>
   );
@@ -94,45 +94,45 @@ function RuleBuilderRow({ target, nextPos, objects, fwWriteDisabled, fwWriteTool
   }
 
   return (
-    <div className="flex flex-col gap-2 border-t border-slate-200 p-3 dark:border-slate-800">
+    <div className="flex flex-col gap-2 border-t border-border p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <select aria-label="Direction" className="rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800" value={form.direction} onChange={(e) => { update("direction", e.target.value); }}>
+        <select aria-label="Direction" className="rounded border border-border-strong px-2 py-1 text-xs dark:bg-slate-800" value={form.direction} onChange={(e) => { update("direction", e.target.value); }}>
           <option value="in">in</option>
           <option value="out">out</option>
           <option value="forward">forward</option>
           <option value="group">security group</option>
         </select>
         {form.direction === "group" ? (
-          <select aria-label="Security group" className="rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800" value={form.action} onChange={(e) => { update("action", e.target.value); }}>
+          <select aria-label="Security group" className="rounded border border-border-strong px-2 py-1 text-xs dark:bg-slate-800" value={form.action} onChange={(e) => { update("action", e.target.value); }}>
             <option value="">select a group…</option>
             {groupNames.map((g) => (
               <option key={g} value={g}>{g}</option>
             ))}
           </select>
         ) : (
-          <select aria-label="Action" className="rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800" value={form.action} onChange={(e) => { update("action", e.target.value); }}>
+          <select aria-label="Action" className="rounded border border-border-strong px-2 py-1 text-xs dark:bg-slate-800" value={form.action} onChange={(e) => { update("action", e.target.value); }}>
             <option value="ACCEPT">ACCEPT</option>
             <option value="DROP">DROP</option>
             <option value="REJECT">REJECT</option>
           </select>
         )}
-        <input aria-label="Source" list="fw-addr-suggestions" placeholder="source" className="w-28 rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800" value={form.source} onChange={(e) => { update("source", e.target.value); }} />
-        <input aria-label="Dest" list="fw-addr-suggestions" placeholder="dest" className="w-28 rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800" value={form.dest} onChange={(e) => { update("dest", e.target.value); }} />
+        <input aria-label="Source" list="fw-addr-suggestions" placeholder="source" className="w-28 rounded border border-border-strong px-2 py-1 text-xs dark:bg-slate-800" value={form.source} onChange={(e) => { update("source", e.target.value); }} />
+        <input aria-label="Dest" list="fw-addr-suggestions" placeholder="dest" className="w-28 rounded border border-border-strong px-2 py-1 text-xs dark:bg-slate-800" value={form.dest} onChange={(e) => { update("dest", e.target.value); }} />
         <datalist id="fw-addr-suggestions">
           {addressSuggestions.map((s) => (
             <option key={s} value={s} />
           ))}
         </datalist>
-        <input aria-label="Proto" placeholder="proto" className="w-20 rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800" value={form.proto} onChange={(e) => { update("proto", e.target.value); }} />
-        <input aria-label="Port" placeholder="dport" className="w-20 rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800" value={form.dport} onChange={(e) => { update("dport", e.target.value); }} />
-        <input aria-label="Interface" placeholder="iface" className="w-20 rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800" value={form.iface} onChange={(e) => { update("iface", e.target.value); }} />
-        <select aria-label="Macro" className="rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800" value={form.macro} onChange={(e) => { update("macro", e.target.value); }}>
+        <input aria-label="Proto" placeholder="proto" className="w-20 rounded border border-border-strong px-2 py-1 text-xs dark:bg-slate-800" value={form.proto} onChange={(e) => { update("proto", e.target.value); }} />
+        <input aria-label="Port" placeholder="dport" className="w-20 rounded border border-border-strong px-2 py-1 text-xs dark:bg-slate-800" value={form.dport} onChange={(e) => { update("dport", e.target.value); }} />
+        <input aria-label="Interface" placeholder="iface" className="w-20 rounded border border-border-strong px-2 py-1 text-xs dark:bg-slate-800" value={form.iface} onChange={(e) => { update("iface", e.target.value); }} />
+        <select aria-label="Macro" className="rounded border border-border-strong px-2 py-1 text-xs dark:bg-slate-800" value={form.macro} onChange={(e) => { update("macro", e.target.value); }}>
           <option value="">no macro</option>
           {(objects?.macros ?? []).map((m) => (
             <option key={m.name} value={m.name}>{macroExpansionLabel(m.name, m.ports)}</option>
           ))}
         </select>
-        <input aria-label="Comment" placeholder="comment" className="w-36 rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800" value={form.comment} onChange={(e) => { update("comment", e.target.value); }} />
+        <input aria-label="Comment" placeholder="comment" className="w-36 rounded border border-border-strong px-2 py-1 text-xs dark:bg-slate-800" value={form.comment} onChange={(e) => { update("comment", e.target.value); }} />
         <button
           type="button"
           onClick={handleAdd}
@@ -295,7 +295,7 @@ export function RuleEditor({ rules, target, objects, focusPos, compiledLinkScope
                 <div className="flex flex-col gap-0.5">
                   <span>{ruleMatchLabel(r)}</span>
                   {r.macro && (
-                    <span className="text-xs text-slate-600 dark:text-slate-400">{macroExpansionLabel(r.macro, r.macroExpansion)}</span>
+                    <span className="text-xs text-fg-muted">{macroExpansionLabel(r.macro, r.macroExpansion)}</span>
                   )}
                   {r.direction === "group" && <EffectsPreview group={r.action} />}
                 </div>

@@ -71,7 +71,7 @@ export function ZoneWizardPicker({ open, onOpenChange, initialActive }: ZoneWiza
               <button
                 key={card.kind}
                 type="button"
-                className="rounded-lg border border-slate-200 p-3 text-left text-sm transition-colors hover:border-accent-500 hover:bg-accent-50 dark:border-slate-700 dark:hover:border-accent-500 dark:hover:bg-accent-950"
+                className="rounded-lg border border-border p-3 text-left text-sm transition-colors hover:border-accent-500 hover:bg-accent-50 dark:hover:border-accent-500 dark:hover:bg-accent-950"
                 onClick={() => {
                   setActive(card.kind);
                 }}

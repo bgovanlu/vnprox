@@ -48,28 +48,28 @@ function FilterBar({ filter, onChange }: FilterBarProps) {
         placeholder="node"
         value={filter.node ?? ""}
         onChange={(e) => { onChange({ node: e.target.value || undefined }); }}
-        className="w-28 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-28 rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       />
       <input
         aria-label="Filter by guest ref"
         placeholder="guest ref"
         value={filter.guest ?? ""}
         onChange={(e) => { onChange({ guest: e.target.value || undefined }); }}
-        className="w-48 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-48 rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       />
       <input
         aria-label="Filter by source IP"
         placeholder="src IP"
         value={filter.srcIp ?? ""}
         onChange={(e) => { onChange({ srcIp: e.target.value || undefined }); }}
-        className="w-32 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-32 rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       />
       <input
         aria-label="Filter by destination IP"
         placeholder="dst IP"
         value={filter.dstIp ?? ""}
         onChange={(e) => { onChange({ dstIp: e.target.value || undefined }); }}
-        className="w-32 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-32 rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       />
       <input
         aria-label="Filter by port"
@@ -80,14 +80,14 @@ function FilterBar({ filter, onChange }: FilterBarProps) {
           const v = e.target.value;
           onChange({ port: v && Number.isFinite(Number(v)) ? Number(v) : undefined });
         }}
-        className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-20 rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       />
       <input
         aria-label="Filter by state"
         placeholder="state (e.g. ESTABLISHED)"
         value={filter.state ?? ""}
         onChange={(e) => { onChange({ state: e.target.value || undefined }); }}
-        className="w-44 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-44 rounded-md border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-900"
       />
     </div>
   );
@@ -126,7 +126,7 @@ export function ConntrackExplorer() {
         </p>
       )}
 
-      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-fg-muted">Loading…</p>}
       {error && (
         <EmptyState
           icon="static-route"

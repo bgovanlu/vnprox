@@ -98,7 +98,7 @@ export function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-fg-muted">{label}</span>
       {children}
       {errors && errors.length > 0 && (
         <ul className="mt-0.5 space-y-0.5 text-[11px] text-red-600 dark:text-red-400" role="alert">
@@ -113,4 +113,4 @@ export function Field({
 }
 
 export const inputClass =
-  "w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800";
+  "w-full rounded border border-border-strong bg-white px-2 py-1 text-sm dark:bg-slate-800";

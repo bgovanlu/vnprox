@@ -84,7 +84,7 @@ function RuleCard({ rule }: { rule: RuleVerdict }) {
 export function PolicyVerdictPanel({ verdict, findings }: PolicyVerdictPanelProps) {
   return (
     <section
-      className="mt-3 rounded-md border border-slate-200 p-3 text-xs dark:border-slate-700"
+      className="mt-3 rounded-md border border-border p-3 text-xs"
       aria-label="Policy verdict"
       data-testid="policy-verdict-panel"
     >
@@ -98,7 +98,7 @@ export function PolicyVerdictPanel({ verdict, findings }: PolicyVerdictPanelProp
       )}
 
       {verdict.kind === "unreadable" && (
-        <p className="mt-1 text-slate-700 dark:text-slate-200" role="status">
+        <p className="mt-1 text-fg-body" role="status">
           The policy set could not be read, so what it says about this change is unknown — not that nothing applies.
           The daemon said: {verdict.message}
         </p>
@@ -126,7 +126,7 @@ export function PolicyVerdictPanel({ verdict, findings }: PolicyVerdictPanelProp
       )}
 
       {verdict.kind === "violations" && (
-        <div className="mt-1 text-slate-700 dark:text-slate-200">
+        <div className="mt-1 text-fg-body">
           <p className="font-medium">
             {verdict.rules.some((r) => r.severity !== "warn")
               ? "Refused by the cluster's installed policy:"
@@ -141,7 +141,7 @@ export function PolicyVerdictPanel({ verdict, findings }: PolicyVerdictPanelProp
       )}
 
       {findings.length > 0 && (
-        <div className="mt-2 text-slate-700 dark:text-slate-200">
+        <div className="mt-2 text-fg-body">
           <p className="font-medium">What the change engine itself reported:</p>
           <ul className="mt-0.5 list-disc pl-4">
             {findings.map((f, i) => (

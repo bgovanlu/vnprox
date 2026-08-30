@@ -554,8 +554,29 @@ html.dark {
   --color-fg-body: #e2e8f0;
   --color-fg-muted: #94a3b8;
   --color-fg-subtle: #94a3b8;
-  --color-border: #1e293b;
-  --color-border-strong: #334155;
+  /* T-4215 criterion 4 moved both of these one step lighter, and the reason
+     is that the sweep measured what the app actually draws.
+     
+     They were slate-800/slate-700. `--color-border` measured **1.03** against
+     its worst dark surface and 1.10 against `surface-raised` — a border that
+     is not a border. Meanwhile 109 call sites had independently written
+     `dark:border-slate-700`, and 12 more `dark:border-slate-600`: the
+     codebase's own dominant idiom was already a step lighter than the token,
+     in both roles, and no call site had adopted the derived values.
+     
+     That is the T-4215 finding applied to the token rather than to the call
+     sites: a value solved against a floor nobody was failing, while the thing
+     it was meant to describe sat somewhere else. Re-pointed to match, which
+     makes 121 sites convert with zero visual change instead of regressing.
+     
+     The pairing had to move as a LADDER, not one value: `border-strong` was
+     already slate-700, so lifting `border` alone would have collapsed the two
+     roles into one colour in dark mode while leaving them distinct in light.
+     Worst-case dark contrast is now 1.37 / 1.87 (was 1.03 / 1.37), still
+     under the `<2` hairline ceiling index.css.test.ts holds `border` to — a
+     visible boundary, not an outline. */
+  --color-border: #334155;
+  --color-border-strong: #475569;
   --color-outline: #65758c;
 
   /* T-4214: the accent roles, re-pointed. accent-300 is the step 12 of the 15

@@ -147,7 +147,7 @@ export function PushSettingsSection() {
         <HelpAnchor topic="push-notifications" />
       </div>
       <fieldset className="space-y-2">
-        <legend className="text-xs font-medium text-slate-600 dark:text-slate-300">Notify me about</legend>
+        <legend className="text-xs font-medium text-fg-muted">Notify me about</legend>
         {ALL_PUSH_CATEGORIES.map((cat) => (
           <label key={cat} className="flex items-start gap-2 text-sm">
             <input
@@ -160,7 +160,7 @@ export function PushSettingsSection() {
               }}
             />
             <span>
-              <span className="font-medium text-slate-700 dark:text-slate-200">{CATEGORY_LABELS[cat].title}</span>
+              <span className="font-medium text-fg-body">{CATEGORY_LABELS[cat].title}</span>
               <span className="block text-xs text-fg-subtle">{CATEGORY_LABELS[cat].detail}</span>
             </span>
           </label>
@@ -169,7 +169,7 @@ export function PushSettingsSection() {
 
       <div>
         {checkingStatus ? (
-          <p className="text-sm text-slate-600 dark:text-slate-400">Checking this device…</p>
+          <p className="text-sm text-fg-muted">Checking this device…</p>
         ) : thisDeviceSubscribed ? (
           <Button size="sm" variant="secondary" onClick={() => void handleDisableThisDevice()}>
             Disable push on this device
@@ -183,12 +183,12 @@ export function PushSettingsSection() {
 
       {subscriptions && subscriptions.length > 0 && (
         <div>
-          <h3 className="text-xs font-medium text-slate-600 dark:text-slate-300">Your devices</h3>
+          <h3 className="text-xs font-medium text-fg-muted">Your devices</h3>
           <ul className="mt-2 divide-y divide-slate-100 text-sm dark:divide-slate-800">
             {subscriptions.map((sub) => (
               <li key={sub.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
                 <div>
-                  <span className="font-medium text-slate-700 dark:text-slate-200">{sub.deviceLabel ?? "Unlabeled device"}</span>
+                  <span className="font-medium text-fg-body">{sub.deviceLabel ?? "Unlabeled device"}</span>
                   <span className="ml-2 text-xs text-fg-subtle">
                     {sub.categories.join(", ")} · added {formatTimestamp(sub.createdAt)}
                   </span>

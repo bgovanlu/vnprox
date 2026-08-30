@@ -52,14 +52,14 @@ const VARIANT_CIRCLE_CLASS: Record<EmptyStateVariant, string> = {
   failed: "bg-status-critical-soft",
 };
 
-/** The domain glyph's own colour. `text-slate-600 dark:text-slate-400` is
+/** The domain glyph's own colour. `text-fg-muted` is
  * the paired-and-guarded neutral (slateContrast.test.ts); `failed` instead
  * uses the critical status token so the one bad-news variant reads as bad
  * news at a glance, not just via its corner badge. */
 const VARIANT_GLYPH_CLASS: Record<EmptyStateVariant, string> = {
-  empty: "text-slate-600 dark:text-slate-400",
-  filtered: "text-slate-600 dark:text-slate-400",
-  unconfigured: "text-slate-600 dark:text-slate-400",
+  empty: "text-fg-muted",
+  filtered: "text-fg-muted",
+  unconfigured: "text-fg-muted",
   failed: "text-status-critical",
 };
 

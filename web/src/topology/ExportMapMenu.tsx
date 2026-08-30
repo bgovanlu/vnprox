@@ -91,7 +91,7 @@ export function ExportMapMenu({ getScene, captionLines, theme }: ExportMapMenuPr
         <RadixDropdown.Content
           align="end"
           sideOffset={6}
-          className="z-50 min-w-[10rem] rounded-md border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+          className="z-50 min-w-[10rem] rounded-md border border-border bg-white p-1 shadow-lg dark:bg-slate-900"
         >
           <RadixDropdown.Item
             className="cursor-pointer rounded px-2 py-1.5 text-sm outline-none hover:bg-slate-100 dark:hover:bg-slate-800"

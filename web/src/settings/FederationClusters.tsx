@@ -101,7 +101,7 @@ function StatusBadge({ status }: { status: string }) {
       ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
       : status === "unreachable"
         ? "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300"
-        : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400";
+        : "bg-slate-100 text-fg-muted dark:bg-slate-800";
   return <span className={clsx("rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide", cls)}>{status}</span>;
 }
 
@@ -127,7 +127,7 @@ function TunnelLinkage({
 }) {
   if (!cluster.wgTunnelId) {
     return (
-      <div className="text-sm text-slate-600 dark:text-slate-400" data-testid="tunnel-linkage">
+      <div className="text-sm text-fg-muted" data-testid="tunnel-linkage">
         Not tunnel-linked. Tag a WireGuard peer with this cluster in the tunnel wizard to link one, or set an
         explicit override via <code>PUT /federation/clusters/{"{id}"}</code>.
       </div>
@@ -137,7 +137,7 @@ function TunnelLinkage({
   return (
     <div className="space-y-1.5 text-sm" data-testid="tunnel-linkage">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium text-slate-700 dark:text-slate-200">{cluster.wgTunnelId}</span>
+        <span className="font-medium text-fg-body">{cluster.wgTunnelId}</span>
         <span
           className={clsx(
             "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
@@ -151,7 +151,7 @@ function TunnelLinkage({
       </div>
       {isExplicit ? (
         <>
-          <p className="text-xs text-slate-600 dark:text-slate-400">
+          <p className="text-xs text-fg-muted">
             Set explicitly through this registry. Clearing it does <strong>not</strong> unlink this cluster if a
             WireGuard peer is still tagged with it — the linkage then falls back to that peer-derived link instead
             of disappearing. To fully unlink, retag or remove that peer through the WireGuard tunnel editor.
@@ -165,7 +165,7 @@ function TunnelLinkage({
           </Tooltip>
         </>
       ) : (
-        <p className="text-xs text-slate-600 dark:text-slate-400">
+        <p className="text-xs text-fg-muted">
           Derived from a WireGuard peer tagged with this cluster — this screen cannot change it. Retag or remove
           that peer through the WireGuard tunnel editor to unlink.
         </p>
@@ -307,7 +307,7 @@ export function FederationClusters() {
       <div className="flex flex-1 gap-4 overflow-hidden">
         <div className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Clusters</h2>
+            <h2 className="text-sm font-semibold text-fg-body">Clusters</h2>
             <Tooltip content={writeDisabledReason}>
               <span>
                 <Button size="sm" variant="secondary" disabled={!canWrite} onClick={startCreate}>
@@ -318,7 +318,7 @@ export function FederationClusters() {
           </div>
 
           {items.length === 0 ? (
-            <p className="text-sm text-slate-600 dark:text-slate-400">No clusters attached yet.</p>
+            <p className="text-sm text-fg-muted">No clusters attached yet.</p>
           ) : (
             <ul className="flex flex-col gap-1" data-testid="federation-cluster-list">
               {items.map((cluster) => (
@@ -339,7 +339,7 @@ export function FederationClusters() {
                       <span className="font-medium">{cluster.name}</span>
                       <StatusBadge status={cluster.status} />
                     </span>
-                    <span className="truncate text-[10px] text-slate-600 dark:text-slate-400">{cluster.apiUrl}</span>
+                    <span className="truncate text-[10px] text-fg-muted">{cluster.apiUrl}</span>
                   </button>
                 </li>
               ))}
@@ -359,13 +359,13 @@ export function FederationClusters() {
               }}
             >
               <div>
-                <label htmlFor="fed-cluster-name" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                <label htmlFor="fed-cluster-name" className="text-xs font-medium text-fg-muted">
                   Name
                 </label>
                 <input
                   id="fed-cluster-name"
                   type="text"
-                  className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
                   value={form.name}
                   onChange={(e) => {
                     setForm({ ...form, name: e.target.value });
@@ -374,14 +374,14 @@ export function FederationClusters() {
               </div>
 
               <div>
-                <label htmlFor="fed-cluster-api-url" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                <label htmlFor="fed-cluster-api-url" className="text-xs font-medium text-fg-muted">
                   API URL
                 </label>
                 <input
                   id="fed-cluster-api-url"
                   type="text"
                   placeholder="https://pve2.example.com:8006"
-                  className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
                   value={form.apiUrl}
                   onChange={(e) => {
                     setForm({ ...form, apiUrl: e.target.value });
@@ -389,8 +389,8 @@ export function FederationClusters() {
                 />
               </div>
 
-              <fieldset className="space-y-2 rounded-md border border-slate-200 p-3 dark:border-slate-700">
-                <legend className="px-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+              <fieldset className="space-y-2 rounded-md border border-border p-3">
+                <legend className="px-1 text-xs font-medium text-fg-muted">
                   Credential {!creating && !form.credentialTouched ? "(configured — leave blank to keep)" : ""}
                 </legend>
 
@@ -422,14 +422,14 @@ export function FederationClusters() {
                 {form.credentialKind === "ticket" ? (
                   <>
                     <div>
-                      <label htmlFor="fed-cluster-username" className="text-xs text-slate-600 dark:text-slate-400">
+                      <label htmlFor="fed-cluster-username" className="text-xs text-fg-muted">
                         Username
                       </label>
                       <input
                         id="fed-cluster-username"
                         type="text"
                         autoComplete="off"
-                        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                        className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
                         value={form.username}
                         onChange={(e) => {
                           setForm({ ...form, username: e.target.value, credentialTouched: true });
@@ -437,14 +437,14 @@ export function FederationClusters() {
                       />
                     </div>
                     <div>
-                      <label htmlFor="fed-cluster-password" className="text-xs text-slate-600 dark:text-slate-400">
+                      <label htmlFor="fed-cluster-password" className="text-xs text-fg-muted">
                         Password
                       </label>
                       <input
                         id="fed-cluster-password"
                         type="password"
                         autoComplete="new-password"
-                        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                        className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
                         value={form.password}
                         onChange={(e) => {
                           setForm({ ...form, password: e.target.value, credentialTouched: true });
@@ -452,14 +452,14 @@ export function FederationClusters() {
                       />
                     </div>
                     <div>
-                      <label htmlFor="fed-cluster-realm" className="text-xs text-slate-600 dark:text-slate-400">
+                      <label htmlFor="fed-cluster-realm" className="text-xs text-fg-muted">
                         Realm (optional)
                       </label>
                       <input
                         id="fed-cluster-realm"
                         type="text"
                         placeholder="pam"
-                        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                        className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
                         value={form.realm}
                         onChange={(e) => {
                           setForm({ ...form, realm: e.target.value, credentialTouched: true });
@@ -469,7 +469,7 @@ export function FederationClusters() {
                   </>
                 ) : (
                   <div>
-                    <label htmlFor="fed-cluster-token" className="text-xs text-slate-600 dark:text-slate-400">
+                    <label htmlFor="fed-cluster-token" className="text-xs text-fg-muted">
                       Token
                     </label>
                     <input
@@ -477,7 +477,7 @@ export function FederationClusters() {
                       type="password"
                       autoComplete="off"
                       placeholder="user@realm!tokenid=secret"
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                      className="mt-1 w-full rounded-md border border-border-strong px-2 py-1 text-sm dark:bg-slate-900"
                       value={form.token}
                       onChange={(e) => {
                         setForm({ ...form, token: e.target.value, credentialTouched: true });
@@ -489,7 +489,7 @@ export function FederationClusters() {
 
               {selected && (
                 <div>
-                  <h3 className="text-xs font-medium text-slate-600 dark:text-slate-300">WireGuard tunnel link</h3>
+                  <h3 className="text-xs font-medium text-fg-muted">WireGuard tunnel link</h3>
                   <div className="mt-1">
                     <TunnelLinkage
                       cluster={selected}
@@ -551,12 +551,12 @@ export function FederationClusters() {
             This only removes vnprox's own registration row — it never touches the attached cluster's own PVE
             config. You lose:
           </DialogDescription>
-          <ul className="mt-2 list-inside list-disc text-sm text-slate-600 dark:text-slate-300">
+          <ul className="mt-2 list-inside list-disc text-sm text-fg-muted">
             <li>Its capsule in the aggregated global topology view</li>
             <li>Cross-cluster IPAM conflict detection against this cluster's subnets</li>
             <li>Its rows in global audit/search until it is attached again</li>
           </ul>
-          <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+          <p className="mt-2 text-xs text-fg-muted">
             Detaching is cheap to do again from scratch, but you will need the credential again to reattach.
           </p>
           <div className="mt-5 flex justify-end gap-2">
