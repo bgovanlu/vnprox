@@ -1,7 +1,7 @@
 # T-4304 — The map gets a quarter of the screen, and the error text gets more
 
 **Phase:** 43 (Canvas rendering)
-**Status:** deliverables 1, 2 and 4 done; **3 is blocked on an API-contract decision** — see below
+**Status:** done. Deliverable 3's contract decision was made (Option B) and implemented — see the outcome section.
 **Found by:** the first visual-gate capture of the graph view against a current build (T-4216)
 
 ## What the screenshot shows

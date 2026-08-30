@@ -1,7 +1,7 @@
 # T-4216 — The visual gate had never run, and still does not capture the map
 
 **Phase:** 42 (Design language) — follow-up to T-4210
-**Status:** parts 1 and 2 done (`e0590c43`, `231a34ba`); part 3 open
+**Status:** done. Part 3 needed no work — part 2's own fix had already resolved it, and the cause is recorded below.
 **Depends on:** T-4210 (visual regression gate)
 
 ## 1. It had never run — fixed
@@ -138,3 +138,32 @@ its own exception table.
 3. The suite is green end to end and the run is repeated once to prove determinism, which is what
    T-4210's own card asked for and what could not be done until it ran at all.
 4. Baselines stay uncommitted, per T-4210's deliverable 4 — this card does not change that.
+
+---
+
+## Part 3 needed no work, and its stated cause was wrong
+
+The fifteen failures do not reproduce. All five routes now capture themselves, verified by the URL
+assertion the suite already makes.
+
+**Part 2's fix is what resolved them.** The harness was running a cached `vnproxd` dated
+**Aug 25 12:45**, and two of the five routes did not exist in it yet:
+
+| | declared |
+|---|---|
+| `/cabling` (`17c9e45f`) | Aug 28 01:49 |
+| `/wireguard` (`242a6d2c`) | Aug 28 05:49 |
+
+`page.goto("/cabling")` hit App.tsx's `<Route path="*">` catch-all and redirected to `/topology` —
+exactly the symptom recorded, for a reason that had nothing to do with the routes needing context.
+This card says of four of the five that "what is **not** established is the cause". That was it.
+
+The fifth, `/guest`, was attributed to `GuestEgoView.tsx:492` calling `navigate("/topology")` with
+no `?ref=`. That line is not there; the file's only two `navigate` calls are user-triggered button
+handlers. Captured, `/guest` renders a proper picker — *"Pick a guest to see its whole network
+story"* — and `/wireguard` renders its T-4209 empty state.
+
+**So AC2's machinery should not be built.** A shared "needs context" declaration read by both the
+visual gate and the axe sweep has nothing to declare. What the two gates *did* need to share was
+their route list, and T-4212 has since done that for a different reason — the axe sweep's
+hand-kept list had drifted from the router.
