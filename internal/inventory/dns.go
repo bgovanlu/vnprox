@@ -36,14 +36,22 @@ func (z *SdnDnsZone) fieldMap() map[string]string {
 // Name the hostname label, Type the record type, Value the record data
 // (e.g. the A record's IP). TTL is the record-level override (0 = inherit
 // the zone default).
+//
+// Values (T-4112) is every value under this name and type, sorted. PowerDNS's
+// unit is an rrset that may hold several records while this entity's id has
+// room for one, so Value is the first of Values and Values is the whole set:
+// a round-robin A record reported as a single address would be a quiet lie,
+// and the PTR audit needs all of them to decide whether a forward address is
+// covered. A single-valued record has one entry here and Value equal to it.
 type SdnDnsRecord struct {
 	Ref
 	rawSrc
-	Zone  string
-	Name  string
-	Type  string
-	Value string
-	TTL   int
+	Zone   string
+	Name   string
+	Type   string
+	Value  string
+	Values []string
+	TTL    int
 }
 
 func (r *SdnDnsRecord) GetRef() Ref { return r.Ref }
@@ -55,5 +63,50 @@ func (r *SdnDnsRecord) fieldMap() map[string]string {
 	return map[string]string{
 		"zone": r.Zone, "name": r.Name, "type": r.Type,
 		"value": r.Value, "ttl": strconv.Itoa(r.TTL),
+	}
+}
+
+// SdnDnsServer is one /cluster/sdn/dns entry: a PowerDNS server connection
+// (T-4112). It is NOT a DNS zone — SdnDnsZone above is the zone, and the two
+// were the same type until T-4112 found that `/cluster/sdn/dns` lists
+// connections rather than domains.
+//
+// No collector produces this entity and it has no Kind of its own. It exists
+// so `internal/change`'s preview can show what a `sdn.dns.zone.*` op will do
+// without fabricating a DNS domain named after a server — which is what it
+// did before, and which let a record op naming that fake domain validate
+// clean and fail at apply. The op family's target still carries
+// `KindSDNDnsZone`; **T-4114** renames the ops and the kind together, because
+// the op type string is a wire contract the Terraform and Ansible
+// integrations depend on and is not renamed unilaterally.
+//
+// The two never collide in the projection despite sharing a kind: a domain's
+// id is a DNS name and a connection's id is PVE's SDN object pattern
+// (`[a-zA-Z][a-zA-Z0-9]*[a-zA-Z0-9]`, no dots), which are disjoint.
+//
+// Key is deliberately absent. The API key is in the op's params, where
+// internal/api's redactOpSecrets strips it from every changeset read; there
+// is no reason for a projected entity — which feeds diffs and previews — to
+// carry one at all.
+type SdnDnsServer struct {
+	Ref
+	rawSrc
+	ID            string
+	Type          string
+	URL           string
+	Fingerprint   string
+	TTL           int
+	ReverseMaskV6 int
+}
+
+func (s *SdnDnsServer) GetRef() Ref { return s.Ref }
+func (s *SdnDnsServer) clone() Entity {
+	cp := *s
+	return &cp
+}
+func (s *SdnDnsServer) fieldMap() map[string]string {
+	return map[string]string{
+		"id": s.ID, "type": s.Type, "url": s.URL, "fingerprint": s.Fingerprint,
+		"ttl": strconv.Itoa(s.TTL), "reversemaskv6": strconv.Itoa(s.ReverseMaskV6),
 	}
 }

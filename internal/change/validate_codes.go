@@ -176,6 +176,18 @@ const (
 	codeDNSNameInvalid        = "schema.dns_name_invalid"
 	codeDNSRecordTypeInvalid  = "schema.dns_record_type_invalid"
 	codeDNSRecordValueInvalid = "schema.dns_record_value_invalid"
+	// T-4112 added three more, for the half of this family that turned out
+	// to describe a PowerDNS server connection rather than a DNS zone.
+	// codeDNSPluginTypeInvalid flags a type outside PVE 9.2.4's one-value
+	// enum ("powerdns" — read off the node, not from documentation);
+	// codeDNSFingerprintInvalid a pin that is not a SHA-256 digest, which
+	// must be a stage-time refusal because vnprox will not silently fall
+	// back to unpinned TLS; codeDNSReverseMaskInvalid an IPv6 reverse-zone
+	// mask that is not a multiple of 4, which PowerdnsPlugin.pm itself dies
+	// on rather than rounding.
+	codeDNSPluginTypeInvalid  = "schema.dns_plugin_type_invalid"
+	codeDNSFingerprintInvalid = "schema.dns_fingerprint_invalid"
+	codeDNSReverseMaskInvalid = "schema.dns_reverse_mask_invalid"
 
 	// --- referential (class 2: existence, collisions, overlaps) --------
 

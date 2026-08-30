@@ -25,6 +25,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/probe"
 	"github.com/bgovanlu/vnprox/internal/pve"
+	"github.com/bgovanlu/vnprox/internal/sdndns"
 )
 
 // Default node-file paths (overridable in tests). interfacesNewPath is the
@@ -325,6 +326,28 @@ func (p probeClientProvider) ProbeClientFor(ctx context.Context) (probe.PVEExece
 // client (docs/architecture.md §6).
 type pveGateway struct {
 	client *pve.Client
+	// dns resolves DNS domains to the PowerDNS connection that serves them,
+	// and caches one HTTP client per connection (T-4112). It lives on the
+	// gateway rather than being built per op because deriving the domain list
+	// costs a plugin read plus the SDN zone/vnet/subnet reads: a changeset
+	// with fifty record ops would otherwise re-read the whole SDN tree fifty
+	// times to answer the same question.
+	//
+	// Built lazily and guarded, because a gateway is shared across applies.
+	// The Once sits last: it holds no pointers, so fieldalignment packs the
+	// three pointer fields ahead of it.
+	dnsSvc  *sdndns.Service
+	dnsRdr  *sdndns.Reader
+	dnsOnce sync.Once
+}
+
+// dnsSeams returns this gateway's DNS service and reader, building them once.
+func (g *pveGateway) dnsSeams() (*sdndns.Service, *sdndns.Reader) {
+	g.dnsOnce.Do(func() {
+		g.dnsSvc = sdndns.NewService(g.client, g.client, nil)
+		g.dnsRdr = sdndns.NewReader(g.client, nil)
+	})
+	return g.dnsSvc, g.dnsRdr
 }
 
 // SDNStageOp implements change.PVEGateway: dispatches one sdn.zone/vnet/
@@ -417,40 +440,69 @@ func (g *pveGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet st
 	case *change.SdnSubnetDeleteParams:
 		return g.client.DeleteSDNSubnet(ctx, pve.SDNVnetID(subnetVnet), pve.SDNSubnetID(op.Target.ID))
 
-	// T-1204 SDN DNS ops. Zone configs stage into /etc/pve/sdn/dns.cfg (like
-	// zones/vnets/subnets); records are written straight into the backing
-	// PowerDNS server per-record. The record target's Ref.ID is the
-	// "<zone>/<name>/<type>" composite — the params carry those fields
-	// explicitly for create; update/delete recover them from the target id.
+	// T-1204 SDN DNS ops, re-pointed by T-4112 at the surfaces that exist.
+	//
+	// sdn.dns.zone.* manages a /cluster/sdn/dns entry, which is a PowerDNS
+	// server connection rather than a DNS zone — see
+	// change/params_sdn_dns.go's comment for why the op keeps its name and
+	// what was broken about its params.
+	//
+	// sdn.dns.record.* writes into the PowerDNS server itself. PVE has no
+	// record API: these three ops used to POST/PUT/DELETE
+	// /cluster/sdn/dns/{zone}/records..., which is `no such resource` on
+	// every PVE. The record target's Ref.ID is the "<zone>/<name>/<type>"
+	// composite — the params carry those fields explicitly for create;
+	// update/delete recover them from the target id.
 	case *change.SdnDnsZoneCreateParams:
-		return g.client.CreateSDNDnsZone(ctx, pve.SDNDnsZone{ID: op.Target.ID, DNS: p.DNS, TTL: p.TTL})
+		id := op.Target.ID
+		if p.DNS != "" {
+			id = p.DNS
+		}
+		return g.client.CreateSDNDnsPlugin(ctx, pve.SDNDnsPlugin{
+			ID: id, Type: p.Type, URL: p.URL, Key: p.Key,
+			Fingerprint: p.Fingerprint, TTL: p.TTL, ReverseMaskV6: p.ReverseMaskV6,
+		})
 	case *change.SdnDnsZoneUpdateParams:
-		z := pve.SDNDnsZone{ID: op.Target.ID}
-		if p.DNS != nil {
-			z.DNS = *p.DNS
+		z := pve.SDNDnsPlugin{ID: op.Target.ID}
+		if p.Type != nil {
+			z.Type = *p.Type
+		}
+		if p.URL != nil {
+			z.URL = *p.URL
+		}
+		if p.Key != nil {
+			z.Key = *p.Key
+		}
+		if p.Fingerprint != nil {
+			z.Fingerprint = *p.Fingerprint
 		}
 		if p.TTL != nil {
 			z.TTL = *p.TTL
 		}
-		return g.client.UpdateSDNDnsZone(ctx, op.Target.ID, z)
+		if p.ReverseMaskV6 != nil {
+			z.ReverseMaskV6 = *p.ReverseMaskV6
+		}
+		return g.client.UpdateSDNDnsPlugin(ctx, op.Target.ID, z)
 	case *change.SdnDnsZoneDeleteParams:
-		return g.client.DeleteSDNDnsZone(ctx, op.Target.ID)
+		return g.client.DeleteSDNDnsPlugin(ctx, op.Target.ID)
 
 	case *change.SdnDnsRecordCreateParams:
-		return g.client.CreateSDNDnsRecord(ctx, p.Zone, pve.SDNDnsRecord{Name: p.Name, Type: p.Type, Value: p.Value, TTL: p.TTL})
+		return g.applyDNSRecord(ctx, p.Zone, p.Name, p.Type, dnsRecordWrite{
+			verb: dnsRecordAdd, value: p.Value, ttl: p.TTL,
+		})
 	case *change.SdnDnsRecordUpdateParams:
 		zone, name, typ := splitDNSRecordID(op.Target.ID)
-		rec := pve.SDNDnsRecord{Name: name, Type: typ}
+		w := dnsRecordWrite{verb: dnsRecordReplace}
 		if p.Value != nil {
-			rec.Value = *p.Value
+			w.value = *p.Value
 		}
 		if p.TTL != nil {
-			rec.TTL = *p.TTL
+			w.ttl = *p.TTL
 		}
-		return g.client.UpdateSDNDnsRecord(ctx, zone, name, typ, rec)
+		return g.applyDNSRecord(ctx, zone, name, typ, w)
 	case *change.SdnDnsRecordDeleteParams:
 		zone, name, typ := splitDNSRecordID(op.Target.ID)
-		return g.client.DeleteSDNDnsRecord(ctx, zone, name, typ)
+		return g.applyDNSRecord(ctx, zone, name, typ, dnsRecordWrite{verb: dnsRecordRemove})
 
 	// T-3101 SDN Fabric ops. Like DNS above, these stage into the same
 	// PUT /cluster/sdn commit — no bespoke apply path (op.go's
@@ -759,21 +811,46 @@ func (g *pveGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error) {
 		}
 	}
 
-	// T-1204: DNS zones + their records, for the same pre-apply/rollback
-	// snapshot. A cluster with no DNS plugin configured contributes nothing.
-	dnsZones, err := g.client.ListSDNDnsZones(ctx)
+	// T-1204: DNS domains + their records, for the same pre-apply/rollback
+	// snapshot. A cluster with no PowerDNS plugin configured contributes
+	// nothing.
+	//
+	// T-4112: this used to list /cluster/sdn/dns as if it were a domain list
+	// and then GET each domain's records from a route that does not exist,
+	// which made the whole snapshot fail on any real cluster with DNS
+	// configured — and the snapshot is what a rollback restores from, so the
+	// failure landed on the safety path rather than a display one.
+	//
+	// The read is now soft per domain, deliberately and against this
+	// function's general posture: a PowerDNS server vnprox cannot reach must
+	// not block a changeset that touches bridges. What it costs is that a
+	// rollback cannot restore records it was never able to read — so the
+	// unreadable domains are named in the snapshot rather than silently
+	// omitted, and DnsUnreadable is what tells a restore that its DNS view
+	// was partial.
+	dnsSvc, _ := g.dnsSeams()
+	dnsZones, dnsSkipped, err := dnsSvc.Zones(ctx)
 	if err != nil {
 		return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn dns zones: %w", err)
 	}
+	for _, sk := range dnsSkipped {
+		cfg.DnsUnreadable = append(cfg.DnsUnreadable, change.SDNDnsUnreadable{
+			ID: sk.Domain, SDNZone: sk.SDNZone, Reason: sk.Reason,
+		})
+	}
 	for _, z := range dnsZones {
-		cfg.DnsZones = append(cfg.DnsZones, change.SDNDnsZoneConfig{ID: z.ID, DNS: z.DNS, TTL: z.TTL})
-		recs, recErr := g.client.ListSDNDnsRecords(ctx, z.ID)
+		cfg.DnsZones = append(cfg.DnsZones, change.SDNDnsZoneConfig{ID: z.Domain, DNS: z.Plugin, TTL: z.TTL})
+		recs, recErr := dnsSvc.Records(ctx, z)
 		if recErr != nil {
-			return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn dns records for zone %s: %w", z.ID, recErr)
+			cfg.DnsUnreadable = append(cfg.DnsUnreadable, change.SDNDnsUnreadable{
+				ID: z.Domain, SDNZone: z.SDNZone, Reason: recErr.Error(),
+			})
+			continue
 		}
 		for _, r := range recs {
 			cfg.DnsRecords = append(cfg.DnsRecords, change.SDNDnsRecordConfig{
-				ID: z.ID + "/" + r.Name + "/" + r.Type, Zone: z.ID, Name: r.Name, Type: r.Type, Value: r.Value, TTL: r.TTL,
+				ID: z.Domain + "/" + r.Name + "/" + r.Type, Zone: z.Domain,
+				Name: r.Name, Type: r.Type, Value: r.Value, TTL: r.TTL,
 			})
 		}
 	}

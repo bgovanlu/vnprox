@@ -195,6 +195,24 @@ type SDNZone struct {
 	// (checkSdnIpamDeletable) is meaningless against a zone.IPAM that a
 	// live poll never populates.
 	IPAM string `json:"ipam,omitempty"`
+	// DNS/DnsZone/ReverseDNS (T-4112) are where PVE actually records which
+	// DNS domain a zone's guests are registered in and which PowerDNS
+	// connection to write it through — `pvesh usage /cluster/sdn/zones -v`
+	// gives them as "dns api server", "dns domain zone ex: mydomain.com",
+	// and "reverse dns api server"
+	// (planning/reports/evidence/pve-9.2.4-sdn-dns-surface.txt).
+	//
+	// vnprox modelled the domain list as /cluster/sdn/dns instead, which is
+	// the plugin-instance list; that read returned connections and vnprox
+	// treated them as zones. DNS and ReverseDNS name entries in
+	// SDNDnsPlugin's id space (they are separate connections — Subnets.pm
+	// uses `reversedns` for PTRs with no fallback to `dns`, so a zone with
+	// no reversedns has no reverse records at all), and DnsZone is the
+	// forward domain itself. See internal/sdndns for how the reverse
+	// domains are then derived from each subnet's CIDR.
+	DNS        string `json:"dns,omitempty"`
+	DnsZone    string `json:"dnszone,omitempty"`
+	ReverseDNS string `json:"reversedns,omitempty"`
 	// Pending decodes whatever "pending" key this struct's DEFAULT list/get
 	// view (no query param) returns — which, against real PVE 9.2.4, is
 	// none: confirmed live and against PVE::Network::SDN's own source

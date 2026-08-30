@@ -1,6 +1,6 @@
 # T-4112 · `internal/pve`'s SDN DNS record endpoints are modelled against a PVE surface that does not exist
 
-**Status:** verified on the node, and the card UNDERSTATES it — five functions, not two, and one is on the live poll path. Blocked on a product decision, below.
+**Status:** DONE, 2026-08-30 — option B (talk to PowerDNS) chosen and built. See "What was built" at the end.
 **Found by:** T-4109's PTR-coverage work, 2026-08-28 · **size:** M ·
 **depends:** — · **affects:** `internal/pve/sdn_dns.go`, `internal/pvemock`'s DNS fixtures, any
 feature that reads or writes SDN DNS records
@@ -141,3 +141,66 @@ routes nobody checked, which is a product call rather than a cleanup.
 
 What is done regardless of the choice: the evidence transcript exists, and the doc comment's
 "unconfirmed shapes" wording is now known to understate "these endpoints do not exist".
+
+---
+
+## What was built (option B, 2026-08-30)
+
+The choice was between deleting record-level support and building the outbound PowerDNS
+integration. Option B: PVE writes records straight into PowerDNS, so vnprox reads them from the
+same place, with the same url/key/fingerprint the operator already configured.
+
+**Everything below the API line was read off pvecube, not inferred.** `PowerdnsPlugin.pm`,
+`PVE::Network::SDN::api_request`, `PVE::API2::Network::SDN::Dns`, and the reverse-zone naming
+cross-checked against the same `Net::IP`/`NetAddr::IP` the plugin uses. Transcript appended to
+`planning/reports/evidence/pve-9.2.4-sdn-dns-surface.txt`.
+
+### New
+
+- **`internal/powerdns`** — the client. `GET /zones/{zone}`, `?rrsets=false`, `PATCH` with
+  `{rrsets:[...]}`, and the bare-base `Ping` the plugin uses as its own health check. Leaf
+  certificate pinning that reproduces PVE's exactly (hostname verification off, exact SHA-256 at
+  depth 0). `rrset.go` carries the three read-modify-write builders the plugin has, with the same
+  early returns, so a record PVE wrote and a record vnprox wrote are indistinguishable afterwards.
+  `reverse.go` ports `get_reversedns_zone` — RFC1918 special cases and PVE's public-IPv4 mask quirk
+  included, deliberately, with a test that says so.
+- **`internal/sdndns`** — the join. `DeriveZones` works out every readable DNS domain from SDN
+  configuration (an SDN zone's `dnszone`/`dns`/`reversedns`, plus a reverse zone per subnet CIDR),
+  and reports every domain it declined to derive with a reason.
+
+### Corrected
+
+- `internal/pve/sdn_dns.go`: five invented methods deleted. `SDNDnsZone` → `SDNDnsPlugin`, with
+  `ID` decoding from `dns` rather than `zone` — a one-word tag that made the id decode **empty**
+  against every real cluster, and that no test caught because pvemock emitted `zone` too.
+- `pve.SDNZone` gained `dns`/`dnszone`/`reversedns`, which is where the domains actually live.
+- `internal/collect`: the poll that 404'd once per zone per cycle now reads PowerDNS. **This is the
+  fix T-4109's PTR audit was waiting for** — it had been reporting `ptr_zone_unreadable` for every
+  reverse zone, permanently, and correctly given what it was told.
+- `cmd/vnproxd`: the three record ops apply against PowerDNS. Applying one of them used to POST to a
+  route that does not exist — the failure landed on the one path where a wrong guess costs the most.
+- `internal/pvemock`: the four invented routes are **deleted**, not supplemented, and the create
+  handler now enforces the parameters PVE enforces.
+
+### Two things the card did not know about, found on the way
+
+1. **`sdn.dns.zone.create` could never have worked either.** Its params carried `{dns, ttl}`; PVE
+   requires `dns, type, url, key`. Every applied create was a parameter-verification 400. The params
+   are extended (additively) and the schema validator now requires them, so the failure moves from
+   apply time to stage time. The op *names* are left alone — they are a wire contract the Terraform
+   provider and Ansible modules depend on, and CLAUDE.md is explicit that those are not renamed
+   unilaterally. **Filed: T-4114**, to rename them to `sdn.dns.server.*`.
+2. **`GET /sdn/dns`'s `resolved` array modelled a duality that does not exist.** It was built as the
+   DNS counterpart of `/sdn/dhcp`'s Reservation(config)/Lease(observed) split, but PVE keeps no
+   record copy — there is one source. It is now always empty, documented as such, and kept on the
+   wire rather than removed mid-flight. A test asserts the emptiness, because the failure mode here
+   is someone later filling it with a copy of `records` and re-asserting a cross-check that never
+   happened.
+
+### What is still unproven, and why it is smaller than it was
+
+`needs-hardware-validation.md`'s T-1204 section claimed the PVE-side wire shape needed a real node
+with a DNS plugin configured. Confirming the *shape* needed no such thing — and reading it found
+that the whole URL space was invented. The section is rewritten: what remains needing hardware is
+**PowerDNS error-body shapes** and **zone notify/transfer semantics**, and both need a PowerDNS
+server rather than PVE hardware, which a container would settle.

@@ -15,6 +15,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/pve"
+	"github.com/bgovanlu/vnprox/internal/sdndns"
 )
 
 // Default poll intervals, matching config.Default{PVE,Host,LLDP}Interval
@@ -151,7 +152,14 @@ type Collector struct {
 	// localNode, for the same fieldalignment reason clusterNodes is placed
 	// after it: the pointer-bearing fields pack ahead of the string.
 	sdnPendingCache sdnPendingCache
-	localNode       string
+	// dnsReader reads SDN DNS records from the PowerDNS server that holds
+	// them (T-4112). It lives on the collector rather than being built per
+	// poll so its per-plugin HTTP clients — and, where a fingerprint is
+	// configured, their pinned TLS config — survive between cycles. It is
+	// keyed on the plugin's connection details, so an operator changing a
+	// url or key still gets a fresh client on the next poll.
+	dnsReader *sdndns.Reader
+	localNode string
 	// clusterNodes is every node name the last cluster-status poll saw
 	// (guarded by mu). Populated only when hostServesCluster is set — the
 	// demo daemon's case, where one cluster-wide fixture reader answers for
@@ -212,6 +220,7 @@ func New(cfg Config) (*Collector, error) {
 
 	return &Collector{
 		pve:          cfg.PVE,
+		dnsReader:    sdndns.NewReader(cfg.PVE, nil),
 		host:         cfg.Host,
 		peerClient:   cfg.Peer,
 		graph:        cfg.Graph,

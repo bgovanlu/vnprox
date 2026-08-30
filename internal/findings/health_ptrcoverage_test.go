@@ -244,3 +244,103 @@ func TestPtrCoverage_NotManaged_NoFinding(t *testing.T) {
 		}
 	}
 }
+
+// ptrDNSRecordMulti builds a record with a multi-valued rrset, the shape
+// PowerDNS returns for a round-robin A record or an address with two names
+// (T-4112). Value is the first entry, matching what FromPVEDNS produces.
+func ptrDNSRecordMulti(zoneID, name, typ string, values ...string) *inventory.SdnDnsRecord {
+	rec := ptrDNSRecord(zoneID, name, typ, values[0])
+	rec.Values = values
+	return rec
+}
+
+// ptrFindings runs the engine over a fixed entity set and returns only this
+// check's findings.
+func ptrFindings(entities ...inventory.Entity) []findings.Finding {
+	g := newGraphWithNodes("pve1")
+	g.ApplyPoll(inventory.SourcePVESDN, inventory.Scope{}, entities)
+	var out []findings.Finding
+	for _, f := range findings.New(findings.Config{Graph: g}).Findings() {
+		switch f.Check {
+		case findings.CheckPtrMissing, findings.CheckPtrMismatch, findings.CheckPtrZoneUnreadable:
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// A round-robin A record covers each of its addresses independently. Before
+// T-4112 the check read only Value, so the second address was never audited
+// at all — an uncovered address reported as fine, which is the direction that
+// costs an operator a working reverse lookup.
+func TestPtrCoverage_AuditsEveryAddressInAnRRSet(t *testing.T) {
+	got := ptrFindings(
+		ptrDNSZone("example.com"),
+		ptrDNSZone("0.0.10.in-addr.arpa"),
+		ptrDNSRecordMulti("example.com", "web", "A", "10.0.0.5", "10.0.0.6"),
+		// Only .5 has a PTR.
+		ptrDNSRecord("0.0.10.in-addr.arpa", "5", "PTR", "web.example.com."),
+	)
+
+	var missing []findings.Finding
+	for _, f := range got {
+		if f.Check == findings.CheckPtrMissing {
+			missing = append(missing, f)
+		}
+	}
+	if len(missing) != 1 {
+		t.Fatalf("ptr_missing findings = %d, want exactly one (for 10.0.0.6): %+v", len(missing), got)
+	}
+	if !strings.Contains(missing[0].Detail, "10.0.0.6") {
+		t.Errorf("detail = %q, want it to name the uncovered address", missing[0].Detail)
+	}
+	if strings.Contains(missing[0].Detail, "10.0.0.5") {
+		t.Errorf("detail = %q, names the address that IS covered", missing[0].Detail)
+	}
+}
+
+// A PTR rrset with several targets is a correct configuration, not a
+// mismatch: a resolver receives every target, so an address deliberately
+// given two names resolves for both. Reporting it would train an operator to
+// ignore this check, which is the failure T-4109's card names.
+func TestPtrCoverage_MultiTargetPTRMatchesAnyName(t *testing.T) {
+	got := ptrFindings(
+		ptrDNSZone("example.com"),
+		ptrDNSZone("0.0.10.in-addr.arpa"),
+		ptrDNSRecord("example.com", "web", "A", "10.0.0.5"),
+		ptrDNSRecordMulti("0.0.10.in-addr.arpa", "5", "PTR", "mail.example.com.", "web.example.com."),
+	)
+
+	for _, f := range got {
+		if f.Check == findings.CheckPtrMismatch {
+			t.Fatalf("a PTR rrset naming this record among its targets was reported as a mismatch: %q", f.Detail)
+		}
+	}
+}
+
+// ...and when NONE of the targets matches, it is still a mismatch, and the
+// detail names all of them so the operator can see what is actually there.
+func TestPtrCoverage_MultiTargetPTRWithNoMatchIsAMismatch(t *testing.T) {
+	got := ptrFindings(
+		ptrDNSZone("example.com"),
+		ptrDNSZone("0.0.10.in-addr.arpa"),
+		ptrDNSRecord("example.com", "web", "A", "10.0.0.5"),
+		ptrDNSRecordMulti("0.0.10.in-addr.arpa", "5", "PTR", "mail.example.com.", "old.example.com."),
+	)
+
+	var mismatch *findings.Finding
+	for i := range got {
+		if got[i].Check == findings.CheckPtrMismatch {
+			mismatch = &got[i]
+			break
+		}
+	}
+	if mismatch == nil {
+		t.Fatalf("want a ptr_mismatch when no target matches the forward record, got %+v", got)
+	}
+	for _, want := range []string{"mail.example.com.", "old.example.com."} {
+		if !strings.Contains(mismatch.Detail, want) {
+			t.Errorf("detail %q does not name the existing target %s", mismatch.Detail, want)
+		}
+	}
+}

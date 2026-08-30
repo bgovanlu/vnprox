@@ -254,29 +254,84 @@ func toChangesetResponse(c change.Changeset) changesetResponse {
 	}
 }
 
-// redactOpSecrets returns ops with every wg.peer.add op's preshared key
-// stripped — both the write-only plaintext PresharedKey and the sealed-at-rest
-// PresharedKeyEnc — so no changeset read response (GET /changesets, and every
-// route that echoes a changeset) ever carries a peer secret in any form
-// (Finding 1 / docs/security.md's WireGuard credential-storage note). The
-// stored ops (and the sealed bytes persisted in changesets.ops_json, which the
-// apply path reads) are untouched: this allocates a shallow copy only when it
-// finds something to redact and never mutates the caller's backing array.
+// redactOpSecrets returns ops with every operator secret stripped, so no
+// changeset read response (GET /changesets, and every route that echoes a
+// changeset) ever carries one in any form. The stored ops — and the sealed
+// bytes persisted in changesets.ops_json, which the apply path reads — are
+// untouched: this allocates a shallow copy only when it finds something to
+// redact and never mutates the caller's backing array.
+//
+// Three op families carry a secret:
+//
+//   - wg.peer.add's preshared key, both the write-only plaintext PresharedKey
+//     and the sealed-at-rest PresharedKeyEnc (Finding 1 / docs/security.md's
+//     WireGuard credential-storage note). This was the original case.
+//   - sdn.dns.zone.create/update's PowerDNS API key (T-4112). It is a new
+//     param, added because the op could not be applied without it — PVE
+//     declares `key` non-optional — so it is covered from the start.
+//   - sdn.ipam.create/update's IPAM token. **This was already unredacted
+//     before T-4112** and is fixed here rather than filed: it is the same
+//     secret-in-a-changeset-echo shape as the other two, the fix is three
+//     lines in the function that already exists, and leaving a known
+//     credential leak in place to keep a diff tidy is not a trade worth
+//     making. docs/features/sdn.md already told operators PVE never echoes an
+//     instance's token back on a read; until now vnprox did.
+//
+// Redaction is by omission, not by substitution: the field is emptied rather
+// than replaced with "***", so a client cannot mistake a placeholder for the
+// value and write it back.
 func redactOpSecrets(ops []change.Op) []change.Op {
 	var out []change.Op
-	for i, op := range ops {
-		p, ok := op.Params.(*change.WgPeerAddParams)
-		if !ok || (p.PresharedKey == "" && len(p.PresharedKeyEnc) == 0) {
-			continue
-		}
+	ensureCopy := func() {
 		if out == nil {
 			out = make([]change.Op, len(ops))
 			copy(out, ops)
 		}
-		clone := *p
-		clone.PresharedKey = ""
-		clone.PresharedKeyEnc = nil
-		out[i].Params = &clone
+	}
+	for i, op := range ops {
+		switch p := op.Params.(type) {
+		case *change.WgPeerAddParams:
+			if p.PresharedKey == "" && len(p.PresharedKeyEnc) == 0 {
+				continue
+			}
+			ensureCopy()
+			clone := *p
+			clone.PresharedKey = ""
+			clone.PresharedKeyEnc = nil
+			out[i].Params = &clone
+		case *change.SdnDnsZoneCreateParams:
+			if p.Key == "" {
+				continue
+			}
+			ensureCopy()
+			clone := *p
+			clone.Key = ""
+			out[i].Params = &clone
+		case *change.SdnDnsZoneUpdateParams:
+			if p.Key == nil {
+				continue
+			}
+			ensureCopy()
+			clone := *p
+			clone.Key = nil
+			out[i].Params = &clone
+		case *change.SdnIpamCreateParams:
+			if p.Token == "" {
+				continue
+			}
+			ensureCopy()
+			clone := *p
+			clone.Token = ""
+			out[i].Params = &clone
+		case *change.SdnIpamUpdateParams:
+			if p.Token == nil {
+				continue
+			}
+			ensureCopy()
+			clone := *p
+			clone.Token = nil
+			out[i].Params = &clone
+		}
 	}
 	if out != nil {
 		return out

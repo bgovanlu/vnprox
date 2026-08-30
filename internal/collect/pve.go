@@ -12,6 +12,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/pve"
+	"github.com/bgovanlu/vnprox/internal/sdndns"
 )
 
 // pvePollAll runs one full PVE poll cycle: cluster status (which also
@@ -405,27 +406,23 @@ func (c *Collector) pollSDN(ctx context.Context, nodes []string) error {
 
 	entities := inventory.FromPVESDN(zones, vnets, subnets, zoneStatus, pending.zones, pending.vnets, pending.subnets)
 
-	// T-1204: fold the SDN DNS plugin config (zones + their PowerDNS records)
-	// into the same SourcePVESDN poll. A cluster with no DNS plugin
-	// configured simply contributes nothing (an empty zone list is not an
-	// error), and one zone's record read failing skips only that zone rather
-	// than failing the whole SDN poll — the same tolerate-per-item posture
-	// the subnet/zone-status reads above use.
-	dnsZones, err := c.pve.ListSDNDnsZones(ctx)
-	if err != nil {
-		c.log.Warn("collect: listing SDN DNS zones failed, skipping DNS", "error", err)
-	} else {
-		dnsRecords := make(map[string][]pve.SDNDnsRecord, len(dnsZones))
-		for _, z := range dnsZones {
-			recs, recErr := c.pve.ListSDNDnsRecords(ctx, z.ID)
-			if recErr != nil {
-				c.log.Warn("collect: listing SDN DNS records failed, skipping", "zone", z.ID, "error", recErr)
-				continue
-			}
-			dnsRecords[z.ID] = recs
-		}
-		entities = append(entities, inventory.FromPVEDNS(dnsZones, dnsRecords)...)
-	}
+	// T-1204: fold the SDN DNS view into the same SourcePVESDN poll. A
+	// cluster with no PowerDNS plugin configured simply contributes nothing
+	// (not an error), and one zone's record read failing skips only that zone
+	// rather than failing the whole SDN poll — the same tolerate-per-item
+	// posture the subnet/zone-status reads above use.
+	//
+	// T-4112 changed where this data comes from, not what it means. The old
+	// code read `/cluster/sdn/dns` as a list of DNS zones and then GET
+	// `/cluster/sdn/dns/{zone}/records` for each — a route that does not
+	// exist, so on any real cluster with DNS configured this loop logged a
+	// 404 per zone per cycle, forever, and contributed no records at all.
+	// T-4109's PTR audit read that empty result exactly as documented and
+	// reported every reverse zone `ptr_zone_unreadable`, permanently.
+	//
+	// The domains now come from the SDN zones this poll already read, and the
+	// records from the PowerDNS server that actually holds them.
+	c.pollSDNDNS(ctx, zones, vnets, subnets, &entities)
 
 	// T-3102: SDN controllers, folded into the same SourcePVESDN poll (a
 	// controller IS live-polled here, unlike a fabric — see
@@ -453,6 +450,72 @@ func (c *Collector) pollSDN(ctx context.Context, nodes []string) error {
 
 	c.graph.ApplyPoll(inventory.SourcePVESDN, inventory.Scope{}, entities)
 	return nil
+}
+
+// pollSDNDNS folds the SDN DNS view into the SDN poll's entity list
+// (T-1204, re-sourced by T-4112).
+//
+// It takes the zones, vnets and subnets the caller has already read rather
+// than re-reading them: the DNS domains are derived from exactly that
+// configuration (an SDN zone's dnszone/dns/reversedns, plus a reverse zone
+// per subnet CIDR), and a second set of reads per cycle would double the SDN
+// request count to learn nothing new.
+//
+// Every failure here is a warning and a skip, never a poll failure. DNS is
+// one facet of the SDN tree; an unreachable PowerDNS server must not cost the
+// operator their zone, vnet and subnet inventory.
+func (c *Collector) pollSDNDNS(
+	ctx context.Context,
+	zones []pve.SDNZone,
+	vnets []pve.SDNVnet,
+	subnetsByVnet map[string][]pve.SDNSubnet,
+	entities *[]inventory.Entity,
+) {
+	plugins, err := c.dnsReader.Plugins(ctx)
+	if err != nil {
+		c.log.Warn("collect: listing SDN DNS plugin instances failed, skipping DNS", "error", err)
+		return
+	}
+	if len(plugins) == 0 {
+		// No PowerDNS connection configured. Not a failure and not worth a
+		// log line every cycle — it is the ordinary state of a cluster that
+		// does not use SDN DNS.
+		return
+	}
+
+	flatSubnets := make([]pve.SDNSubnet, 0, len(subnetsByVnet))
+	for _, subs := range subnetsByVnet {
+		flatSubnets = append(flatSubnets, subs...)
+	}
+	pluginList := make([]pve.SDNDnsPlugin, 0, len(plugins))
+	for _, p := range plugins {
+		pluginList = append(pluginList, p)
+	}
+
+	dnsZones, skipped := sdndns.DeriveZones(zones, vnets, flatSubnets, pluginList)
+	for _, sk := range skipped {
+		// A derivation vnprox declined to make is a configuration fact, not
+		// noise: it is the difference between "this zone has no reverse DNS"
+		// and "this zone points at a plugin that is not configured".
+		c.log.Warn("collect: no DNS zone derived",
+			"sdnZone", sk.SDNZone, "subnet", sk.Subnet, "reason", sk.Reason)
+	}
+
+	records := make(map[string][]sdndns.Record, len(dnsZones))
+	for _, z := range dnsZones {
+		plugin, ok := plugins[z.Plugin]
+		if !ok {
+			continue // DeriveZones only emits zones whose plugin is configured.
+		}
+		recs, recErr := c.dnsReader.Records(ctx, z, plugin)
+		if recErr != nil {
+			c.log.Warn("collect: reading DNS records failed, skipping zone",
+				"zone", z.Domain, "plugin", z.Plugin, "error", recErr)
+			continue
+		}
+		records[z.Domain] = recs
+	}
+	*entities = append(*entities, inventory.FromPVEDNS(dnsZones, records)...)
 }
 
 // pollFirewall polls firewall rulesets at cluster scope (if

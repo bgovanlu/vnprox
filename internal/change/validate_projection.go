@@ -86,7 +86,12 @@ type projection struct {
 	// "<zone>/<name>/<type>" composite Ref.ID. Seeded from the snapshot and
 	// folded from sdn.dns.* create/delete ops, so a record.create can
 	// reference a zone this same changeset's earlier zone.create established.
-	dnsZones   map[string]inventory.Ref
+	dnsZones map[string]inventory.Ref
+	// dnsPlugins indexes /cluster/sdn/dns server connections created by this
+	// changeset. It is seeded empty and never from inventory: a connection
+	// has no inventory entity (T-4112 — inventory's SdnDnsZone is a DNS
+	// domain). See existsRef's KindSDNDnsZone case.
+	dnsPlugins map[string]inventory.Ref
 	dnsRecords map[string]inventory.Ref
 
 	// controllerNames indexes cluster-scoped SDN controllers (T-3102) by id
@@ -171,6 +176,7 @@ func newProjection(snap inventory.Snapshot) *projection {
 		subnetNames:     map[string]inventory.Ref{},
 		subnetsByVnet:   map[string][]inventory.Ref{},
 		dnsZones:        map[string]inventory.Ref{},
+		dnsPlugins:      map[string]inventory.Ref{},
 		dnsRecords:      map[string]inventory.Ref{},
 		controllerNames: map[string]inventory.Ref{},
 		ipamNames:       map[string]inventory.Ref{},
@@ -360,7 +366,21 @@ func (p *projection) exists(ref inventory.Ref) bool {
 		_, ok := p.subnetNames[ref.ID]
 		return ok
 	case inventory.KindSDNDnsZone:
-		_, ok := p.dnsZones[ref.ID]
+		// Two different things share this kind (T-4112, filed as T-4114).
+		// dnsZones indexes DNS DOMAINS, which is what inventory holds and
+		// what a record op's Zone refers to. dnsPlugins indexes the
+		// /cluster/sdn/dns server CONNECTIONS that sdn.dns.zone.* actually
+		// manages, which have no inventory entity at all — so a connection
+		// is only known here if this changeset created it.
+		//
+		// Existence accepts either, because both are legitimately addressed
+		// through this kind today. The record check below deliberately does
+		// NOT: it asks dnsZones alone, so a connection id can never satisfy
+		// "does this record's zone exist".
+		if _, ok := p.dnsZones[ref.ID]; ok {
+			return true
+		}
+		_, ok := p.dnsPlugins[ref.ID]
 		return ok
 	case inventory.KindSDNDnsRecord:
 		_, ok := p.dnsRecords[ref.ID]
@@ -553,10 +573,15 @@ func (p *projection) fold(op Op) {
 		}
 
 	case *SdnDnsZoneCreateParams:
-		p.dnsZones[op.Target.ID] = op.Target
+		// Into dnsPlugins, not dnsZones: this op creates a PowerDNS server
+		// connection. Putting it in dnsZones fabricated a DNS domain named
+		// after the connection, which the record check below would then
+		// accept as a record's zone — a changeset that validated clean and
+		// wrote records to a domain that does not exist.
+		p.dnsPlugins[op.Target.ID] = op.Target
 
 	case *SdnDnsZoneDeleteParams:
-		delete(p.dnsZones, op.Target.ID)
+		delete(p.dnsPlugins, op.Target.ID)
 
 	case *SdnDnsRecordCreateParams:
 		p.dnsRecords[op.Target.ID] = op.Target

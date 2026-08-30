@@ -140,7 +140,6 @@ func NewState(f *Fixture) *State {
 
 	s.sdn.dnsZones = make(map[string]SDNDnsZoneSpec, len(f.SDN.DNSZones))
 	for _, z := range f.SDN.DNSZones {
-		z.Records = append([]SDNDnsRecordSpec(nil), z.Records...)
 		s.sdn.dnsZones[z.ID] = z
 	}
 

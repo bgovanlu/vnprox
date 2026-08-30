@@ -48,6 +48,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/route"
 	"github.com/bgovanlu/vnprox/internal/runbook"
 	"github.com/bgovanlu/vnprox/internal/sdn"
+	"github.com/bgovanlu/vnprox/internal/sdndns"
 	"github.com/bgovanlu/vnprox/internal/store"
 	"github.com/bgovanlu/vnprox/internal/tenant"
 	"github.com/bgovanlu/vnprox/internal/topology"
@@ -497,7 +498,12 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	var sdnDNSSvc api.SDNDNSService
 	if sdnPVEClient != nil {
 		sdnSvc = sdn.NewService(sdnPVEClient)
-		sdnDNSSvc = sdn.NewDNSService(sdnPVEClient)
+		// T-4112: the DNS view's records come from the PowerDNS server the
+		// SDN zone's plugin instance points at, not from PVE — sdndns.Service
+		// is the join. Both PVE arguments are the same client; the seam takes
+		// them separately so the SDN-topology reads and the plugin-config
+		// reads stay visible as the two different things they are.
+		sdnDNSSvc = sdn.NewDNSService(sdndns.NewService(sdnPVEClient, sdnPVEClient, nil))
 	}
 	// T-1206: PBS network awareness — reads PVE's own storage.cfg + backup
 	// jobs once (sdnPVEClient, already available), re-projected against the

@@ -321,10 +321,28 @@ func (p *entityProjection) projectOp(op Op) string {
 	case *SdnSubnetDeleteParams:
 		p.remove(op.Target)
 
+	// sdn.dns.zone.* projects an inventory.SdnDnsServer, not an
+	// inventory.SdnDnsZone (T-4112). These three ops manage a
+	// /cluster/sdn/dns entry, which is a PowerDNS server CONNECTION; an
+	// SdnDnsZone is a DNS DOMAIN, derived from an SDN zone's dnszone field
+	// and its subnets' reverse zones.
+	//
+	// Projecting one as the other put a fabricated domain, named after the
+	// connection, into the projected graph — and validate_projection.go's
+	// record check asks that same index whether a record's zone exists, so
+	// the fabrication let a record op targeting a non-existent domain
+	// validate clean and then fail at apply.
+	//
+	// The target ref still carries KindSDNDnsZone; T-4114 renames the op
+	// family and the kind together. See inventory.SdnDnsServer's comment for
+	// why the two cannot collide in the meantime.
 	case *SdnDnsZoneCreateParams:
-		p.put(&inventory.SdnDnsZone{Ref: op.Target, ID: op.Target.ID, DNS: params.DNS, TTL: params.TTL})
+		p.put(&inventory.SdnDnsServer{
+			Ref: op.Target, ID: op.Target.ID, Type: params.Type, URL: params.URL,
+			Fingerprint: params.Fingerprint, TTL: params.TTL, ReverseMaskV6: params.ReverseMaskV6,
+		})
 	case *SdnDnsZoneUpdateParams:
-		p.sdnDnsZoneUpdate(op.Target, params)
+		p.sdnDnsServerUpdate(op.Target, params)
 	case *SdnDnsZoneDeleteParams:
 		p.remove(op.Target)
 	case *SdnDnsRecordCreateParams:
@@ -697,18 +715,31 @@ func (p *entityProjection) sdnSubnetUpdate(ref inventory.Ref, params *SdnSubnetU
 	p.put(&cp)
 }
 
-func (p *entityProjection) sdnDnsZoneUpdate(ref inventory.Ref, params *SdnDnsZoneUpdateParams) {
-	z, ok := p.ents[ref].(*inventory.SdnDnsZone)
+func (p *entityProjection) sdnDnsServerUpdate(ref inventory.Ref, params *SdnDnsZoneUpdateParams) {
+	s, ok := p.ents[ref].(*inventory.SdnDnsServer)
 	if !ok {
 		return
 	}
-	cp := *z
-	if params.DNS != nil {
-		cp.DNS = *params.DNS
+	cp := *s
+	if params.Type != nil {
+		cp.Type = *params.Type
+	}
+	if params.URL != nil {
+		cp.URL = *params.URL
+	}
+	if params.Fingerprint != nil {
+		cp.Fingerprint = *params.Fingerprint
 	}
 	if params.TTL != nil {
 		cp.TTL = *params.TTL
 	}
+	if params.ReverseMaskV6 != nil {
+		cp.ReverseMaskV6 = *params.ReverseMaskV6
+	}
+	// Key is not projected: see inventory.SdnDnsServer's comment. An update
+	// that rotates the key shows as no field change here, which is correct —
+	// a preview must not display a secret, and "the key changed" is not
+	// something a diff can say without saying what it changed to.
 	p.put(&cp)
 }
 

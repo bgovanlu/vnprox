@@ -434,6 +434,14 @@ type SDNConfig struct {
 	Subnets    []SDNSubnetConfig    `json:"subnets"`
 	DnsZones   []SDNDnsZoneConfig   `json:"dnsZones,omitempty"`
 	DnsRecords []SDNDnsRecordConfig `json:"dnsRecords,omitempty"`
+	// DnsUnreadable names the DNS domains this snapshot could NOT capture
+	// records for, with the reason (T-4112). It exists because a snapshot is
+	// what a rollback restores from, and a rollback that silently restores
+	// "no records" for a domain whose PowerDNS server happened to be
+	// unreachable at capture time would delete records nobody asked it to.
+	// An empty list is the healthy case and means the DNS half of this
+	// snapshot is complete.
+	DnsUnreadable []SDNDnsUnreadable `json:"dnsUnreadable,omitempty"`
 	// Fabrics (T-3101) is the pre-apply/rollback snapshot's fabric set,
 	// reconciled by apply_sdn.go's sdnRestoreOps exactly like Zones above —
 	// create/delete/field-update are all reconciled, the same three-phase
@@ -469,6 +477,13 @@ type SDNDnsZoneConfig struct {
 	ID  string `json:"id"`
 	DNS string `json:"dns,omitempty"`
 	TTL int    `json:"ttl,omitempty"`
+}
+
+// SDNDnsUnreadable is one DNS domain a snapshot could not read, and why.
+type SDNDnsUnreadable struct {
+	ID      string `json:"id"`
+	SDNZone string `json:"sdnZone,omitempty"`
+	Reason  string `json:"reason"`
 }
 
 // SDNDnsRecordConfig mirrors SdnDnsRecordCreateParams' field set. ID is the

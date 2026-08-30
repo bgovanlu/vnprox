@@ -205,12 +205,27 @@ The design rule is **redacted by construction, not by review**:
   tested in both directions — it must remove the credential *and* leave the surrounding diagnostic
   intact, because a bundle that redacts everything is useless and would pass a naive leak test.
 - **Changeset ops are walked by key name, not by known field.** `internal/api`'s `redactOpSecrets`
-  strips one known field from one known op type, which is right for a `[]change.Op` response and
+  strips known fields from known op types, which is right for a `[]change.Op` response and
   wrong for an archive that must be safe against the op type that lands next phase. The bundle walks
   the stored JSON and redacts any value under a key matching the credential vocabulary, plus
   `*_enc` / `*_hash` suffixes, so a sealed field invented later is covered the day it appears.
   Unparsable JSON is replaced wholesale: "I could not parse it" and "I know it is safe" are not the
   same statement.
+- **The API response path strips secrets per op type, and that list is a maintenance burden by
+  design.** `redactOpSecrets` covers `wg.peer.add`'s preshared key (plaintext and sealed),
+  `sdn.dns.zone.create`/`.update`'s PowerDNS API key, and `sdn.ipam.create`/`.update`'s IPAM token.
+  The last of those was **unredacted until T-4112**: it had been echoed back on every changeset read
+  since the op family shipped, while `docs/features/sdn.md` told operators PVE never echoes a token
+  back — vnprox did. It was fixed with the DNS key rather than filed, because it is the same shape,
+  in the same function, and leaving a known credential echo in place to keep a diff tidy is not a
+  trade worth making.
+
+  The per-type list is why the bundle path above walks by key name instead: an enumerated list is
+  only as good as whoever last extended it. The guard against that here is a test that marshals
+  every secret-bearing op with one sentinel and searches the *serialized* output, so an op family
+  that grows a credential field and is not added to the function fails the test rather than shipping
+  a leak. Redaction is by omission, not substitution — the field is emptied, never replaced with a
+  placeholder a client could write back as if it were the value.
 - **The leak test is the one that matters, and it has controls.** A bundle is produced from an
   installation seeded with one marker per declared secret class — and, crucially, with those markers
   planted in the places a bundle *actually reads* (the interfaces file, the log, `vnprox.toml`, a

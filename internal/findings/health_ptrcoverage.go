@@ -4,7 +4,7 @@
 // for every forward (A/AAAA) record vnprox knows about via
 // internal/inventory/dns.go (itself populated by internal/collect's poll of
 // the same PowerDNS-backed SDN DNS plugin internal/sdn/dns.go reads —
-// internal/pve/sdn_dns.go's ListSDNDnsZones/ListSDNDnsRecords, no second DNS
+// internal/sdndns joins PVE's config to the PowerDNS server, no second DNS
 // client here), does a matching PTR exist in the corresponding reverse zone?
 //
 // GROUND TRUTH (read off pvecube 2026-08-28, PVE 9.2.4's own
@@ -20,10 +20,17 @@
 // /cluster/sdn/dns/<id>` returns only get/set/delete, and `pvesh ls
 // /cluster/sdn/dns/<id>` reports "does not define child links" — every
 // record read PVE itself does goes straight to the PowerDNS HTTP API using
-// the plugin's own url+key). internal/pve/sdn_dns.go's ListSDNDnsRecords/
-// ResolveSDNDnsRecords already carry a needs-hardware-validation disclaimer
-// for exactly this reason; this check builds on top of what that seam
-// already returns rather than re-litigating it.
+// the plugin's own url+key).
+//
+// T-4112 UPDATE. When this check was written, the seam it builds on was
+// calling PVE routes that do not exist, so on any real cluster it received
+// zero records for every zone and reported ptr_zone_unreadable for all of
+// them — correctly, given what it was told, and permanently. This file needed
+// no change for that: internal/sdndns now reads the PowerDNS server this
+// comment already named as ground truth, and the check finally sees the
+// records it was written against. The one real change here is Values: a
+// PowerDNS rrset can hold several addresses under one name, and auditing only
+// the first would report a covered address as uncovered.
 //
 // THREE STATES, not two:
 //   - PTR present and matching -> no finding.
@@ -114,52 +121,64 @@ func checkPtrCoverage(snap inventory.Snapshot) []Finding {
 		if !ok || (!strings.EqualFold(rec.Type, "A") && !strings.EqualFold(rec.Type, "AAAA")) {
 			continue
 		}
-		ip := net.ParseIP(rec.Value)
-		if ip == nil {
-			continue // not a real address; nothing to audit
-		}
-		ptrName := reverseDNSName(ip)
-		if ptrName == "" {
-			continue
-		}
-
-		zr, label, managed := findReverseZone(zones, ptrName)
-		if !managed {
-			// Reverse zone not delegated to any DNS zone vnprox knows
-			// about — out of scope, never a finding.
-			continue
-		}
-		if len(zr.records) == 0 {
-			unreadable[zr.zone.ID] = true
-			continue
-		}
-
-		fwdFQDN := ptrFQDN(rec.Name, rec.Zone)
-		var ptrRec *inventory.SdnDnsRecord
-		for _, r := range zr.records {
-			if strings.EqualFold(r.Type, "PTR") && strings.EqualFold(r.Name, label) {
-				ptrRec = r
-				break
+		// Every address under this name, not just the first (T-4112). A
+		// round-robin A record covers each of its addresses independently:
+		// one may have a PTR and another may not, and reporting only the
+		// first would hide half the gap.
+		for _, value := range recordValues(rec) {
+			ip := net.ParseIP(value)
+			if ip == nil {
+				continue // not a real address; nothing to audit
 			}
-		}
+			ptrName := reverseDNSName(ip)
+			if ptrName == "" {
+				continue
+			}
 
-		fwdRef := rec.GetRef().String()
-		switch {
-		case ptrRec == nil:
-			detail := fmt.Sprintf(
-				"%s (%s) has a forward %s record but no PTR in reverse zone %s — reverse lookups on %s will fail",
-				fwdFQDN, rec.Value, strings.ToUpper(rec.Type), zr.zone.ID, rec.Value)
-			f := newHealthFinding(CheckPtrMissing, SeverityWarning, detail, nil, []string{fwdRef})
-			f.DocsLink = ptrCoverageDocsLink
-			out = append(out, f)
-		case !ptrFQDNEqual(ptrRec.Value, fwdFQDN):
-			detail := fmt.Sprintf(
-				"%s (%s) has a forward %s record, but its PTR in reverse zone %s points to %q instead — a stale or mismatched reverse record",
-				fwdFQDN, rec.Value, strings.ToUpper(rec.Type), zr.zone.ID, ptrRec.Value)
-			f := newHealthFinding(CheckPtrMismatch, SeverityWarning, detail, nil,
-				[]string{fwdRef, ptrRec.GetRef().String()})
-			f.DocsLink = ptrCoverageDocsLink
-			out = append(out, f)
+			zr, label, managed := findReverseZone(zones, ptrName)
+			if !managed {
+				// Reverse zone not delegated to any DNS zone vnprox knows
+				// about — out of scope, never a finding.
+				continue
+			}
+			if len(zr.records) == 0 {
+				unreadable[zr.zone.ID] = true
+				continue
+			}
+
+			fwdFQDN := ptrFQDN(rec.Name, rec.Zone)
+			var ptrRec *inventory.SdnDnsRecord
+			for _, r := range zr.records {
+				if strings.EqualFold(r.Type, "PTR") && strings.EqualFold(r.Name, label) {
+					ptrRec = r
+					break
+				}
+			}
+
+			fwdRef := rec.GetRef().String()
+			switch {
+			case ptrRec == nil:
+				detail := fmt.Sprintf(
+					"%s (%s) has a forward %s record but no PTR in reverse zone %s — reverse lookups on %s will fail",
+					fwdFQDN, value, strings.ToUpper(rec.Type), zr.zone.ID, value)
+				f := newHealthFinding(CheckPtrMissing, SeverityWarning, detail, nil, []string{fwdRef})
+				f.DocsLink = ptrCoverageDocsLink
+				out = append(out, f)
+			// A PTR rrset may itself hold several targets. Matching ANY of
+			// them is a match: a resolver asked for this address gets every
+			// target back, so a shared address with two names is correctly
+			// configured, not a mismatch. Only when none matches is the
+			// reverse record stale.
+			case !ptrPointsAt(ptrRec, fwdFQDN):
+				detail := fmt.Sprintf(
+					"%s (%s) has a forward %s record, but its PTR in reverse zone %s points to %q instead — a stale or mismatched reverse record",
+					fwdFQDN, value, strings.ToUpper(rec.Type), zr.zone.ID,
+					strings.Join(recordValues(ptrRec), ", "))
+				f := newHealthFinding(CheckPtrMismatch, SeverityWarning, detail, nil,
+					[]string{fwdRef, ptrRec.GetRef().String()})
+				f.DocsLink = ptrCoverageDocsLink
+				out = append(out, f)
+			}
 		}
 	}
 
@@ -253,4 +272,35 @@ func findReverseZone(zones map[string]*ptrZoneEntry, ptrName string) (*ptrZoneEn
 		return best, "@", true
 	}
 	return best, strings.TrimSuffix(ptrName, "."+bestID), true
+}
+
+// recordValues returns every value a record carries, in a stable order
+// (T-4112). Values is the full rrset; Value is its first entry, kept for the
+// single-valued case and for callers that construct a record by hand. Reading
+// Values with a Value fallback means a hand-built test fixture and a real
+// poll behave the same, which is the only way this check's tests are worth
+// anything.
+func recordValues(rec *inventory.SdnDnsRecord) []string {
+	if len(rec.Values) > 0 {
+		return rec.Values
+	}
+	if rec.Value == "" {
+		return nil
+	}
+	return []string{rec.Value}
+}
+
+// ptrPointsAt reports whether a PTR rrset names fqdn among its targets.
+//
+// Any match counts. A resolver asked for the address receives every target in
+// the rrset, so an address deliberately given two names resolves correctly
+// for both; calling that a mismatch would train an operator to ignore this
+// check, which is the failure mode T-4109's card names explicitly.
+func ptrPointsAt(ptr *inventory.SdnDnsRecord, fqdn string) bool {
+	for _, target := range recordValues(ptr) {
+		if ptrFQDNEqual(target, fqdn) {
+			return true
+		}
+	}
+	return false
 }

@@ -730,27 +730,28 @@ type SDNSpec struct {
 	Controllers []SDNControllerSpec `yaml:"controllers,omitempty"`
 }
 
-// SDNDnsZoneSpec is one DNS zone (T-1204): a forward domain registered in
-// /etc/pve/sdn/dns.cfg, backed by a PowerDNS plugin instance. Records holds
-// the zone's authoritative record set (what PVE has written into PowerDNS).
-// Unreachable simulates a PowerDNS server that config-truth still knows
-// about but whose live "resolve" read fails — the config-vs-live duality
-// GET /sdn/dns's records/resolved split renders.
+// SDNDnsZoneSpec is one /cluster/sdn/dns entry (T-1204, corrected by
+// T-4112): a PowerDNS SERVER CONNECTION, not a DNS zone. The type keeps its
+// name because the fixture key (`dns_zones`) and the field names are a
+// fixture contract that existing YAML depends on; what changed is that it now
+// carries what PVE actually stores and emits the field names PVE emits.
+//
+// The ID tag was `json:"zone"` and is now `json:"dns"`. That single character
+// is why vnprox decoded an empty id off every real cluster: PVE's own config
+// helper sets `$scfg->{dns} = $id`, and this mock was the only thing in the
+// world that answered `zone`. A fixture's job is to match what the node says.
+//
+// The per-zone Records/Unreachable fields are gone with the invented routes
+// that served them (sdn_dns.go's comment). Records live in PowerDNS; a test
+// that needs them stands up a PowerDNS double.
 type SDNDnsZoneSpec struct {
-	ID          string             `yaml:"id" json:"zone"`
-	DNS         string             `yaml:"dns,omitempty" json:"dns,omitempty"`
-	Type        string             `yaml:"type,omitempty" json:"type,omitempty"`
-	Records     []SDNDnsRecordSpec `yaml:"records,omitempty" json:"-"`
-	TTL         int                `yaml:"ttl,omitempty" json:"ttl,omitempty"`
-	Unreachable bool               `yaml:"unreachable,omitempty" json:"-"`
-}
-
-// SDNDnsRecordSpec is one DNS record within a zone.
-type SDNDnsRecordSpec struct {
-	Name  string `yaml:"name" json:"name"`
-	Type  string `yaml:"type" json:"type"`
-	Value string `yaml:"value" json:"value"`
-	TTL   int    `yaml:"ttl,omitempty" json:"ttl,omitempty"`
+	ID            string `yaml:"id" json:"dns"`
+	Type          string `yaml:"type,omitempty" json:"type,omitempty"`
+	URL           string `yaml:"url,omitempty" json:"url,omitempty"`
+	Key           string `yaml:"key,omitempty" json:"key,omitempty"`
+	Fingerprint   string `yaml:"fingerprint,omitempty" json:"fingerprint,omitempty"`
+	TTL           int    `yaml:"ttl,omitempty" json:"ttl,omitempty"`
+	ReverseMaskV6 int    `yaml:"reversemaskv6,omitempty" json:"reversemaskv6,omitempty"`
 }
 
 // SDNIpamSpec is one configured IPAM plugin instance, as listed by

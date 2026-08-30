@@ -54,3 +54,103 @@ no such resource '/cluster/sdn/dns/{dns}/records'
 $ pvesh usage /cluster/sdn/dns/{dns}/resolve
 no such resource '/cluster/sdn/dns/{dns}/resolve'
 
+# ---------------------------------------------------------------------------
+# Appended 2026-08-30 for T-4112 option B (talk to PowerDNS directly).
+#
+# Everything below was read off pvecube. The pvesh calls are `usage`/`ls`
+# (read-only); the perl one-liners only compute — they open no socket and
+# write nothing. Nothing here mutates pvecube.
+#
+# The point of this half of the transcript: PVE keeps NO record copy of its
+# own, so if vnprox is to read SDN DNS records at all, it reads them from the
+# same PowerDNS server the plugin writes them to, using the same base URL,
+# the same header and the same paths. Those are quoted here from the plugin
+# rather than from PowerDNS's documentation, because it is the plugin vnprox
+# has to agree with.
+# ---------------------------------------------------------------------------
+
+$ grep -n 'sub powerdns_api_request' -A 14 /usr/share/perl5/PVE/Network/SDN/Dns/PowerdnsPlugin.pm
+my sub powerdns_api_request {
+    my ($config, $method, $path, $params) = @_;
+
+    return PVE::Network::SDN::api_request(
+        $method,
+        "$config->{url}${path}",
+        ['Content-Type' => 'application/json; charset=UTF-8', 'X-API-Key' => $config->{key}],
+        $params,
+        $config->{fingerprint},
+    );
+}
+
+  => the plugin's `url` is a full API base and paths are appended verbatim.
+     on_update_hook GETs it bare; get_zone_content GETs "$url/zones/$zone";
+     verify_zone GETs "$url/zones/$zone?rrsets=false"; every write is a
+     single PATCH "$url/zones/$zone" with {"rrsets": [...]}. There is no
+     per-record route: an rrset is replaced whole (changetype REPLACE), or
+     removed whole (changetype DELETE with an empty records list).
+
+$ grep -n 'sub api_request' -A 35 /usr/share/perl5/PVE/Network/SDN.pm   [abridged]
+    my $ua = LWP::UserAgent->new(protocols_allowed => ['http', 'https'], timeout => 30);
+    if (defined($expected_fingerprint)) {
+        my $ssl_verify_callback = sub {
+            my (undef, undef, undef, undef, $cert, $depth) = @_;
+            return 1 if $depth != 0;
+            my $fingerprint = Net::SSLeay::X509_get_fingerprint($cert, 'sha256');
+            return $fingerprint eq $expected_fingerprint ? 1 : 0;
+        };
+        $ua->ssl_opts(
+            verify_hostname => 0,
+            SSL_verify_mode => SSL_VERIFY_PEER,
+            SSL_verify_callback => $ssl_verify_callback,
+        );
+    }
+
+  => when `fingerprint` is set PVE does LEAF PINNING with hostname
+     verification OFF, not "verify normally and also check the digest".
+     internal/powerdns reproduces exactly this (see pinnedTLS).
+     Timeout is 30s.
+
+$ grep -n 'api_sdn_dns_config' -A 8 /usr/share/perl5/PVE/API2/Network/SDN/Dns.pm
+my $api_sdn_dns_config = sub {
+    my ($cfg, $id) = @_;
+    my $scfg = dclone(PVE::Network::SDN::Dns::sdn_dns_config($cfg, $id));
+    $scfg->{dns} = $id;
+    $scfg->{digest} = $cfg->{digest};
+    return $scfg;
+};
+
+  => GET /cluster/sdn/dns/{dns} returns the plugin config UNREDACTED,
+     including url and key (SDN.Allocate is required to read it). The
+     object's identifier field is `dns`, NOT `zone` — vnprox's SDNDnsZone.ID
+     was tagged `json:"zone"` and therefore decoded EMPTY off real hardware.
+
+$ pvesh usage /cluster/sdn/zones -v | grep -A2 'dns'
+  --dns      <string>       dns api server
+  --dnszone  <string>       dns domain zone  ex: mydomain.com
+  --reversedns <string>     reverse dns api server
+
+  => the DNS *domains* live on the SDN ZONE object, not under /cluster/sdn/dns.
+     /cluster/sdn/dns is a list of PowerDNS server connections; a zone names
+     which of them to use (`dns`, `reversedns`) and what domain to write into
+     (`dnszone`). This is why vnprox's "list dns zones" read was looking in
+     the wrong place entirely.
+
+# --- reverse-zone naming, computed with the same modules the plugin uses ---
+$ perl -MNet::IP -MNetAddr::IP -e '...'
+reverse_ip(10.0.0.5) = 5.0.0.10.in-addr.arpa.
+reverse_ip(192.168.1.9) = 9.1.168.192.in-addr.arpa.
+reverse_ip(172.16.5.4) = 4.5.16.172.in-addr.arpa.
+reverse_ip(203.0.113.7) = 7.113.0.203.in-addr.arpa.
+cidr 2001:db8::/64 -> network 2001:DB8:0:0:0:0:0:0/64 -> reverse_ip 0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa.
+cidr 2001:db8:1:2::/48 -> network 2001:DB8:1:0:0:0:0:0/48 -> reverse_ip 1.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa.
+cidr fd00::/8 -> network FD00:0:0:0:0:0:0:0/8 -> reverse_ip d.f.ip6.arpa.
+reverse_ip(2001:db8::1) = 1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa.
+rfc1918 10.0.0.0/24 = 1
+rfc1918 203.0.113.0/24 = 0
+
+  => PTR record NAMES are the fully-reversed address (all four octets / all
+     32 nibbles) with a trailing dot. IPv6 reverse ZONE names are
+     prefixlen/4 nibbles. internal/powerdns/reverse.go reproduces both, and
+     also reproduces get_reversedns_zone's RFC1918 special cases
+     (168.192 / 16-31.172 / 10) — see that file for the one PVE quirk it
+     copies deliberately rather than corrects.

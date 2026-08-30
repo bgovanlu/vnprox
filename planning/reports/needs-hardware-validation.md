@@ -1252,14 +1252,39 @@ in `internal/ceph` is exercised against `internal/pvemock`'s fixture-driven impl
       deployments than guessed here.
 
 ## T-1204 — DNS management (PowerDNS)
-_(surfaced during the T-1208 v2.0 docs-freeze audit — the DNS plugin is mock-only)_
+_(surfaced during the T-1208 v2.0 docs-freeze audit; **substantially closed by T-4112, 2026-08-30**)_
 
-- [ ] **Real PVE SDN DNS-plugin / PowerDNS behavior.** `GET /sdn/dns` and the `sdn.dns.*` changeset
-      ops are developed against `internal/pvemock`'s PowerDNS-shaped double. The real per-record
-      PowerDNS API error shapes, TTL defaults, zone notify/transfer semantics, and the exact
-      `/etc/pve/sdn/dns.cfg` plugin-config wire shape must be confirmed against a real PVE node with
-      a configured DNS plugin. pvemock's `400` rejection shapes are modeled where known and flagged
-      where unverified — do not treat them as authoritative.
+**Most of what this section claimed needed hardware did not.** The entry below said the PVE-side
+wire shape "must be confirmed against a real PVE node with a configured DNS plugin". Confirming the
+*shape* needed no such thing: `pvesh usage` and the plugin source are readable on pvecube today, and
+reading them found that the routes vnprox was calling did not exist at all
+(`planning/reports/evidence/pve-9.2.4-sdn-dns-surface.txt`). The unverified item was not a detail of
+behaviour — it was the whole URL space, and a year of "flagged as unverified" did not surface it
+because a flag is not a check. This is the same correction the CLAUDE.md cluster paragraph had to
+make: **if a limit here blocks you, verify it on the node before you accept it.**
+
+Now settled from the node, and no longer needing hardware:
+
+- The `/cluster/sdn/dns` object shape, its identifier field (`dns`, not `zone`), and the fact that
+  it lists PowerDNS server connections rather than DNS zones.
+- That PVE has no record API of any kind, and that every record read or write goes straight to
+  PowerDNS over `X-API-Key` with `PATCH /zones/{zone}` rrset semantics.
+- TTL defaults (`ttl` on the instance, else PowerdnsPlugin.pm's own 14400).
+- Reverse-zone naming, including PVE's RFC1918 special cases and its public-IPv4 mask quirk —
+  cross-checked against the same Perl modules PVE uses.
+- Fingerprint pinning semantics (leaf pin, hostname verification off).
+
+Still genuinely unproven, and only these:
+
+- [ ] **Real PowerDNS error-body shapes and status codes** for a rejected `PATCH` — a bad rrset, a
+      zone the API key has no access to, a DNSSEC-signed zone. `internal/powerdns` reads
+      `{"error": ...}` and falls back to the raw body, which is right for the shapes PowerDNS
+      documents; the exact status/message pairs for each rejection are unconfirmed because no
+      PowerDNS instance is reachable from this project. **This needs a PowerDNS server, not PVE
+      hardware** — the two are separable, and a container would settle it.
+- [ ] **Zone notify/transfer semantics after a vnprox-driven write.** vnprox `PATCH`es and stops;
+      whether a secondary picks the change up is PowerDNS's own business, but an operator will
+      reasonably expect vnprox to say something if it does not.
 
 ## T-1205 — Guarded switch config push (gNMI/OpenConfig)
 _(surfaced during the T-1208 v2.0 docs-freeze audit — switchdrv is mock-only)_

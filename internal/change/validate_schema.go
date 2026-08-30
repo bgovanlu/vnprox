@@ -848,16 +848,58 @@ func schemaValidateOp(op Op) []Finding {
 		// no params to validate.
 
 	case *SdnDnsZoneCreateParams:
-		if !validDNSName(op.Target.ID) {
-			out = append(out, errorf(codeDNSNameInvalid, ref, "dns zone %q is not a valid domain name", op.Target.ID))
+		// T-4112: the target is a /cluster/sdn/dns instance id, not a domain.
+		// It used to be checked with validDNSName, which accepted
+		// "example.com" — a string PVE rejects, since the id pattern is
+		// `[a-zA-Z][a-zA-Z0-9]*[a-zA-Z0-9]` with no dots. A validator that
+		// passes exactly the values the API refuses is worse than none: it
+		// moves the failure from stage time to apply time.
+		if !validSDNObjectID(op.Target.ID) {
+			out = append(out, errorf(codeDNSNameInvalid, ref,
+				"dns plugin instance id %q is not valid (letters and digits, starting with a letter)", op.Target.ID))
 		}
+		// PVE declares type, url and key non-optional. Requiring them here is
+		// the difference between a changeset that cannot be staged and one
+		// that stages cleanly and then 400s against the real API — which is
+		// what this op did until T-4112, because nothing it was ever applied
+		// against enforced them.
+		if p.Type == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "sdn.dns.zone.create requires type"))
+		} else if p.Type != "powerdns" {
+			out = append(out, errorf(codeDNSPluginTypeInvalid, ref,
+				"dns plugin type %q is not supported (PVE 9.2.4 has only \"powerdns\")", p.Type))
+		}
+		if p.URL == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "sdn.dns.zone.create requires url"))
+		}
+		if p.Key == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "sdn.dns.zone.create requires key"))
+		}
+		schemaDNSFingerprint(p.Fingerprint, ref, &out)
 		if p.TTL < 0 {
 			out = append(out, errorf(codeRequiredFieldMissing, ref, "dns zone ttl %d must not be negative", p.TTL))
 		}
+		schemaReverseMaskV6(p.ReverseMaskV6, ref, &out)
 
 	case *SdnDnsZoneUpdateParams:
+		if p.Type != nil && *p.Type != "powerdns" {
+			out = append(out, errorf(codeDNSPluginTypeInvalid, ref,
+				"dns plugin type %q is not supported (PVE 9.2.4 has only \"powerdns\")", *p.Type))
+		}
+		if p.URL != nil && *p.URL == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "dns plugin url must not be empty when set"))
+		}
+		if p.Key != nil && *p.Key == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "dns plugin key must not be empty when set"))
+		}
+		if p.Fingerprint != nil {
+			schemaDNSFingerprint(*p.Fingerprint, ref, &out)
+		}
 		if p.TTL != nil && *p.TTL < 0 {
 			out = append(out, errorf(codeRequiredFieldMissing, ref, "dns zone ttl %d must not be negative", *p.TTL))
+		}
+		if p.ReverseMaskV6 != nil {
+			schemaReverseMaskV6(*p.ReverseMaskV6, ref, &out)
 		}
 
 	case *SdnDnsZoneDeleteParams:
@@ -1565,6 +1607,63 @@ func validDNSName(s string) bool {
 		return false
 	}
 	return dnsLabelRe.MatchString(s)
+}
+
+// validSDNObjectID is PVE's own SDN object-id pattern, captured from
+// `pvesh usage /cluster/sdn/dns` (`--dns [a-zA-Z][a-zA-Z0-9]*[a-zA-Z0-9]`):
+// letters and digits only, starting with a letter, at least two characters.
+// No dots, hyphens or underscores — which is why checking a plugin instance
+// id with validDNSName accepted exactly the domain-shaped strings PVE
+// rejects.
+var sdnObjectIDRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9]*[a-zA-Z0-9]$`)
+
+func validSDNObjectID(s string) bool {
+	return sdnObjectIDRe.MatchString(s)
+}
+
+// schemaDNSFingerprint flags a certificate pin that is not a SHA-256 digest.
+// PVE's standard option is colon-separated hex; vnprox also accepts the bare
+// 64-hex form (internal/powerdns's parseFingerprint). An empty value means
+// "no pinning" and is allowed; a malformed one is refused at stage time
+// rather than at connect time, because the alternative — a client that
+// silently runs unpinned because someone typed the digest wrong — is the
+// failure this check exists to prevent.
+func schemaDNSFingerprint(fp, ref string, out *[]Finding) {
+	if fp == "" {
+		return
+	}
+	cleaned := strings.ToLower(strings.ReplaceAll(fp, ":", ""))
+	if len(cleaned) != 64 {
+		*out = append(*out, errorf(codeDNSFingerprintInvalid, ref,
+			"fingerprint %q is not a SHA-256 digest (want 64 hex digits, got %d)", fp, len(cleaned)))
+		return
+	}
+	for _, c := range cleaned {
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			*out = append(*out, errorf(codeDNSFingerprintInvalid, ref,
+				"fingerprint %q contains a non-hex character", fp))
+			return
+		}
+	}
+}
+
+// schemaReverseMaskV6 flags an IPv6 reverse-zone mask PowerdnsPlugin.pm would
+// die on: `die "reverse dns zone mask need to be a multiple of 4"`. A zone
+// name is built from whole nibbles, so a mask off that boundary has no
+// corresponding zone at all.
+func schemaReverseMaskV6(mask int, ref string, out *[]Finding) {
+	if mask == 0 {
+		return // unset: the subnet's own prefix length is used.
+	}
+	if mask < 0 || mask > 128 {
+		*out = append(*out, errorf(codeDNSReverseMaskInvalid, ref,
+			"reversemaskv6 /%d is out of range [4,128]", mask))
+		return
+	}
+	if mask%4 != 0 {
+		*out = append(*out, errorf(codeDNSReverseMaskInvalid, ref,
+			"reversemaskv6 /%d is not a multiple of 4 — an ip6.arpa zone name is built from whole nibbles", mask))
+	}
 }
 
 // dnsTypeFromRecordID recovers the record type from a sdn-dns-record Ref.ID's

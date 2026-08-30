@@ -12,6 +12,7 @@ import (
 
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/pve"
+	"github.com/bgovanlu/vnprox/internal/sdndns"
 )
 
 // This file adapts the raw types produced by T-101 (internal/pve) and T-102
@@ -575,31 +576,44 @@ func parseGuestNic(node, vmid, key, val string) *GuestNic {
 	return nic
 }
 
-// FromPVEDNS maps PVE SDN's DNS plugin config (zones) and their PowerDNS
-// records to cluster-scoped SdnDnsZone/SdnDnsRecord partials (T-1204).
-// records is keyed by zone (domain) id. These entities carry the same
+// FromPVEDNS maps the DNS domains vnprox derived from SDN configuration, and
+// the records read back from the PowerDNS server that serves them, to
+// cluster-scoped SdnDnsZone/SdnDnsRecord partials (T-1204, re-sourced by
+// T-4112). records is keyed by domain. These entities carry the same
 // SourcePVESDN provenance as the rest of the SDN tree — the SDN poll folds
 // them into the same ApplyPoll call.
-func FromPVEDNS(zones []pve.SDNDnsZone, records map[string][]pve.SDNDnsRecord) []Entity {
+//
+// The entity shapes are unchanged, and deliberately so: what moved in T-4112
+// is where the data comes from, not what it means. A zone's ID is still the
+// domain and a record's is still "<zone>/<name>/<type>", so the change
+// engine's op-target space, the referential validators and T-4109's PTR audit
+// all keep working against a source that now exists.
+func FromPVEDNS(zones []sdndns.Zone, records map[string][]sdndns.Record) []Entity {
 	var out []Entity
 	for _, z := range zones {
 		zone := &SdnDnsZone{
-			Ref:     Ref{Kind: KindSDNDnsZone, ID: z.ID},
-			ID:      z.ID,
-			DNS:     z.DNS,
-			TTL:     z.TTL,
-			Pending: string(z.Pending),
+			Ref: Ref{Kind: KindSDNDnsZone, ID: z.Domain},
+			ID:  z.Domain,
+			DNS: z.Plugin,
+			TTL: z.TTL,
 		}
+		// Pending has no meaning for a DNS domain any more. It used to
+		// decode PVE's staged-edit marker off /cluster/sdn/dns, which is the
+		// plugin-instance list; a domain derived from an SDN zone's dnszone
+		// field has no separate staged form of its own. Left empty rather
+		// than filled with the owning zone's marker, which would claim a
+		// staged edit that does not exist.
 		setRaw(zone, prettyJSON(z))
 		out = append(out, zone)
-		for _, r := range records[z.ID] {
+		for _, r := range records[z.Domain] {
 			rec := &SdnDnsRecord{
-				Ref:   Ref{Kind: KindSDNDnsRecord, ID: z.ID + "/" + r.Name + "/" + r.Type},
-				Zone:  z.ID,
-				Name:  r.Name,
-				Type:  r.Type,
-				Value: r.Value,
-				TTL:   r.TTL,
+				Ref:    Ref{Kind: KindSDNDnsRecord, ID: z.Domain + "/" + r.Name + "/" + r.Type},
+				Zone:   z.Domain,
+				Name:   r.Name,
+				Type:   r.Type,
+				Value:  r.Value,
+				Values: r.Values,
+				TTL:    r.TTL,
 			}
 			setRaw(rec, prettyJSON(r))
 			out = append(out, rec)
