@@ -1,0 +1,56 @@
+# Captured 2026-08-30T09:34:12-04:00 on pvecube, pve-manager/9.2.4/5e5ae681198514d4 (running kernel: 7.0.14-4-pve)
+
+$ pvesh usage /cluster/sdn/dns -v
+USAGE: pvesh get /cluster/sdn/dns  [OPTIONS]
+
+  SDN dns index.
+
+  --type     <powerdns>
+	     Only list sdn dns of specific type
+
+USAGE: pvesh create /cluster/sdn/dns --dns <string> --key <string> --type <string> --url <string> [OPTIONS]
+
+  Create a new sdn dns object.
+
+  --dns      [a-zA-Z][a-zA-Z0-9]*[a-zA-Z0-9]
+	     The SDN dns object identifier.
+
+  --fingerprint ([A-Fa-f0-9]{2}:){31}[A-Fa-f0-9]{2}
+	     Certificate SHA 256 fingerprint.
+
+  --key      <string>
+	     no description available
+
+  --lock-token <string>
+	     the token for unlocking the global SDN configuration
+
+  --reversemaskv6 <integer>
+	     no description available
+
+  --reversev6mask <integer>
+	     no description available
+
+  --ttl      <integer>
+	     no description available
+
+  --type     <powerdns>
+	     Plugin type.
+
+  --url      <string>
+	     no description available
+
+
+$ pvesh ls /cluster/sdn/dns
+(empty: no PowerDNS plugin instance is configured on this cluster)
+
+$ pvesh usage /cluster/sdn/dns/{dns}
+USAGE: pvesh get /cluster/sdn/dns/{dns} 
+USAGE: pvesh set /cluster/sdn/dns/{dns}  [OPTIONS]
+USAGE: pvesh delete /cluster/sdn/dns/{dns}  [OPTIONS]
+
+$ pvesh usage /cluster/sdn/dns/{dns}/records
+no such resource '/cluster/sdn/dns/{dns}/records'
+
+$ pvesh usage /cluster/sdn/dns/{dns}/resolve
+no such resource '/cluster/sdn/dns/{dns}/resolve'
+

@@ -1,5 +1,6 @@
 # T-4112 · `internal/pve`'s SDN DNS record endpoints are modelled against a PVE surface that does not exist
 
+**Status:** verified on the node, and the card UNDERSTATES it — five functions, not two, and one is on the live poll path. Blocked on a product decision, below.
 **Found by:** T-4109's PTR-coverage work, 2026-08-28 · **size:** M ·
 **depends:** — · **affects:** `internal/pve/sdn_dns.go`, `internal/pvemock`'s DNS fixtures, any
 feature that reads or writes SDN DNS records
@@ -58,3 +59,85 @@ in the client waiting for the first feature that trusts them.
 2. `internal/pvemock` serves no route that real PVE 9.2.4 does not.
 3. If record-level access survives in any form, an evidence transcript shows the real surface it
    talks to.
+
+---
+
+## Verified on pvecube, and the scope is larger than this card recorded
+
+Evidence: `planning/reports/evidence/pve-9.2.4-sdn-dns-surface.txt`, captured 2026-08-30 against
+pvecube (PVE 9.2.4), read-only `pvesh usage`/`ls` only.
+
+The card's central claim holds exactly:
+
+```
+$ pvesh usage /cluster/sdn/dns/{dns}
+USAGE: pvesh get /cluster/sdn/dns/{dns}
+USAGE: pvesh set /cluster/sdn/dns/{dns}  [OPTIONS]
+USAGE: pvesh delete /cluster/sdn/dns/{dns}  [OPTIONS]
+
+$ pvesh usage /cluster/sdn/dns/{dns}/records
+no such resource '/cluster/sdn/dns/{dns}/records'
+
+$ pvesh usage /cluster/sdn/dns/{dns}/resolve
+no such resource '/cluster/sdn/dns/{dns}/resolve'
+```
+
+`{dns}` supports get/set/delete and nothing else. Both invented sub-paths are `no such resource`.
+
+### It is five functions, not two
+
+This card names `ListSDNDnsRecords` and `ResolveSDNDnsRecords`. `internal/pve/sdn_dns.go` has
+three more on the same invented URL space:
+
+| function | route | exists on PVE 9.2.4 |
+|---|---|---|
+| `ListSDNDnsRecords` | `GET /cluster/sdn/dns/{zone}/records` | **no** |
+| `ResolveSDNDnsRecords` | `GET /cluster/sdn/dns/{zone}/resolve` | **no** |
+| `CreateSDNDnsRecord` | `POST /cluster/sdn/dns/{zone}/records` | **no** |
+| `UpdateSDNDnsRecord` | `PUT /cluster/sdn/dns/{zone}/records/{name}/{type}` | **no** |
+| `DeleteSDNDnsRecord` | `DELETE /cluster/sdn/dns/{zone}/records/{name}/{type}` | **no** |
+
+The three write functions are wired into `cmd/vnproxd`'s `pveGateway.SDNStageOp` — the change
+engine's staging dispatcher — behind the `sdn.dns.record.create` / `.update` / `.delete` op types
+(`internal/change/op.go:71-73`), which are schema-validated and appear in `apply_plan.go`'s tables.
+**Applying a changeset containing one of them would POST to a route that does not exist.**
+
+### And "no visible failure" is not true
+
+> *"Nothing in the shipped product calls these two functions against a real node on a normal path."*
+
+`internal/collect/pve.go:420` calls `ListSDNDnsRecords` **once per DNS zone on every collector poll
+cycle**. On any real cluster with a PowerDNS plugin configured, that is a 404 every cycle, forever.
+
+The consequence is not silent. The poll's error branch `continue`s, so no `SdnDnsRecord` entity
+ever enters inventory — and `docs/features/monitoring.md` §59 documents exactly what the PTR
+audit does with that state: **`ptr_zone_unreadable`**, raised because "this state is genuinely
+indistinguishable from *the zone has no records yet*". So T-4109's PTR completeness audit reports
+every reverse zone as unreadable, permanently, on every real cluster — and reports it correctly,
+given what it is told.
+
+Nothing failed in CI because `internal/pvemock` serves all four invented routes
+(`internal/pvemock/sdn_dns.go:45-48`). This is CLAUDE.md's warning realised precisely: *"A mock and
+the check that tests it, both derived from the same secondary source, will pass together forever."*
+
+### Why this is not mine to decide
+
+This card authorises deleting the two READ functions. The larger surface it did not know about
+cannot be deleted the same way, because deleting it removes a shipped feature's data source:
+
+- **Option A — delete record-level support.** Remove five client methods, three change-engine op
+  types and their validation, and four mock routes. **T-4109's PTR coverage audit goes with it** —
+  it exists to compare forward and reverse records, and there would be no records. That is
+  removing a documented feature (`docs/features/monitoring.md` §59), not dead code.
+- **Option B — implement against the real surface.** PVE writes records straight into the backing
+  PowerDNS server from the plugin; there is no PVE API for them. vnprox would talk to PowerDNS
+  directly with the operator's configured `url`/`key`/`fingerprint` (all three are real fields on
+  `/cluster/sdn/dns`, per the transcript). That keeps the PTR audit working and is a new outbound
+  integration with its own auth, TLS-pinning and failure modes.
+
+**Recommendation: B**, but not silently — it is a new external dependency. A is cheaper and honest
+about today's reality; it also deletes a feature that was shipped and documented on the strength of
+routes nobody checked, which is a product call rather than a cleanup.
+
+What is done regardless of the choice: the evidence transcript exists, and the doc comment's
+"unconfirmed shapes" wording is now known to understate "these endpoints do not exist".
