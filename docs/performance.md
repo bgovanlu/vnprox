@@ -18,9 +18,32 @@ go test ./cmd/vnproxd/ -run '^$' -bench 'BenchmarkAPIAtScale' -benchtime=100x -v
 
 | Endpoint | p50 | p95 | p99 | max | Target (p95) | Result |
 |---|---|---|---|---|---|---|
-| `GET /topology` | 60.1 ms | 67.2 ms | 80.8 ms | 80.8 ms | < 300 ms | **PASS** |
+| `GET /topology` (T-607, 2025) | 60.1 ms | 67.2 ms | 80.8 ms | 80.8 ms | < 300 ms | **PASS** |
+| `GET /topology` (T-4113, 2026-08-30) | 116–124 ms | 134–148 ms | — | 152.5 ms | < 300 ms | **PASS** |
 | `POST /simulate/path` (cross-node, pve1→pve8, 8-node/300-guest/40-VNet graph) | 10.0 ms | 13.6 ms | 17.5 ms | 17.5 ms | < 300 ms | **PASS** |
 | `POST /changesets/{id}/validate` | 20.2 ms | 23.1 ms | 33.5 ms | 33.5 ms | < 300 ms | **PASS** |
+
+> **The `GET /topology` row is two rows now, and the reason matters more than either number.**
+>
+> The T-607 figure sat here for five phases as an *observation*, not a budget, so nothing failed
+> when it drifted. By 2026-08-28 the same fixture on the same host measured **p50 ~333–345 ms** —
+> roughly **5× slower at unchanged scale**, and past this section's own provisional bar. It was
+> found only because T-4107 needed a baseline to compare its scale envelope against. A recorded
+> number that nothing asserts is a number that will eventually be wrong while still reading as a
+> current claim.
+>
+> T-4113 profiled rather than guessed, and the guess would have been wrong: the cost was not
+> background contention but `Snapshot.All` re-sorting on every call with
+> `out[i].GetRef().String() < out[j].GetRef().String()` — two five-operand string concatenations per
+> comparison, ~2·n·log(n) allocations per call over ~10,800 entities, repeated for every `All()` a
+> request and its findings producers make. `Ref.String` was 24.7% of the request's CPU profile and
+> the sort another 26.7%; serialisation was ~1.7% and never the problem. Hoisting the sort into the
+> snapshot — immutable, published by atomic pointer swap, so the order cannot change — took
+> `handleTopology` from 42.19% of the profile to 17.16%.
+>
+> **Both rows are now gated.** `api.topology_at_scale_ms` (`perf/budgets.json`) asserts this path at
+> 250 ms, deliberately stricter than the 300 ms prose bar above so the gate fires *before* the
+> documented promise is broken. Verified to fail on the pre-fix code at 319.9 ms.
 
 Environment: this benchmark ran on a shared virtualized dev host (QEMU vCPU, no dedicated hardware) with other processes concurrently active (soak test, background research agents) — these numbers are a conservative upper bound, not a best-case measurement; real PVE-node hardware with a dedicated core is expected to do at least as well.
 
@@ -391,6 +414,7 @@ cold half would report the machine as half its real speed and stretch every cali
 | `inventory.snapshot_at_envelope_us` | 5 us | max | 5 | calibrated | gate | `internal/inventory/envelope_bench_test.go` |
 | `topology.project_at_envelope_ms` | 300 ms | max | 5 | calibrated | gate | `internal/topology/envelope_bench_test.go` |
 | `api.topology_at_envelope_ms` | 1200 ms | max | 5 | cores | gate | `cmd/vnproxd/envelope_bench_test.go` |
+| `api.topology_at_scale_ms` | 250 ms | max | 5 | cores | gate | `cmd/vnproxd/scale_bench_test.go` |
 
 <!-- perf-budgets:end -->
 

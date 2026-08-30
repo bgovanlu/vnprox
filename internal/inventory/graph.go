@@ -19,7 +19,65 @@ type state struct {
 	raw         map[Ref]map[Source]string
 	edgesByRef  map[Ref][]Edge
 	edges       []Edge
-	seq         uint64
+	// sorted is entities in Ref order, materialised ONCE when the snapshot is
+	// published rather than on every All() call — T-4113.
+	//
+	// All() used to sort on each call with
+	// `out[i].GetRef().String() < out[j].GetRef().String()`, which builds two
+	// strings per comparison. Ref.String is a five-operand concatenation, so
+	// an n-entity snapshot cost ~2*n*log(n) allocations per call: at the
+	// 8-node/300-guest scale-lab fixture that is ~10,800 entities, ~280,000
+	// concatenations, EVERY time. A CPU profile of GET /topology attributed
+	// 24.7% of the request to Ref.String and 26.7% to the sort itself.
+	//
+	// The read path was never the right place for it. A snapshot is immutable
+	// and published by atomic pointer swap (see Graph's doc comment), and
+	// All() is called many times per request and again by every findings
+	// producer — so the work was being repeated for a value that cannot
+	// change. Paid once per snapshot instead.
+	//
+	// Computed lazily under sortOnce rather than at every construction site,
+	// and that is a correction. The first version filled `sorted` in the
+	// publish path — but FOUR places build a state (three here, one in
+	// project.go). Missing one left All() returning an empty slice; the
+	// compiler said nothing, because a missing field is just the zero value,
+	// and ten preview tests failed. **A field every construction site must
+	// remember is a field the next construction site will forget.** The state
+	// is immutable once built, so deriving it on first read is both correct
+	// and impossible to skip.
+	sortOnce sync.Once
+	sorted   []Entity
+	seq      uint64
+}
+
+// sortedEntities materialises the Ref-ordered entity slice a snapshot serves
+// from All(). Keys are built once per entity and sorted alongside, rather than
+// recomputed inside the comparison — n string builds instead of ~2*n*log(n).
+// See state.sorted for the measurement that motivated it.
+func sortedEntities(ents map[Ref]Entity) []Entity {
+	out := make([]Entity, 0, len(ents))
+	keys := make([]string, 0, len(ents))
+	for ref, e := range ents {
+		out = append(out, e)
+		keys = append(keys, ref.String())
+	}
+	sort.Sort(&byRefKey{entities: out, keys: keys})
+	return out
+}
+
+// byRefKey sorts entities by a precomputed key, keeping the two slices in
+// step. A plain sort.Slice cannot do this: its Less would have to rebuild the
+// key, which is the cost being removed.
+type byRefKey struct {
+	entities []Entity
+	keys     []string
+}
+
+func (x *byRefKey) Len() int           { return len(x.entities) }
+func (x *byRefKey) Less(i, j int) bool { return x.keys[i] < x.keys[j] }
+func (x *byRefKey) Swap(i, j int) {
+	x.entities[i], x.entities[j] = x.entities[j], x.entities[i]
+	x.keys[i], x.keys[j] = x.keys[j], x.keys[i]
 }
 
 func emptyState() *state {
@@ -303,11 +361,13 @@ func (s Snapshot) RawSource(ref Ref) map[Source]string {
 
 // All returns every resolved entity, sorted by Ref for determinism.
 func (s Snapshot) All() []Entity {
-	out := make([]Entity, 0, len(s.s.entities))
-	for _, e := range s.s.entities {
-		out = append(out, e)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].GetRef().String() < out[j].GetRef().String() })
+	// The order is computed once at publish (see state.sorted). The copy
+	// stays, because the returned slice has always been the caller's to
+	// mutate and handing out the shared backing array would make a snapshot
+	// mutable through a method documented as a read.
+	s.s.sortOnce.Do(func() { s.s.sorted = sortedEntities(s.s.entities) })
+	out := make([]Entity, len(s.s.sorted))
+	copy(out, s.s.sorted)
 	return out
 }
 

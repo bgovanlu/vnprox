@@ -33,6 +33,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bgovanlu/vnprox/internal/perfbudget"
 	"github.com/bgovanlu/vnprox/internal/pvemock"
 )
 
@@ -272,4 +273,73 @@ func readAndClose(resp *http.Response) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	_, err := buf.ReadFrom(resp.Body)
 	return buf.Bytes(), err
+}
+
+// scalePerfSite is this file's own path, as perf/budgets.json spells it.
+const scalePerfSite = "cmd/vnproxd/scale_bench_test.go"
+
+// TestPerfBudgets_APIScale is T-4113's gate for GET /api/v1/topology at the
+// 8-node/300-guest fixture, mirroring envelope_bench_test.go's
+// TestPerfBudgets_APIEnvelope at the scale most installs actually run at.
+//
+// **The absence of this gate is the finding it exists for.**
+// docs/performance.md section 1 recorded 60.1/67.2 ms at T-607 as an
+// OBSERVATION, not a budget. Nothing failed when it drifted to p50 ~333-345
+// ms across the five phases that followed — past that document's own
+// provisional p95 < 300 ms bar — and it was noticed only because T-4107
+// needed a baseline to compare its envelope against. A recorded number that
+// nothing asserts is a number that will be wrong and read as current.
+func TestPerfBudgets_APIScale(t *testing.T) {
+	file, err := perfbudget.LoadRepo()
+	if err != nil {
+		t.Fatalf("loading performance budgets: %v", err)
+	}
+	machine, err := perfbudget.Detect(file)
+	if err != nil {
+		t.Fatalf("calibrating this machine: %v", err)
+	}
+
+	d := bootScaleDaemon(t)
+	sessionID := d.sessionID
+
+	budget, err := file.ByID("api.topology_at_scale_ms")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	// One discarded request, for the same reason the envelope gate discards
+	// one: the first request after the daemon settles pays connection setup
+	// and TLS handshake that a steady-state client never repeats.
+	warm := d.newRequest(http.MethodGet, "/api/v1/topology", nil)
+	if resp := d.do(t, warm, sessionID); resp.StatusCode != http.StatusOK {
+		_, _ = readAndClose(resp)
+		t.Fatalf("warm-up GET /topology: status %d", resp.StatusCode)
+	} else {
+		_, _ = readAndClose(resp)
+	}
+
+	result, err := perfbudget.Measure(budget, machine, func(int) (float64, error) {
+		req := d.newRequest(http.MethodGet, "/api/v1/topology", nil)
+		start := time.Now()
+		resp := d.do(t, req, sessionID)
+		el := time.Since(start)
+		body, _ := readAndClose(resp)
+		if resp.StatusCode != http.StatusOK {
+			return 0, fmt.Errorf("GET /topology: status %d body %s", resp.StatusCode, body)
+		}
+		return float64(el.Microseconds()) / 1000, nil
+	})
+	if err != nil {
+		t.Fatalf("measuring %s: %v", budget.ID, err)
+	}
+
+	results := []perfbudget.Result{result}
+	t.Logf("\n%s", perfbudget.Report(results, machine))
+
+	if err := perfbudget.Missing(file.ForSite(scalePerfSite), results); err != nil {
+		t.Errorf("%v", err)
+	}
+	if err := perfbudget.Check(results); err != nil {
+		t.Errorf("%v", err)
+	}
 }
