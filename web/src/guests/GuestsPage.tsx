@@ -187,7 +187,7 @@ export function GuestsPage() {
       {!isLoading && filtered.length > 0 && (
         <>
           {selected.size > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-accent-300 bg-accent-50 p-2 text-sm dark:border-accent-700 dark:bg-accent-950">
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-accent-border bg-accent-soft p-2 text-sm">
               <span className="flex items-center gap-1.5">
                 {selected.size} selected
                 <HelpAnchor topic="guest-bulk-reattach" />
@@ -275,7 +275,7 @@ export function GuestsPage() {
                           findings — on one screen. */}
                       <Link
                         to={`/guest?ref=${encodeURIComponent(guestRefFromNicRef(row.ref))}`}
-                        className="text-accent-600 underline hover:no-underline dark:text-accent-400"
+                        className="text-accent-fg underline hover:no-underline"
                       >
                         Guest view
                       </Link>

@@ -354,7 +354,7 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
               // T-4201: raw indigo, while this same file's tab styling
               // above already used the accent alias. Identical on screen
               // only for as long as the accent pointed at indigo.
-              className="mt-3 inline-block text-xs font-medium text-accent-700 underline dark:text-accent-400"
+              className="mt-3 inline-block text-xs font-medium text-accent-fg underline"
               href={`/topology?previewChangeset=${encodeURIComponent(changeset.id)}`}
             >
               Preview the post-apply map →

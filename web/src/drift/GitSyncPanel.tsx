@@ -136,7 +136,7 @@ function StatusDetails({ status }: { status: GitSyncStatus }) {
           </p>
           <Link
             to={`/changesets/${encodeURIComponent(status.openChangesetId)}/review`}
-            className="mt-2 inline-block text-sm font-medium text-accent-700 underline dark:text-accent-300"
+            className="mt-2 inline-block text-sm font-medium text-accent-fg underline"
           >
             Review the draft
           </Link>

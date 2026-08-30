@@ -162,7 +162,7 @@ function NicsPanel({ guestRef }: { guestRef: string }) {
                 {n.bridgeOrVnet ? (
                   <button
                     type="button"
-                    className="text-accent-600 underline hover:no-underline dark:text-accent-400"
+                    className="text-accent-fg underline hover:no-underline"
                     onClick={() => {
                       select(n.bridgeOrVnet);
                       void navigate("/topology");

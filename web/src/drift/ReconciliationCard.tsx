@@ -89,7 +89,7 @@ function AdoptionLink({ findingId }: { findingId: string }) {
           href={data.pullRequestUrl}
           target="_blank"
           rel="noreferrer"
-          className="font-medium text-accent-700 underline dark:text-accent-300"
+          className="font-medium text-accent-fg underline"
         >
           {label}
         </a>

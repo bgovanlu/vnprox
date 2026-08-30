@@ -42,7 +42,7 @@ export function GroupInspector({ name, onBack }: GroupInspectorProps) {
         <button
           type="button"
           onClick={onBack}
-          className="rounded-md px-2 py-1 text-sm text-accent-700 hover:underline dark:text-accent-400"
+          className="rounded-md px-2 py-1 text-sm text-accent-fg hover:underline"
         >
           ← Back to objects
         </button>

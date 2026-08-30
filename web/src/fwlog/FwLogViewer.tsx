@@ -41,7 +41,7 @@ function FwLogTabButton({ active, label, onClick }: { active: boolean; label: st
       className={clsx(
         "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
         active
-          ? "bg-accent-600/10 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300"
+          ? "bg-accent-soft text-accent-fg"
           : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/60",
       )}
     >

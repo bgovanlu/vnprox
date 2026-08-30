@@ -18,8 +18,15 @@ export type EmptyStateVariant = "empty" | "filtered" | "unconfigured" | "failed"
 
 interface BadgeSpec {
   readonly Glyph: LucideIcon;
-  /** Bare (no `dark:`) — status tokens and the accent ramp are both
-   * pre-resolved for both themes. */
+  /** Bare (no `dark:`) — status tokens and accent ROLES both re-point per
+   * theme, so one unprefixed utility is correct in both.
+   *
+   * This comment was true of the status half and false of the accent half for
+   * as long as it existed: the line below it read
+   * `text-accent-600 dark:text-accent-400`, because T-4201 shipped an accent
+   * ramp and no aliases, and a ramp STEP is a value that cannot re-point.
+   * T-4214 added the roles and this became true. Note the wording: the ramp
+   * is still not pre-resolved and never will be — `--color-accent-fg` is. */
   readonly badgeClass: string;
 }
 
@@ -30,7 +37,7 @@ const VARIANT_BADGE: Record<EmptyStateVariant, BadgeSpec | null> = {
   // Filtered-to-nothing is a search that found nothing, not a failure.
   filtered: { Glyph: SearchX, badgeClass: "text-status-info" },
   // Not configured yet is an invitation, not a problem — accent, not status.
-  unconfigured: { Glyph: CirclePlus, badgeClass: "text-accent-600 dark:text-accent-400" },
+  unconfigured: { Glyph: CirclePlus, badgeClass: "text-accent-fg" },
   // Failed to load is the one genuinely bad state here.
   failed: { Glyph: AlertTriangle, badgeClass: "text-status-critical" },
 };

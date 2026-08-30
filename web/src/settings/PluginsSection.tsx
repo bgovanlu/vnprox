@@ -85,7 +85,7 @@ export function PluginsSection() {
       description={
         <>
           Installed SDK extensions and what each one is allowed to touch. Installing happens in the{" "}
-          <Link className="text-accent-700 underline dark:text-accent-400" to="/hub">
+          <Link className="text-accent-fg underline" to="/hub">
             Hub
           </Link>
           , where the signature and capability-scope gate lives — there is deliberately no second install path here.

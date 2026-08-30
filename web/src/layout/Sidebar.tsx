@@ -192,7 +192,7 @@ function NavItemLink({ item }: { item: NavItem }) {
         clsx(
           "flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
           isActive
-            ? "bg-accent-600/10 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300"
+            ? "bg-accent-soft text-accent-fg"
             : "text-slate-600 hover:bg-slate-200/60 dark:text-slate-300 dark:hover:bg-slate-800/60",
         )
       }
@@ -291,7 +291,7 @@ function IdentityChip() {
           "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
           isDemo
             ? "bg-amber-500 text-amber-950"
-            : "bg-accent-600/10 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300",
+            : "bg-accent-soft text-accent-fg",
         )}
       >
         V

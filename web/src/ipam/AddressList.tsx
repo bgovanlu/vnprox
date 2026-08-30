@@ -261,7 +261,7 @@ export function AddressList({ subnetCidr, readOnly }: AddressListProps) {
               className={clsx(
                 "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
                 filter === f.key
-                  ? "border-accent-500 bg-accent-50 text-accent-700 dark:bg-accent-950/50 dark:text-accent-300"
+                  ? "border-accent-500 bg-accent-soft text-accent-fg"
                   : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/60",
               )}
             >

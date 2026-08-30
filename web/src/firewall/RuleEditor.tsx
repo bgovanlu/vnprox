@@ -305,7 +305,7 @@ export function RuleEditor({ rules, target, objects, focusPos, compiledLinkScope
                 <TableCell>
                   <Link
                     to={compiledChainDeepLinkPath(compiledLinkScope, r.pos, compiledLinkNode)}
-                    className="text-xs text-accent-700 hover:underline dark:text-accent-400"
+                    className="text-xs text-accent-fg hover:underline"
                   >
                     View compiled chain
                   </Link>

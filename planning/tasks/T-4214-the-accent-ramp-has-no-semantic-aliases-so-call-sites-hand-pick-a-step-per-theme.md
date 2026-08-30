@@ -1,7 +1,7 @@
 # T-4214 — The accent ramp has no semantic aliases, so call sites hand-pick a step per theme
 
 **Phase:** 42 (Design language)
-**Status:** open
+**Status:** done. Three roles, four blocks, 51 pairs -> 2 allowlisted. Two findings the derivation could not have had, below.
 **Depends on:** T-4201 (accent ramp), T-4204 (status scale), T-4208 (component library)
 
 ## What was found
@@ -176,3 +176,70 @@ compares.
 - The `-solid` accent fill is already correct inside `Button.tsx` and must not move —
   T-905 → T-3401 → T-3405 → T-4201 is four rounds of churn on that one file and the
   comment there asks for no fifth.
+
+---
+
+## Outcome
+
+| | |
+|---|---|
+| `dark:` accent pairs | **51 -> 2** (both hover-only, allowlisted with a stated reason) |
+| Files touched | 40 |
+| Role uses | 45 `text-accent-fg`, 20 `bg-accent-soft`, 2 `border-accent-border` |
+| Theme blocks | 4, including the `html.demo.dark` that did not exist |
+
+The card's derivation was followed as written, including its values. Two things it could not have
+known turned up while building it.
+
+### `--color-accent-border` was needed, and its obvious value was broken
+
+The card says to add a third role **only** if the sweep turns one up. It did: two files carried
+`border-accent-300 ... dark:border-accent-700` around a `bg-accent-soft` block, verbatim — a
+duplicated recipe, which is this card's whole subject.
+
+Applying the card's own "invent no colours" rule and keeping the existing steps produced a value
+that fails its own gate. Demo's ramp is amber, whose light steps are near-white: `#ffd230` measures
+**1.165** against its own wash on `surface-sunken`, which is not a border. Moved to `accent-500`
+(1.72). **This is the same asymmetry the card documented for the foreground** — demo/light must stay
+at 700-or-darker — appearing in a role the card had not surveyed. The four-way table is not
+symmetric by accident, and that now holds for three roles rather than two.
+
+The border is gated as *decorative*, at `--color-border`'s visibility floor rather than WCAG
+1.4.11's 3:1. The `accent-soft` wash already delimits these callouts, so claiming 3:1 would force a
+colour the sweep did not ask for — the same distinction `docs/design-language.md` draws between
+`--color-border` and `--color-outline`.
+
+### The count had drifted, and the majority dark step with it
+
+The survey found 21 pairs in 19 files; the tree had 51 in 40. The dark foreground majority had also
+flipped — `accent-400` at 24 uses against `accent-300` at 19, where the card's derivation chose 300
+on a majority argument. **300 was kept**: the card derived and contrast-gated it deliberately
+(8.41 worst-case against 400's 6.28), and re-deriving a documented decision because a count moved
+is exactly what CLAUDE.md says not to do. Recorded because the next reader will re-count and find
+the same discrepancy.
+
+### Gates, and proof they bite
+
+All four combinations are asserted — key-set identity across the four blocks, AA on every surface,
+AA on the wash *composited over* each surface, and wash direction. Each verified by breaking it:
+
+- deleting `html.demo.dark` fails **four** assertions, including the key-set check the two-way
+  `html.dark`-vs-`@theme` shape would have passed;
+- a near-black dark wash fails the direction check (`expected 0.0072 to be greater than 0.0089`);
+- reintroducing one `dark:text-accent-400` fails the AC5 adoption guard.
+
+The AC5 guard's allowlist is itself gated: an entry whose file no longer contains a `dark:` accent
+fails, so the list cannot outlive its reasons and be read later as evidence an exception is still
+needed.
+
+### The comment-vs-code trap, twice in one session
+
+The adoption guard first failed on `EmptyIllustration.tsx` — because that file's doc comment
+**quotes** `text-accent-600 dark:text-accent-400` to explain what this card removed. `NoticeStack`'s
+interpolation guard made the identical mistake earlier and needed the identical fix. A guard that
+cannot tell code from prose about code reports the documentation as the defect, so comments are
+stripped before scanning and the reason is written into the helper rather than left in a diff.
+
+AC4 closed itself: the bulk conversion turned that line into `text-accent-fg`, so the comment
+claiming the accent is "pre-resolved for both themes" became true. Its wording is corrected anyway —
+the ramp is still not pre-resolved and never will be; `--color-accent-fg` is.

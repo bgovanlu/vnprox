@@ -56,7 +56,7 @@ export function confidenceLabel(confidence: IpamConfidence): string {
 // is — same reasoning as the topology map's per-kind accents.
 export const stateChipClasses: Record<IpamCellState, string> = {
   free: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-  allocated: "bg-accent-100 text-accent-800 dark:bg-accent-950/60 dark:text-accent-200",
+  allocated: "bg-accent-soft text-accent-fg",
   reserved: "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-200",
   observed: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200",
   gateway: "bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-200",

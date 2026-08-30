@@ -199,7 +199,7 @@ export function MgmtRedundancyWizard({ node, open, onOpenChange }: MgmtRedundanc
               <label
                 key={f}
                 className={`flex cursor-pointer gap-2 rounded-lg border p-3 text-sm ${
-                  activeFlow === f ? "border-accent-500 bg-accent-50 dark:bg-accent-950" : "border-slate-200 dark:border-slate-700"
+                  activeFlow === f ? "border-accent-500 bg-accent-soft" : "border-slate-200 dark:border-slate-700"
                 }`}
               >
                 <input

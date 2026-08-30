@@ -289,7 +289,7 @@ export function FindingsStreamPanel() {
             onClick={() => {
               setFilter(EMPTY_FILTER);
             }}
-            className="text-xs text-accent-600 underline dark:text-accent-400"
+            className="text-xs text-accent-fg underline"
           >
             Clear filters
           </button>
@@ -298,7 +298,7 @@ export function FindingsStreamPanel() {
 
       {selectedIds.size > 0 && (
         <div
-          className="flex items-center justify-between gap-3 rounded-md border border-accent-300 bg-accent-50 px-3 py-2 text-sm dark:border-accent-700 dark:bg-accent-950"
+          className="flex items-center justify-between gap-3 rounded-md border border-accent-border bg-accent-soft px-3 py-2 text-sm"
           role="status"
         >
           <span>

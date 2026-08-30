@@ -275,10 +275,10 @@ export function SettingsPage() {
       <Section title="About">
         <Row label="vnprox">{config?.version ? `v${config.version}` : "visual networking add-on for Proxmox VE"}</Row>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-          <a className="text-accent-700 hover:underline dark:text-accent-400" href="https://github.com/bgovanlu/vnprox" target="_blank" rel="noreferrer">
+          <a className="text-accent-fg hover:underline" href="https://github.com/bgovanlu/vnprox" target="_blank" rel="noreferrer">
             GitHub
           </a>
-          <a className="text-accent-700 hover:underline dark:text-accent-400" href="https://github.com/bgovanlu/vnprox/issues" target="_blank" rel="noreferrer">
+          <a className="text-accent-fg hover:underline" href="https://github.com/bgovanlu/vnprox/issues" target="_blank" rel="noreferrer">
             Report an issue
           </a>
         </div>

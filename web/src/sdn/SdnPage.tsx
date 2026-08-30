@@ -61,7 +61,7 @@ function TreeRow({
       className={clsx(
         "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors",
         selected
-          ? "bg-accent-600/10 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300"
+          ? "bg-accent-soft text-accent-fg"
           : "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800/60",
       )}
       style={{ paddingLeft: `${String(0.5 + depth * 1.25)}rem` }}

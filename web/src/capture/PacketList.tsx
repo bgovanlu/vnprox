@@ -48,7 +48,7 @@ export function PacketList({ packets, paneLabel }: PacketListProps) {
                   }}
                   className={
                     p.index === selectedIndex
-                      ? "cursor-pointer bg-accent-100 dark:bg-accent-900"
+                      ? "cursor-pointer bg-accent-soft"
                       : "cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800"
                   }
                 >

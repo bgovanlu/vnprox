@@ -36,7 +36,7 @@ function SubnetRow({ subnet, selected, onSelect }: { subnet: IpamSubnet; selecte
       className={clsx(
         "flex w-full flex-col gap-1 rounded-lg border p-3 text-left transition-colors",
         selected
-          ? "border-accent-500 bg-accent-50 dark:bg-accent-950/40"
+          ? "border-accent-500 bg-accent-soft/40"
           : "border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800/60",
       )}
     >

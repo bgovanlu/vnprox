@@ -31,7 +31,7 @@ export function PlatformPanel() {
           <>
             Automation credentials, event delivery, installed extensions, and the daemon&rsquo;s own live self-check.
             Each section states what it could not check as clearly as what it could.{" "}
-            <Link className="text-accent-700 underline dark:text-accent-400" to="/settings">
+            <Link className="text-accent-fg underline" to="/settings">
               Back to Settings
             </Link>
             .

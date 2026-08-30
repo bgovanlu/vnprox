@@ -112,7 +112,7 @@ export function EndpointPicker({ label, value, onChange, topologyNodes = [] }: E
               <span className="truncate font-mono text-xs">{selectedLabel ?? value.ref}</span>
               <button
                 type="button"
-                className="shrink-0 text-xs text-accent-600 hover:underline dark:text-accent-400"
+                className="shrink-0 text-xs text-accent-fg hover:underline"
                 onClick={() => {
                   onChange(undefined);
                   setSelectedLabel(undefined);

@@ -44,7 +44,7 @@ export interface ChipProps {
 const TONE_CLASSES: Record<ChipTone, string> = {
   neutral: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
   removed: "bg-slate-100 text-slate-600 line-through dark:bg-slate-800 dark:text-slate-400",
-  accent: "border border-accent-500 bg-accent-50 text-accent-700 dark:bg-accent-950/50 dark:text-accent-300",
+  accent: "border border-accent-500 bg-accent-soft text-accent-fg",
 };
 
 // Comfortable is byte-for-byte the pre-T-4207 hardcoded `px-2 py-0.5`.

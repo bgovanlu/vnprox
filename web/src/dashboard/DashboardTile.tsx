@@ -72,7 +72,7 @@ export function DashboardTile({
           <button
             type="button"
             onClick={onOpen}
-            className="shrink-0 text-xs font-medium text-accent-600 underline hover:no-underline dark:text-accent-400"
+            className="shrink-0 text-xs font-medium text-accent-fg underline hover:no-underline"
           >
             {openLabel}
           </button>

@@ -132,7 +132,7 @@ export function SpecPlanPanel({ content, writeDisabledReason }: SpecPlanPanelPro
           </p>
           <Link
             to={`/changesets/${encodeURIComponent(result.id)}/review`}
-            className="mt-1 inline-block text-sm font-medium text-accent-700 underline dark:text-accent-300"
+            className="mt-1 inline-block text-sm font-medium text-accent-fg underline"
           >
             Open the draft in the review screen
           </Link>

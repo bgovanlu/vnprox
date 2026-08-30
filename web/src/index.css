@@ -210,6 +210,40 @@
   --color-accent-900: #003d4f;
   --color-accent-950: #002734;
 
+  /* T-4214 · The accent's ROLES. A ramp step is a value; a role re-points.
+   *
+   * T-4201 gave the accent eleven steps and T-4204 gave the status colours
+   * semantic names that re-point under `html.dark`, so a status call site
+   * writes one unprefixed utility and is right in both themes. The accent
+   * got the ramp and never got the aliases, so every accent call site had to
+   * name two steps and a `dark:` conditional — 21 such pairs across 19 files,
+   * with one recipe copy-pasted verbatim into nine of them. That conditional
+   * is exactly what a token system exists to delete.
+   *
+   * **Invent no colours.** Measured first: every step in use today already
+   * clears AA on its worst surface (accent-600 light 4.56, accent-700 6.47,
+   * accent-300 dark 8.41, accent-400 6.28). Nothing was broken, so each role
+   * takes the step already used at the MAJORITY of its sites — 12 of the 15
+   * foreground sites do not change colour at all. Same principle T-4201 used
+   * when it fitted the ramp to the call sites rather than the reverse.
+   *
+   * `accent-soft` carries its ALPHA rather than being flattened to a hex, and
+   * that is load-bearing. A flat hex equals the `bg-accent-600/10` modifier
+   * only where the wash happens to sit on `surface-page`; measured as RGB
+   * distance elsewhere it diverges by 7.5 on light-sunken and **28.3 on the
+   * dark overlay** — a wash on a popover would visibly not match the same
+   * wash on the page. `color-mix` composites over whatever is actually
+   * behind it, exactly as the modifier does. */
+  --color-accent-fg: #01617b; /* accent-700 */
+  --color-accent-soft: color-mix(in srgb, #027a9a 10%, transparent); /* accent-600 @ 10% */
+  /* The boundary of an accent-washed callout. A third role, added because
+     the sweep turned one up rather than pre-emptively: two files carried
+     `border-accent-300 ... dark:border-accent-700` around a `bg-accent-soft`
+     block, verbatim. Decorative, not `--color-outline`: the wash already
+     delimits the callout, so this is held to the same visibility floor
+     `--color-border` gets, not to 3:1. */
+  --color-accent-border: #6ed4f9; /* accent-300 */
+
   /* T-4204 · The semantic status scale.
    *
    * One health vocabulary for the whole product. Before this, every page
@@ -523,6 +557,13 @@ html.dark {
   --color-border: #1e293b;
   --color-border-strong: #334155;
   --color-outline: #65758c;
+
+  /* T-4214: the accent roles, re-pointed. accent-300 is the step 12 of the 15
+     dark foreground sites already used. */
+  --color-accent-fg: #6ed4f9; /* accent-300 */
+  --color-accent-soft: color-mix(in srgb, #039fc7 15%, transparent); /* accent-500 @ 15% */
+  --color-accent-border: #01617b; /* accent-700 — the ramp's other end, as
+     accent-fg is; the ramp itself does not re-point under html.dark */
 }
 
 /* T-2801: demo mode's distinct accent colour.
@@ -581,7 +622,43 @@ html.demo {
   --color-accent-800: #973c00;
   --color-accent-900: #7b3306;
   --color-accent-950: #461901;
+
+  /* T-4214: demo's accent roles. The light foreground must stay at 700-or-
+     darker: T-3406 found demo amber-600 on its own wash at 4.31 against the
+     pre-T-4203 surfaces, and it re-measures at **4.25** on today's — still a
+     fail. amber-700/800 (the same #973c00 after that phase's remap) measure
+     5.99. This table is not symmetric with the base accent by accident. */
+  --color-accent-fg: #973c00; /* accent-700 */
+  --color-accent-soft: color-mix(in srgb, #bb4d00 10%, transparent); /* accent-600 @ 10% */
+  /* NOT accent-300, unlike base/light. Demo's ramp is amber, whose light
+     steps are near-white: #ffd230 measures **1.17** against its own wash on
+     `surface-sunken` — under the floor, i.e. not a border. accent-500
+     measures 1.72. This is the same asymmetry the accent-fg row has (demo's
+     light foreground must stay at 700-or-darker), and for the same reason:
+     the four-way table is not symmetric by accident. */
+  --color-accent-border: #fe9a00; /* accent-500 */
 }
+/* T-4214 · The cascade trap this card exists to close.
+ *
+ * `html.dark` and `html.demo` have EQUAL specificity (0,0,1,1) and `html.demo`
+ * comes second in this file, so demo wins on source order for any property
+ * both define. That was harmless while the two blocks were disjoint — dark
+ * redefined surfaces and status, demo redefined the accent ramp.
+ *
+ * An accent ROLE lands in both, so a page that is demo AND dark would take
+ * demo's LIGHT value: near-black foreground on a near-black page. Four
+ * combinations need four blocks, and this is the fourth.
+ *
+ * index.css.test.ts asserts the accent-role key set is identical across all
+ * four, not just `html.dark` against `@theme` — the two-way check every other
+ * token in this file gets would pass while demo+dark rendered wrong, because
+ * the missing block is neither of the two it compares. */
+html.demo.dark {
+  --color-accent-fg: #ffd230; /* accent-300 */
+  --color-accent-soft: color-mix(in srgb, #fe9a00 15%, transparent); /* accent-500 @ 15% */
+  --color-accent-border: #973c00; /* accent-700 */
+}
+
 
 html,
 body,

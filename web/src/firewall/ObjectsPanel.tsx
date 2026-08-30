@@ -112,7 +112,7 @@ function UsageTable({ items, onNavigate, onInspect }: UsageTableProps) {
                 ) : (
                   <button
                     type="button"
-                    className="rounded px-1.5 py-0.5 text-accent-700 hover:underline dark:text-accent-400"
+                    className="rounded px-1.5 py-0.5 text-accent-fg hover:underline"
                     onClick={() => { setExpanded(isExpanded ? undefined : key); }}
                   >
                     referenced by {item.count} rule{item.count === 1 ? "" : "s"} — {isExpanded ? "hide" : "view"}
@@ -125,7 +125,7 @@ function UsageTable({ items, onNavigate, onInspect }: UsageTableProps) {
                         {onNavigate ? (
                           <button
                             type="button"
-                            className="text-accent-700 hover:underline dark:text-accent-400"
+                            className="text-accent-fg hover:underline"
                             onClick={() => {
                               const loc = locateFwRulesetRef(rr.ref);
                               if (loc) onNavigate(loc, rr.pos);
@@ -147,7 +147,7 @@ function UsageTable({ items, onNavigate, onInspect }: UsageTableProps) {
                     <button
                       type="button"
                       onClick={() => { onInspect(item.name); }}
-                      className="text-xs text-accent-700 hover:underline dark:text-accent-400"
+                      className="text-xs text-accent-fg hover:underline"
                     >
                       Inspect
                     </button>

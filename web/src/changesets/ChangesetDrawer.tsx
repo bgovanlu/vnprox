@@ -177,7 +177,7 @@ export function ChangesetDrawer() {
             <span>
               {changeset ? changeset.title || "Untitled draft" : "Changes"}
               {changeset && changeset.ops.length > 0 && (
-                <span className="ml-2 rounded-full bg-accent-600/15 px-1.5 py-0.5 text-xs text-accent-700 dark:text-accent-300">
+                <span className="ml-2 rounded-full bg-accent-600/15 px-1.5 py-0.5 text-xs text-accent-fg">
                   {changeset.ops.length}
                 </span>
               )}
@@ -200,7 +200,7 @@ export function ChangesetDrawer() {
               <div>
                 <button
                   type="button"
-                  className="text-xs text-accent-700 underline dark:text-accent-400"
+                  className="text-xs text-accent-fg underline"
                   onClick={() => {
                     setResumeMenuOpen(!resumeMenuOpen);
                   }}

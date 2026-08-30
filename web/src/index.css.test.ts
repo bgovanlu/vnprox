@@ -193,8 +193,17 @@ const demo = blockBody("html.demo");
 const root = blockBody(":root");
 
 describe("accent tokens (T-3401, T-4201)", () => {
-  const base = tokensIn(theme, "color-accent");
-  const demoAccent = tokensIn(demo, "color-accent");
+  /** T-4214 added `--color-accent-fg` and `--color-accent-soft` alongside the
+   * eleven numbered steps, so "every `--color-accent-*` token" is no longer
+   * the same set as "the ramp". The ramp is what these two assertions are
+   * about — a STEP must stay a literal hex, because a step that is an alias
+   * cannot be compared by any test that does not itself resolve Tailwind
+   * (see the html.demo block's own comment). The ROLES are asserted
+   * separately, and `accent-soft` is deliberately not a hex at all. */
+  const rampOnly = (m: Map<string, string>): Map<string, string> =>
+    new Map([...m].filter(([k]) => /^\d+$/.test(k)));
+  const base = rampOnly(tokensIn(theme, "color-accent"));
+  const demoAccent = rampOnly(tokensIn(demo, "color-accent"));
 
   it("defines the base accent as a full 11-step scale of literal hex", () => {
     expect([...base.keys()].sort((a, b) => Number(a) - Number(b))).toEqual(ACCENT_STEPS);
@@ -613,6 +622,129 @@ describe("typefaces (T-4202)", () => {
       for (const w of weights) counts.set(w, (counts.get(w) ?? 0) + 1);
       expect(counts.size, `${family} declares no weights`).toBeGreaterThan(0);
       for (const [weight, n] of counts) expect(n, `${family} ${weight} subset count`).toBe(2);
+    }
+  });
+});
+
+describe("accent roles (T-4214)", () => {
+  // A ramp STEP is a value and cannot re-point; a ROLE can. The status scale
+  // got roles at T-4204 and the accent did not, so every accent call site
+  // spelled out two steps and a `dark:` conditional — the conditional a token
+  // system exists to delete.
+  //
+  // These assertions are the reason the roles can be trusted in the one
+  // combination nothing else covers. `html.dark` and `html.demo` have equal
+  // specificity and demo comes second in the file, so demo wins on source
+  // order for any property both define. While the blocks were disjoint that
+  // was harmless. An accent role lands in both, so `html.demo.dark` has to
+  // exist — and a key-set check of `html.dark` against `@theme`, which is the
+  // shape every other token in this file gets, would pass while demo+dark
+  // rendered demo's LIGHT foreground on a near-black page.
+  const ROLES = ["fg", "soft", "border"];
+
+  const COMBOS = [
+    { name: "base / light", selectors: [] as string[], dark: false },
+    { name: "base / dark", selectors: ["html.dark"], dark: true },
+    { name: "demo / light", selectors: ["html.demo"], dark: false },
+    { name: "demo / dark", selectors: ["html.dark", "html.demo", "html.demo.dark"], dark: true },
+  ];
+
+  /** Resolves a custom property the way the cascade would for one combination:
+   * `@theme` first, then each selector in source order, last write winning. */
+  function resolve(combo: (typeof COMBOS)[number], name: string): string {
+    let value = (new RegExp(`${name}\\s*:\\s*([^;]+);`).exec(blockBody("@theme")))?.[1];
+    for (const selector of combo.selectors) {
+      const hit = (new RegExp(`${name}\\s*:\\s*([^;]+);`).exec(blockBody(selector)))?.[1];
+      if (hit !== undefined) value = hit;
+    }
+    if (value === undefined) throw new Error(`${name} unresolved for ${combo.name}`);
+    return value.trim();
+  }
+
+  /** `--color-accent-soft` is `color-mix(in srgb, <hex> N%, transparent)` — it
+   * carries its own alpha ON PURPOSE. Flattening it to a hex would be correct
+   * only where the wash sits on `surface-page`; measured elsewhere it diverges
+   * by 7.5 RGB units on light-sunken and 28.3 on the dark overlay. So the
+   * contrast checks below composite it over each surface, as the browser
+   * will, rather than measuring the token in isolation. */
+  function parseSoft(value: string): { hex: string; alpha: number } {
+    const m = /color-mix\(in srgb,\s*(#[0-9a-f]{6})\s+(\d+)%/i.exec(value);
+    if (m?.[1] === undefined || m[2] === undefined) {
+      throw new Error(`accent-soft must carry its alpha via color-mix, got: ${value}`);
+    }
+    return { hex: m[1], alpha: Number(m[2]) / 100 };
+  }
+
+  function surfacesFor(dark: boolean): string[] {
+    return surfaceLadder(dark);
+  }
+
+  it("defines the same accent-role key set in all four theme blocks", () => {
+    // Not `html.dark` vs `@theme`. The block that would be missing is neither.
+    for (const selector of ["@theme", "html.dark", "html.demo", "html.demo.dark"]) {
+      const body = blockBody(selector);
+      for (const role of ROLES) {
+        expect(body, `${selector} is missing --color-accent-${role}`).toContain(`--color-accent-${role}:`);
+      }
+    }
+  });
+
+  it("clears AA on every surface, in all four combinations", () => {
+    for (const combo of COMBOS) {
+      const fg = resolve(combo, "--color-accent-fg");
+      for (const surface of surfacesFor(combo.dark)) {
+        expect(contrast(fg, surface), `${combo.name}: accent-fg on ${surface}`).toBeGreaterThanOrEqual(AA);
+      }
+    }
+  });
+
+  it("clears AA on its own wash, composited over each surface", () => {
+    // The wash is translucent, so "the colour behind the text" is a different
+    // value on every surface. Measuring the token in isolation would answer a
+    // question no pixel ever asks.
+    for (const combo of COMBOS) {
+      const fg = resolve(combo, "--color-accent-fg");
+      const soft = parseSoft(resolve(combo, "--color-accent-soft"));
+      for (const surface of surfacesFor(combo.dark)) {
+        const behind = over(soft.hex, surface, soft.alpha);
+        expect(contrast(fg, behind), `${combo.name}: accent-fg on soft over ${surface}`).toBeGreaterThanOrEqual(AA);
+      }
+    }
+  });
+
+  it("keeps accent-border visible without pretending it is an outline", () => {
+    // Decorative, like `--color-border`: the `accent-soft` wash already
+    // delimits the callout these bound, so WCAG 1.4.11's 3:1 does not apply
+    // and claiming it would force a colour the sweep did not ask for. Held to
+    // the same "a border that measures 1.0 is not a border" floor the neutral
+    // borders get, and no higher.
+    for (const combo of COMBOS) {
+      const border = resolve(combo, "--color-accent-border");
+      const soft = parseSoft(resolve(combo, "--color-accent-soft"));
+      for (const surface of surfacesFor(combo.dark)) {
+        expect(contrast(border, surface), `${combo.name}: accent-border on ${surface}`).toBeGreaterThan(1.2);
+        expect(
+          contrast(border, over(soft.hex, surface, soft.alpha)),
+          `${combo.name}: accent-border on its own wash over ${surface}`,
+        ).toBeGreaterThan(1.2);
+      }
+    }
+  });
+
+  it("moves the wash TOWARD the accent, not merely to a passing ratio", () => {
+    // A ratio alone does not catch a wash going the wrong way: the first pass
+    // at this derivation produced a near-black "wash" for dark mode that
+    // satisfied its contrast constraint perfectly. Direction is the property,
+    // so direction is what is asserted.
+    for (const combo of COMBOS) {
+      const soft = parseSoft(resolve(combo, "--color-accent-soft"));
+      const page = surfacesFor(combo.dark)[0] ?? "#ffffff";
+      const washed = over(soft.hex, page, soft.alpha);
+      if (combo.dark) {
+        expect(luminance(washed), `${combo.name}: wash must be lighter than the page`).toBeGreaterThan(luminance(page));
+      } else {
+        expect(luminance(washed), `${combo.name}: wash must be darker than the page`).toBeLessThan(luminance(page));
+      }
     }
   });
 });

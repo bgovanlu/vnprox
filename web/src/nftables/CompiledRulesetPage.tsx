@@ -78,7 +78,7 @@ function AttributionCell({ rule, node }: AttributionCellProps) {
     return (
       <Link
         to={ruleEditorDeepLinkPath(a.scope as CompiledLinkScope, a.pos, node)}
-        className="text-xs text-accent-700 hover:underline dark:text-accent-400"
+        className="text-xs text-accent-fg hover:underline"
       >
         View {a.scope} rule #{a.pos}
       </Link>

@@ -83,13 +83,13 @@ export function FlowPairPanel({ edge, onClose }: FlowPairPanelProps) {
       <div className="mt-3 flex flex-col gap-1">
         <Link
           to={flowPairExplorerPath("/flows", edge.from, edge.to)}
-          className="inline-block text-sm text-accent-700 underline dark:text-accent-300"
+          className="inline-block text-sm text-accent-fg underline"
         >
           View in Flow Explorer
         </Link>
         <Link
           to={conntrackNodeLinkPath("/conntrack", refNode(edge.from))}
-          className="inline-block text-sm text-accent-700 underline dark:text-accent-300"
+          className="inline-block text-sm text-accent-fg underline"
         >
           View live connections
         </Link>

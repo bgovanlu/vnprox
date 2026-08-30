@@ -73,7 +73,7 @@ export function GlobalTopologyGate() {
         <button
           type="button"
           onClick={backToGlobal}
-          className="rounded px-2 py-0.5 text-accent-600 hover:bg-slate-100 dark:text-accent-400 dark:hover:bg-slate-800"
+          className="rounded px-2 py-0.5 text-accent-fg hover:bg-slate-100 dark:hover:bg-slate-800"
         >
           ← Global map
         </button>

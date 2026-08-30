@@ -135,7 +135,7 @@ export function ProposePanel({ changesetId }: ProposePanelProps) {
               href={proposal.pullRequestUrl}
               target="_blank"
               rel="noreferrer"
-              className="font-medium text-accent-700 underline dark:text-accent-300"
+              className="font-medium text-accent-fg underline"
             >
               {proposal.pullRequestId !== undefined && proposal.pullRequestId !== ""
                 ? `pull request #${proposal.pullRequestId}`

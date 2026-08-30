@@ -320,7 +320,7 @@ function HealthStep({ onComplete }: StepProps) {
       ) : (
         <p>{t("health.summary", { total, breakdown })}</p>
       )}
-      <Link to="/tools" className="text-xs text-accent-700 underline dark:text-accent-400">
+      <Link to="/tools" className="text-xs text-accent-fg underline">
         {t("health.openTools")}
       </Link>
       <Button size="sm" variant="primary" onClick={onComplete}>

@@ -112,7 +112,7 @@ function PeeringMatrix({
                         }}
                         className={clsx(
                           "inline-flex items-center gap-1.5 rounded px-1.5 py-0.5",
-                          selected && "bg-accent-600/10 dark:bg-accent-500/15",
+                          selected && "bg-accent-soft",
                         )}
                       >
                         <StatusDot status={evpnStateEntityStatus(peer.state)} />

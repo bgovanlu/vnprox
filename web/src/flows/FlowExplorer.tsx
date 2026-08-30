@@ -243,7 +243,7 @@ export function FlowExplorer() {
                 onClick={() => { dispatch({ type: "setView", view: v }); }}
                 className={
                   state.view === v
-                    ? "rounded-md bg-accent-600/10 px-3 py-1.5 text-sm font-medium text-accent-700 dark:bg-accent-500/15 dark:text-accent-300"
+                    ? "rounded-md bg-accent-soft px-3 py-1.5 text-sm font-medium text-accent-fg"
                     : "rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/60"
                 }
               >

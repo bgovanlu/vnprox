@@ -29,10 +29,10 @@ export function DesktopOnlyNotice({ pageLabel, detail }: DesktopOnlyNoticeProps)
       }
       action={
         <div className="flex flex-wrap items-center justify-center gap-3 text-sm">
-          <Link to="/" className="font-medium text-accent-700 underline dark:text-accent-400">
+          <Link to="/" className="font-medium text-accent-fg underline">
             Go to Dashboard
           </Link>
-          <Link to="/tools" className="font-medium text-accent-700 underline dark:text-accent-400">
+          <Link to="/tools" className="font-medium text-accent-fg underline">
             Go to Findings
           </Link>
           <span className="text-fg-subtle">

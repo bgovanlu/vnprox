@@ -115,19 +115,26 @@ describe("Sidebar — route inventory", () => {
   });
 });
 
+/** T-4214 replaced the copy-pasted `bg-accent-600/10 dark:bg-accent-500/15`
+ * recipe — verbatim in nine files — with the `--color-accent-soft` role, which
+ * re-points per theme so the `dark:` half is gone. Named once here rather than
+ * repeated at four call sites: these assertions are about "the active item is
+ * washed", not about which hex does the washing. */
+const ACTIVE_WASH = "bg-accent-soft";
+
 describe("Sidebar — Home entry (ported from NavRail.test.tsx, T-904 AC1)", () => {
   it("highlights Home at the index route", () => {
     renderAt("/");
     const home = screen.getByRole("link", { name: "Home" });
-    expect(home.className).toContain("bg-accent-600/10");
+    expect(home.className).toContain(ACTIVE_WASH);
   });
 
   it("does not highlight Home (or leave every other flat item active) on another route", () => {
     renderAt("/topology");
     const home = screen.getByRole("link", { name: "Home" });
-    expect(home.className).not.toContain("bg-accent-600/10");
+    expect(home.className).not.toContain(ACTIVE_WASH);
     const topology = screen.getByRole("link", { name: "Topology" });
-    expect(topology.className).toContain("bg-accent-600/10");
+    expect(topology.className).toContain(ACTIVE_WASH);
   });
 });
 
@@ -160,7 +167,7 @@ describe("Sidebar — collapsible groups", () => {
     expect(networkToggle).toHaveAttribute("aria-expanded", "true");
     const sdn = screen.getByRole("link", { name: "SDN" });
     expect(sdn).toBeInTheDocument();
-    expect(sdn.className).toContain("bg-accent-600/10");
+    expect(sdn.className).toContain(ACTIVE_WASH);
   });
 
   it("leaves an inactive collapsed group collapsed", () => {

@@ -243,7 +243,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                 className={clsx(
                   "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800",
                   index === highlighted && "bg-slate-100 dark:bg-slate-800",
-                  item.kind === "cluster-switch" && "font-medium text-accent-600 dark:text-accent-400",
+                  item.kind === "cluster-switch" && "font-medium text-accent-fg",
                 )}
               >
                 <span className="truncate">

@@ -24,7 +24,7 @@ const KIND_LABEL: Record<EntityHistoryEntry["kind"], string> = {
 };
 
 const KIND_CLASSES: Record<EntityHistoryEntry["kind"], string> = {
-  changeset: "bg-accent-100 text-accent-800 dark:bg-accent-900 dark:text-accent-100",
+  changeset: "bg-accent-soft text-accent-fg",
   audit: "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
   snapshot: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100",
 };
@@ -89,7 +89,7 @@ export function EntityHistoryTab({ entityRef, enabled = true }: EntityHistoryTab
             {e.changesetId && (
               <a
                 href={`/changesets/${encodeURIComponent(e.changesetId)}`}
-                className="text-[11px] text-accent-600 underline dark:text-accent-400"
+                className="text-[11px] text-accent-fg underline"
               >
                 Open changeset
               </a>

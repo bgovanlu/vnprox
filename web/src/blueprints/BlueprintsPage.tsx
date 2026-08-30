@@ -214,7 +214,7 @@ export function BlueprintsPage() {
                 className={clsx(
                   "flex w-full flex-col items-start rounded-md px-2 py-1.5 text-left text-sm",
                   bp.id === selectedId
-                    ? "bg-accent-600/10 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300"
+                    ? "bg-accent-soft text-accent-fg"
                     : "hover:bg-slate-100 dark:hover:bg-slate-800",
                 )}
                 onClick={() => {

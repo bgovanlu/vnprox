@@ -28,7 +28,7 @@ export function MapLink({ entityRef, label }: MapLinkProps) {
         select(entityRef);
         void navigate("/topology");
       }}
-      className="rounded font-mono text-xs text-accent-700 underline decoration-dotted underline-offset-2 hover:decoration-solid dark:text-accent-300"
+      className="rounded font-mono text-xs text-accent-fg underline decoration-dotted underline-offset-2 hover:decoration-solid"
     >
       {label ?? entityRef}
     </button>
