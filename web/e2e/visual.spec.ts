@@ -33,7 +33,11 @@ import { join } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { HEADING_LEVEL_OVERRIDES, routedPagePaths, slugifyRoute } from "./routeInventory";
+import {
+  HEADING_LEVEL_OVERRIDES,
+  routedPagePaths,
+  slugifyRoute,
+} from "./routeInventory";
 
 const RUNNING_STANDALONE = process.env.VNPROX_VISUAL_SNAPSHOTS === "1";
 
@@ -54,7 +58,9 @@ const RUNNING_STANDALONE = process.env.VNPROX_VISUAL_SNAPSHOTS === "1";
 async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const suppress = () => {
-      const el = document.querySelector('[aria-label="Onboarding walkthrough"]');
+      const el = document.querySelector(
+        '[aria-label="Onboarding walkthrough"]',
+      );
       if (el instanceof HTMLElement) {
         el.style.setProperty("display", "none", "important");
       }
@@ -62,7 +68,10 @@ async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
     const start = () => {
       try {
         suppress();
-        new MutationObserver(suppress).observe(document.documentElement, { childList: true, subtree: true });
+        new MutationObserver(suppress).observe(document.documentElement, {
+          childList: true,
+          subtree: true,
+        });
       } catch {
         setTimeout(start, 0);
       }
@@ -78,7 +87,10 @@ async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
  * logged-in storage state. */
 async function forceTheme(page: Page, theme: "light" | "dark"): Promise<void> {
   await page.addInitScript((t) => {
-    localStorage.setItem("vnprox.theme", JSON.stringify({ state: { theme: t }, version: 0 }));
+    localStorage.setItem(
+      "vnprox.theme",
+      JSON.stringify({ state: { theme: t }, version: 0 }),
+    );
   }, theme);
 }
 
@@ -93,11 +105,32 @@ async function forceTheme(page: Page, theme: "light" | "dark"): Promise<void> {
  * need a second, dedicated `vnproxd --demo` daemon (shards.ts's "demo"
  * stack): the default three-node-vlan stack's own real health response is
  * reused verbatim except for the one field this is actually about. */
+/** The Graph view's two implementations. See docs/design-language.md §8.0:
+ * v1 (xyflow + DOM nodes) is what users get by default; v2 (a real `<canvas>`)
+ * is opt-in. */
+type Renderer = "v1" | "v2";
+
+/** T-4305 AC4: selects the Graph view's renderer before the app boots.
+ *
+ * `store.ts` reads this key exactly once, at store construction, so it has to
+ * be set via `addInitScript` rather than after navigation. v1 is the default
+ * and needs no flag — deliberately set to nothing rather than to `"v1"`, so
+ * the v1 capture exercises the same absent-key path a real user has. */
+async function forceRenderer(page: Page, renderer: Renderer): Promise<void> {
+  if (renderer !== "v2") return;
+  await page.addInitScript(() => {
+    localStorage.setItem("vnprox.topology.rendererV2", "v2");
+  });
+}
+
 async function forceDemoAccent(page: Page): Promise<void> {
   await page.route("**/api/v1/health", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
-    const patched = typeof body === "object" && body !== null ? { ...body, demo: true } : { demo: true };
+    const patched =
+      typeof body === "object" && body !== null
+        ? { ...body, demo: true }
+        : { demo: true };
     await route.fulfill({ response, json: patched });
   });
 }
@@ -129,7 +162,9 @@ async function blockLiveUpdates(page: Page): Promise<void> {
  * not race — capturing mid-fetch would make the baseline describe a loading
  * spinner instead of the page it is meant to guard. */
 async function waitForSteadyState(page: Page): Promise<void> {
-  await expect(page.getByText(/^(Loading|Simulating)[….]/).first()).toHaveCount(0);
+  await expect(page.getByText(/^(Loading|Simulating)[….]/).first()).toHaveCount(
+    0,
+  );
 }
 
 function pathEndRegExp(literal: string): RegExp {
@@ -138,7 +173,10 @@ function pathEndRegExp(literal: string): RegExp {
 
 // --- login + one-time cluster settle ---------------------------------------
 
-const VISUAL_STORAGE_STATE = join(tmpdir(), `vnprox-e2e-visual-storage-state-${String(process.pid)}.json`);
+const VISUAL_STORAGE_STATE = join(
+  tmpdir(),
+  `vnprox-e2e-visual-storage-state-${String(process.pid)}.json`,
+);
 
 /** Waits, once, for the fixture's cross-node staleness to reach its
  * permanent state before any test takes a screenshot.
@@ -164,11 +202,15 @@ const VISUAL_STORAGE_STATE = join(tmpdir(), `vnprox-e2e-visual-storage-state-${S
  */
 async function settleClusterStaleness(page: Page): Promise<void> {
   await page.goto("/topology");
-  await page.locator(".grayscale").first().waitFor({ state: "visible", timeout: 120_000 }).catch(() => {
-    // Nothing to settle on this fixture, or it never reached staleness in
-    // the allotted time — either way, every capture below still measures
-    // whatever singular state exists at that point, so this is not fatal.
-  });
+  await page
+    .locator(".grayscale")
+    .first()
+    .waitFor({ state: "visible", timeout: 120_000 })
+    .catch(() => {
+      // Nothing to settle on this fixture, or it never reached staleness in
+      // the allotted time — either way, every capture below still measures
+      // whatever singular state exists at that point, so this is not fatal.
+    });
 }
 
 test.describe("T-4210: visual regression, every routed page x light/dark/demo", () => {
@@ -185,7 +227,10 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
   test.use({ storageState: VISUAL_STORAGE_STATE });
 
   test.beforeAll(async ({ browser }) => {
-    const context = await browser.newContext({ ignoreHTTPSErrors: true, storageState: undefined });
+    const context = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      storageState: undefined,
+    });
     const page = await context.newPage();
     await page.goto("/login");
     await page.getByLabel("Username").fill("root");
@@ -221,7 +266,9 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
     for (const mode of MODES) {
       const slug = `${slugifyRoute(routePath)}-${mode.name}`;
 
-      test(`visual: ${routePath} (${mode.name})`, async ({ page }, testInfo) => {
+      test(`visual: ${routePath} (${mode.name})`, async ({
+        page,
+      }, testInfo) => {
         await page.emulateMedia({ reducedMotion: "reduce" });
         await forceTheme(page, mode.theme);
         if (mode.demo) {
@@ -234,7 +281,9 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
         await expect(page).toHaveURL(pathEndRegExp(routePath));
 
         const level = HEADING_LEVEL_OVERRIDES[routePath] ?? 1;
-        await expect(page.getByRole("heading", { level }).first()).toBeVisible();
+        await expect(
+          page.getByRole("heading", { level }).first(),
+        ).toBeVisible();
         if (mode.theme === "dark") {
           await expect(page.locator("html")).toHaveClass(/dark/);
         } else {
@@ -246,7 +295,7 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
 
         await waitForSteadyState(page);
         await page.evaluate(() => document.fonts.ready);
-      
+
         // T-4213: `--update-snapshots` only WRITES when the comparison
         // fails. A change smaller than the per-pixel threshold — a node fill
         // moving from #ecfdf5 to #ffffff, say — leaves every baseline
@@ -294,65 +343,111 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
   // mandatory: decodeViewFromSearch returns undefined without it and the
   // deeplink is ignored wholesale, which would leave this test quietly
   // screenshotting the switch view a second time.
-  const GRAPH_DEEPLINK = "/topology?svLayers=phys,l2,sdn,guest&svView=graph&svZoom=1&svX=0&svY=0";
+  const GRAPH_DEEPLINK =
+    "/topology?svLayers=phys,l2,sdn,guest&svView=graph&svZoom=1&svX=0&svY=0";
 
-  for (const mode of MODES) {
-    test(`visual: /topology graph view (${mode.name})`, async ({ page }, testInfo) => {
-      await page.emulateMedia({ reducedMotion: "reduce" });
-      await forceTheme(page, mode.theme);
-      if (mode.demo) {
-        await forceDemoAccent(page);
-      }
-      await blockLiveUpdates(page);
-      await suppressOnboardingWalkthrough(page);
+  // T-4305 AC4: "The visual gate captures the graph view in BOTH renderers,
+  // or states in one place why one is enough. Capturing only the default hid
+  // a whole renderer; capturing only v2 would hide the one users actually
+  // get."
+  //
+  // Both, and not because the choice was hard. The two renderers have already
+  // drifted from each other twice this phase in ways every green test missed:
+  // T-4301 fixed three contrast failures in v2 while v1 kept its own copies,
+  // and T-4302 found `STATUS_STROKE` living in three tables that disagreed
+  // about what `ok` and `unknown` were. Both are exactly the kind of
+  // divergence a screenshot catches and a unit test cannot, because the whole
+  // claim is that the two renderers draw the SAME picture.
+  //
+  // Six captures rather than three. That is the cost of a rendering swap the
+  // product ships as a user-flippable flag.
+  const RENDERERS: readonly Renderer[] = ["v1", "v2"];
 
-      await page.goto(GRAPH_DEEPLINK);
-      await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
-      // Assert the deeplink actually took, rather than trusting it: a
-      // silently-ignored parameter is indistinguishable from a working one in
-      // a screenshot nobody has looked at yet, which is how the map came to
-      // be missing from this suite in the first place.
-      await expect(page.getByRole("radio", { name: "Graph" })).toBeChecked();
-      await waitForSteadyState(page);
-      await page.evaluate(() => document.fonts.ready);
+  for (const renderer of RENDERERS) {
+    for (const mode of MODES) {
+      test(`visual: /topology graph view ${renderer} (${mode.name})`, async ({
+        page,
+      }, testInfo) => {
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        await forceTheme(page, mode.theme);
+        await forceRenderer(page, renderer);
+        if (mode.demo) {
+          await forceDemoAccent(page);
+        }
+        await blockLiveUpdates(page);
+        await suppressOnboardingWalkthrough(page);
 
-      // T-4304's gate. Measured off the capture that opened that card, the
-      // canvas got 235px of a 900px viewport — 26% — while three stacked
-      // notice banners took 39%. A visual networking tool whose visual is
-      // the smallest region on its own page.
-      //
-      // This asserts the share from the RENDERED box rather than from CSS,
-      // because the thing that pushed the map down was three siblings above
-      // it, none of which appears anywhere in the canvas's own styles. A
-      // number, so it cannot regress back into an opinion.
-      // `topology-map` is the shared wrapper around whichever renderer is
-      // mounted. The first version of this asked for `topology-canvas-v2`,
-      // which only exists behind the opt-in v2 flag — on the default page it
-      // was never going to appear, and boundingBox() waited out the full
-      // three-minute timeout instead of failing. Assert visibility first so a
-      // wrong selector fails in seconds and says so.
-      const mapLocator = page.getByTestId("topology-map");
-      await expect(mapLocator).toBeVisible({ timeout: 10_000 });
-      const canvasBox = await mapLocator.boundingBox();
-      const viewport = page.viewportSize();
-      expect(canvasBox, "topology map container must be laid out").not.toBeNull();
-      expect(viewport, "visual suite runs at a fixed viewport").not.toBeNull();
-      if (canvasBox !== null && viewport !== null) {
-        const share = canvasBox.height / viewport.height;
-        expect(share, `map is ${String(Math.round(share * 100))}% of the viewport`).toBeGreaterThan(0.5);
-      }
+        await page.goto(GRAPH_DEEPLINK);
+        await expect(
+          page.getByRole("heading", { level: 1 }).first(),
+        ).toBeVisible();
+        // Assert the deeplink actually took, rather than trusting it: a
+        // silently-ignored parameter is indistinguishable from a working one in
+        // a screenshot nobody has looked at yet, which is how the map came to
+        // be missing from this suite in the first place.
+        await expect(page.getByRole("radio", { name: "Graph" })).toBeChecked();
+        await waitForSteadyState(page);
+        await page.evaluate(() => document.fonts.ready);
 
-      const updating = testInfo.config.updateSnapshots !== "none";
-      const snapshotName = `topology-graph-${mode.name}.png`;
-      if (!updating && !existsSync(testInfo.snapshotPath(snapshotName))) {
-        test.skip(
-          true,
-          `No baseline snapshot for the topology graph view (${mode.name}) yet. Generate baselines first: ` +
-            "npx playwright test --config=playwright.visual.config.ts --update-snapshots",
-        );
-      }
-      await expect(page).toHaveScreenshot(snapshotName, { fullPage: true });
-    });
+        // T-4304's gate. Measured off the capture that opened that card, the
+        // canvas got 235px of a 900px viewport — 26% — while three stacked
+        // notice banners took 39%. A visual networking tool whose visual is
+        // the smallest region on its own page.
+        //
+        // This asserts the share from the RENDERED box rather than from CSS,
+        // because the thing that pushed the map down was three siblings above
+        // it, none of which appears anywhere in the canvas's own styles. A
+        // number, so it cannot regress back into an opinion.
+        // `topology-map` is the shared wrapper around whichever renderer is
+        // mounted. The first version of this asked for `topology-canvas-v2`,
+        // which only exists behind the opt-in v2 flag — on the default page it
+        // was never going to appear, and boundingBox() waited out the full
+        // three-minute timeout instead of failing. Assert visibility first so a
+        // wrong selector fails in seconds and says so.
+        const mapLocator = page.getByTestId("topology-map");
+        await expect(mapLocator).toBeVisible({ timeout: 10_000 });
+        const canvasBox = await mapLocator.boundingBox();
+        const viewport = page.viewportSize();
+        expect(
+          canvasBox,
+          "topology map container must be laid out",
+        ).not.toBeNull();
+        expect(
+          viewport,
+          "visual suite runs at a fixed viewport",
+        ).not.toBeNull();
+        if (canvasBox !== null && viewport !== null) {
+          const share = canvasBox.height / viewport.height;
+          expect(
+            share,
+            `map is ${String(Math.round(share * 100))}% of the viewport`,
+          ).toBeGreaterThan(0.5);
+        }
+
+        // The renderer is asserted, not assumed. `topology-canvas-v2` mounts
+        // only behind the flag, so its presence/absence is the one signal that
+        // says the localStorage key actually took — without this, a broken flag
+        // would silently capture v1 twice and the suite would report six green
+        // checks over three pictures.
+        const v2Canvas = page.getByTestId("topology-canvas-v2");
+        if (renderer === "v2") {
+          await expect(v2Canvas).toBeVisible({ timeout: 10_000 });
+        } else {
+          await expect(v2Canvas).toHaveCount(0);
+        }
+
+        const updating = testInfo.config.updateSnapshots !== "none";
+        const snapshotName = `topology-graph-${renderer}-${mode.name}.png`;
+        if (!updating && !existsSync(testInfo.snapshotPath(snapshotName))) {
+          test.skip(
+            true,
+            `No baseline snapshot for the topology graph view ${renderer} (${mode.name}) yet. Generate baselines first: ` +
+              "npx playwright test --config=playwright.visual.config.ts --update-snapshots",
+          );
+        }
+        await expect(page).toHaveScreenshot(snapshotName, { fullPage: true });
+      });
+    }
   }
 
   // /login is intentionally outside routedPagePaths() (see routeInventory.ts)
@@ -361,7 +456,10 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
   // in its own dedicated test rather than forced into the same table.
   for (const mode of MODES) {
     test(`visual: /login (${mode.name})`, async ({ browser }, testInfo) => {
-      const context = await browser.newContext({ ignoreHTTPSErrors: true, storageState: undefined });
+      const context = await browser.newContext({
+        ignoreHTTPSErrors: true,
+        storageState: undefined,
+      });
       const page = await context.newPage();
       await page.emulateMedia({ reducedMotion: "reduce" });
       await forceTheme(page, mode.theme);
@@ -373,7 +471,7 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
       await page.goto("/login");
       await expect(page.getByLabel("Username")).toBeVisible();
       await page.evaluate(() => document.fonts.ready);
-    
+
       const updating = testInfo.config.updateSnapshots !== "none";
       const snapshotName = `login-${mode.name}.png`;
       if (!updating && !existsSync(testInfo.snapshotPath(snapshotName))) {

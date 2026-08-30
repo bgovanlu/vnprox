@@ -316,9 +316,128 @@ Rules that apply to all of them:
 
 ## 8. Canvas grammar
 
-_Pending — Phase 43. Node and edge rendering, group capsules, the overlay channel assignment
-(hue / hatch / halo / badge / ornament) that lets several overlays coexist legibly, and the
-dark-canvas art direction._
+### 8.0 There are two renderers, and every rule below says which
+
+The Graph view has two implementations of the same picture:
+
+| | | |
+|---|---|---|
+| **v1** | `EntityNode.tsx` / `EntityEdge.tsx`, xyflow with DOM nodes | **the default** — Tailwind classes, reachable by every contrast gate in the repo |
+| **v2** | `TopologyCanvasV2.tsx` / `canvasDraw.ts`, a real `<canvas>` | opt-in behind `localStorage["vnprox.topology.rendererV2"]`, and behind the "Canvas v2" toolbar toggle |
+
+**State the renderer or the rule is wrong.** T-4301 fixed three measured contrast failures and the
+work was described as fixing "the map's colours". It fixed one code path, on a renderer a user has
+to switch on; the default view was untouched and had its own copy of the same defect. That was
+findable only because a test selector for `topology-canvas-v2` timed out on the default page
+(T-4305). Several layers — WireGuard, Kubernetes, Flows, Latency — still paint **nothing** in v1
+while their toolbar buttons are present, which is the same root fact.
+
+Consequence for any canvas change: **fix both, or say in the commit which one you fixed and why
+the other can wait.** T-4302 named one `STATUS_STROKE`; there were three, and the third was in v1.
+
+### 8.1 Colour on a node means status. Nothing else.
+
+This is section 1's principle 2, stated where it was being violated. A node's fill, border and
+ring are status; if you want a node to say something *other* than its health, use a different
+channel. Applies to **both** renderers.
+
+The status colours reach the canvas as `--color-status-*` — three duplicate tables were deleted at
+T-4302 — and `ok` is deliberately **neutral** (`--color-outline`), on `StatusDot`'s reasoning that
+a healthy thing is the absence of a signal. `unknown` takes `--color-status-unknown` *and* a dash,
+because a state the product is uncertain about should not rely on hue alone.
+
+### 8.2 Kind is a shape, not a hue — and no categorical colour scale can be added
+
+Both renderers draw the entity kind as its section 6 pictogram. Neither has a per-kind colour.
+
+The arithmetic is the reason, and it is worth keeping because it will be re-proposed: the status
+scale holds itself to **40° of OKLCH hue separation** (section 2.2, asserted by
+`index.css.test.ts`). Six kinds + four statuses + one accent is eleven hues; eleven × 40° needs
+**440° of a 360° circle.** The scale that existed proved it — four of its six hues were already
+under the floor, with the two commonest kinds worst (bond 13° from the accent, guest 17° from
+`ok`).
+
+Shape has no capacity limit and no collision with status, which is why the answer was to move the
+channel rather than repick the hues. `canvasGlyphs.ts` draws the *real* pictogram components on
+the canvas by replaying their element tree — there is no second copy of the icon set, and a glyph
+edit reaches the map in the same commit.
+
+**Where a shape does not fit, colour is still the only channel, and those cases are exceptions
+rather than a scale.** A mgmt/corosync edge and the sim-verdict strokes have nowhere to put a
+glyph. They stay literal and visibly exceptional in `canvasPalette`'s ROLE table rather than being
+folded into a status role they do not mean.
+
+### 8.3 Every v2 colour comes from `canvasPalette`. No literals, and no fallback.
+
+**v2 only** — v1 has Tailwind and `var()` and needs no resolver.
+
+A `<canvas>` needs values, not class names, so before `canvasPalette` the only route from
+`index.css` to the map was someone copying hex by hand under a comment promising it was "kept in
+sync". Measured: three of twelve values matched the token they named, and one was 78 RGB units off.
+**A comment promising synchronisation is not a synchronisation mechanism.**
+
+Resolution happens **once**, in a memo keyed on the theme — never per frame, because
+`getComputedStyle` forces a style recalculation and T-4107's 50-node/5000-guest envelope is the
+budget. An unresolvable token yields a deliberately hideous magenta and one `console.warn`, never a
+fallback palette: **a fallback that drifts renders plausibly while being wrong, which is the
+failure mode that survives review.**
+
+The map's own export takes the same resolved palette. It used to carry its own, and in light mode
+drew nodes *darker* than the page while the ladder in section 4 puts a raised surface *lighter* —
+an exported picture with the surface ladder upside down.
+
+### 8.4 Overlay channel assignment
+
+Several overlays can be on at once, so each owns a channel rather than competing for hue.
+
+| overlay | channel | scale |
+|---|---|---|
+| traffic (utilization) | edge **width**, plus a severity band | quantitative |
+| latency (RTT / loss) | edge **width**, plus a severity band | quantitative |
+| recency (age of change) | badge **hue + letter glyph** | ordinal, own ramp |
+| diff (added/removed/changed) | badge **hue + letter glyph** | **nominal**, own ramp |
+| blast radius, sim verdict, flows | stroke colour, drawn as a separate pass | nominal |
+
+**A quantity goes in width, not hue.** Traffic's ramp was five categorical hues running
+0.71 → 0.75 → 0.72 → 0.77 → 0.64 in lightness — up, down, up, down — so nothing about it told a
+viewer that green was more than blue. Meanwhile `utilizationStrokeWidth` was already mapping
+0–100% linearly and monotonically. The colour was a *redundant second encoding of the same number*,
+and it was the one without an order. Both quantitative overlays now put the magnitude in width and
+let colour name a severity band from the status scale.
+
+**That is also how the cross-screen collision was resolved** (T-4303's open question). The problem
+was never within an edge — an edge in traffic mode is never also painted by status — it was that
+one screen could show an amber edge meaning "75% utilized, healthy" beside an amber node border
+meaning "degraded". Rather than separating the hues or dimming one of them, the two were **made the
+same statement**: a traffic edge over 75% now resolves the very token the node border resolves, and
+both mean `degraded`. Same hue, same meaning, nothing to disambiguate.
+
+**Nominal and ordinal scales are exempt, and saying so matters as much as the rule.** Recency is
+not severity — a thing changed a minute ago is not "critical", and painting it with that token
+would state something false — and added/removed/changed is a nominal set for which hue is the
+correct channel. Both keep private ramps. A rule applied where it does no good is worse than no
+rule.
+
+### 8.5 A badge's glyph is measured against its own fill
+
+The overlay badges are filled discs with a letter drawn on them, so the load-bearing contrast is
+**glyph-on-fill, not fill-on-page**. Every glyph was drawn flat white, which measures 2.80 on
+recency's `today` and 3.30 on diff's `added` — so in four of nine badges, **the non-colour channel
+provided to satisfy the accessibility requirement was itself below the requirement**. Each overlay
+now picks its glyph colour per fill, and each test measures *every* mark rather than the ones that
+were wrong.
+
+Section 2.2's `--color-status-on-solid` exists to prevent exactly this and could not be used here,
+because these fills are not status tokens. If you add a solid-filled mark, measure what sits on it.
+
+### 8.6 Level of detail
+
+Zooming out sheds channels in a fixed order, and the pictogram participates: it takes the icon
+set's *simplified* interior below 20px, moves from the node's left edge to its centre once the
+label stops rendering, and is skipped entirely below 7px — **a 5px pictogram is not a smaller
+pictogram, it is a smudge**. Below that band the physical layer collapses to capsules
+(`lod.ts`). physnic and guest-nic keep T-3505's drawn jack instead of a glyph at low zoom, because
+copper vs fibre vs virtual is strictly more information than "this is a NIC".
 
 ## 9. Charts
 

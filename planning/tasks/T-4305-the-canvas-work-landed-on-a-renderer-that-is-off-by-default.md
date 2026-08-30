@@ -1,7 +1,7 @@
 # T-4305 — The canvas work landed on a renderer that is off by default
 
 **Phase:** 43 (Canvas rendering)
-**Status:** criterion 2 measured (below); 1, 3, 4 open
+**Status:** all four done. Criterion 4 immediately found what it was built to find — see the last section.
 **Corrects:** T-4301's impact claim, and narrows T-4302's
 
 ## The correction
@@ -117,3 +117,55 @@ The lesson is the same one this phase keeps producing, in a new place: I measure
 it, and described the fix in terms of the *product* when it was true of a *code path*. The
 measurement was right. The scope sentence around it was not, and only a timed-out selector made
 the difference visible.
+
+## Criteria 1 and 4, and what the second one caught on its first run
+
+**Criterion 1 is `docs/design-language.md` §8**, which was a `_Pending — Phase 43_` placeholder
+until now. It opens with §8.0, a renderer table, and every rule after it says which renderer it
+applies to. The section exists because of this card's own finding: a rule that silently means "v2
+only" is how T-4301's fix came to be described in terms of the product when it was true of a code
+path.
+
+§8 also discharges **T-4303's acceptance criterion 4** — "the cross-screen decision is implemented
+and stated in `docs/design-language.md`". Worth recording that the decision written down is neither
+of the two that card offered. It proposed either dimming the status-coloured elements while an
+overlay is active, or holding the ramp 40deg away from every status hue. What shipped instead was
+to make the two statements **the same statement**: a traffic edge over 75% now resolves the very
+token a `degraded` node border resolves. There is nothing left to disambiguate, which is stronger
+than separating them.
+
+**Criterion 4: both renderers, and the reason is not that the choice was hard.** The graph capture
+is now parameterised over `v1`/`v2` x light/dark/demo — six captures, up from three. The renderer
+is *asserted*, not assumed: `topology-canvas-v2` is required present for v2 and absent for v1, so a
+localStorage flag that stops working fails loudly instead of silently capturing v1 twice and
+reporting six green checks over three pictures. That is the same defect class as the timed-out
+selector that opened this card.
+
+102 visual tests pass and all six baselines regenerate.
+
+### What the side-by-side showed immediately
+
+`canvasDraw.ts`'s header says v2 is "a faithful rendering swap, not a different picture (T-901
+parity)". The first time the two were captured beside each other, they are visibly not the same
+picture:
+
+| | v1 | v2 |
+|---|---|---|
+| background | xyflow `<Background>` dot grid | plain fill, no grid |
+| zoom / fit / lock controls | xyflow `<Controls>`, bottom-left | absent |
+| minimap | xyflow `<MiniMap>`, styled `!bg-white dark:!bg-slate-900` | hand-rolled `Minimap.tsx` |
+| node typography | ~14px label, roomier box | 11px label, tighter box |
+| kind word | rendered in full ("GUEST-NIC") | omitted where T-3505's jack takes the slot |
+
+Only the last is a documented, intentional difference. The rest are a DOM renderer getting library
+chrome for free and a hand-written canvas not reimplementing it — which is a reasonable thing to
+have happened and an unreasonable thing to have never been visible.
+
+The minimap row is the sharper one: T-4301's remainder fixed the v2 minimap's dots from 2.34/2.36
+to 4.64/7.47 and pointed its surfaces at tokens, while **the v1 minimap is a different component
+with `!important` overrides onto slate literals**. Same concept, two implementations, one fixed.
+That is this card's central finding recurring inside the very fix that closed it.
+
+None of this is filed as a defect here — it is a product question about how faithful the swap is
+meant to be, and the answer changes what work follows. It is filed as *now observable*, which it
+was not this morning.
