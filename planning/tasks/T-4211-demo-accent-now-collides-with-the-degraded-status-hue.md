@@ -188,3 +188,19 @@ removed rather than carried forward as a fossil whose cause had just been delete
 T-3403 made the bar theme-independent on purpose (the same reasoning Stripe's sandbox banner uses),
 and it sits on its own near-black bar outside the content area. Recorded so it is not later read as
 a step this sweep missed.
+
+### A collision this card created, found immediately after it landed — T-4306
+
+Moving the demo accent to hue 320 put it **2.9deg from `BLAST_RADIUS_COLOR`** (fuchsia-600, hue
+322.9). In demo mode a blast-radius ring and any selected control are now the same magenta — the
+class of defect this card exists to remove, created by the commit that removed it.
+
+**This card's own gate passed**, because it compares the accent against `--color-status-*` and
+`BLAST_RADIUS_COLOR` is not a status token. The phase's recurring shape once more: a guard that
+measures against one set is blind to a call site outside it.
+
+Not reverted, because there is nowhere better. Thirteen hues are already spent on the map, and the
+best separation **any** fourteenth can achieve against all of them is 37.1deg — under the floor.
+320 is as good as available; the collision is a symptom of a full circle, not a bad choice within
+it. `src/topology/overlayHues.test.ts` now measures the whole set so a seventeenth cannot be added
+silently, and T-4306 carries the fix.
