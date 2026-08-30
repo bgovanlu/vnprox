@@ -45,8 +45,8 @@ type state struct {
 	// remember is a field the next construction site will forget.** The state
 	// is immutable once built, so deriving it on first read is both correct
 	// and impossible to skip.
-	sortOnce sync.Once
 	sorted   []Entity
+	sortOnce sync.Once
 	seq      uint64
 }
 
