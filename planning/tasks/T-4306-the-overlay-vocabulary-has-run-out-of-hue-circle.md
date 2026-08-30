@@ -69,11 +69,33 @@ collision it created is a symptom of exhaustion rather than a bad choice within 
 
 ## What to do
 
-- **Stop `blast-radius` competing on hue.** It is an *emphasis*, not a category — "these are the
-  entities this failure would take out". It already draws its own ring, so it can carry
-  `--color-status-critical` plus a distinct dash/animation, the way T-4303 moved traffic from a
-  private ramp onto width plus a severity band. That frees hue 323 and removes two of the sixteen
-  pairs.
+- **`blast-radius` needs to come off hue — but NOT the way this card first proposed.** Checked
+  against the code before implementing, and the proposal does not survive it:
+
+  1. **The dash channel is already taken.** `drawBlastRadiusOverlay` encodes the *role* in dash
+     (`path` gets `[3, 2]`, `target`/`affected` solid), in width (1.5 vs 2.5) **and** in a glyph
+     (`X` / `!` / `*`). "Status-critical plus a distinct dash" would collide with the overlay's own
+     role encoding.
+  2. **It would state something false.** An entity in a blast radius is *at risk*, not failed.
+     Painting it `--color-status-critical` says it is failed — the exact objection T-4303 raised
+     against giving `recency` the critical token, and the reason that card exempted it.
+
+  So the fix is genuinely architectural and is not "pick a different token". What blast radius has
+  that nothing else does is the **scrim**: it dims every non-focused node while active. That is
+  already a non-hue channel doing the heavy lifting, and it is the thread to pull — the ring may
+  not need a distinctive hue at all once everything around it is dimmed.
+
+- **Accept that no re-hue can fix this.** The measurement is unambiguous: 13 hues spent, best
+  fourteenth 37.1deg. Any card that responds to this one by moving a colour is re-solving an
+  unsatisfiable constraint. Something has to *leave* the hue channel.
+
+- **The cheapest real win is `SIM_STROKE`, and it removes three pairs by design.** Its four values
+  already sit 0.2-17deg from `ok`/`degraded`/`critical` — because that mapping is deliberate. So
+  they are a **fourth copy of the status scale**, the same defect T-4302 deleted three copies of,
+  and they should resolve `--color-status-*` rather than restate it. Only `indeterminate` (violet,
+  292.7) has no status equivalent and keeps a private hue. Doing this frees three hues, removes
+  three census pairs by a design change rather than by editing the expected list, and is
+  independent of the blast-radius question.
 - **Decide what `flow` means.** A flow edge 9deg from `info` and from the accent is the one
   genuinely *unexamined* collision left. Either it is deliberately informational — in which case
   say so and let it resolve `--color-status-info` — or it needs its own channel.
