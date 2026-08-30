@@ -1,5 +1,6 @@
 # T-4211 · Demo mode's amber accent now collides with the `degraded` status hue
 
+**Status:** done. The hue was not a choice — see below.
 **Found by:** T-4201/T-4204 while deriving the design language, 2026-08-28 · **size:** S ·
 **depends:** T-4204 (landed) · **affects:** demo mode only, every routed page
 
@@ -113,3 +114,77 @@ change into that would have been the churn the alias layer exists to avoid.
 5. A rendered before/after of a page showing a selected row **and** a degraded badge together,
    in demo mode, in both themes — the failure this card describes is a visual one and a number is
    not sufficient evidence that it is gone.
+
+---
+
+## Outcome — orchid, hue 320, and there was only ever one arc to put it in
+
+### Choosing the hue was arithmetic, not taste
+
+The card proposed ~320 and said "verify rather than assume". Verifying produced a stronger result
+than the proposal. Taking the four **saturated** status hues — `unknown` excluded at chroma 0.015,
+which is the card's own point about near-neutrals — three of the four gaps between them cannot hold
+a fifth colour even at their exact midpoints:
+
+| arc | width | best case, at the midpoint |
+|---|---|---|
+| critical 21.9 -> degraded 70.2 | 48.3 | 24.2deg from each — **too tight** |
+| degraded 70.2 -> ok 145.1 | 74.9 | 37.4deg — **too tight** |
+| ok 145.1 -> info 224.3 | 79.2 | 39.6deg — **too tight**, by 0.4 |
+| info 224.3 -> critical 21.9 | **157.6** | **78.8deg — the only arc with room** |
+
+320 sits inside it: 61.9deg from `critical`, 110.2 from `degraded`, 174.9 from `ok`, 95.7 from
+`info` and 95.5 from the base accent. **There was never a choice of hue, only a choice within one
+arc** — worth writing down, because the next person to propose a demo colour will re-derive this
+otherwise.
+
+### The ramp keeps demo mode LOUD, which is the property that mattered
+
+Demo mode works because it is more saturated than the real product — that is what makes it read as
+"not your cluster" from across a room, and amber's advantage was looking like a warning, which
+orchid cannot borrow. So the ramp keeps the base ramp's lightness profile per step and scales
+chroma to land accent-600 at **0.1618**, against the amber it replaces at **0.1583** and the base
+azure at **0.1012**. Same conspicuousness, different hue.
+
+A first pass preserved the base ramp's chroma unchanged and produced a dusty mauve (`#885a93`) that
+cleared every contrast gate and would have quietly made demo mode *less* conspicuous than the
+product it is warning you about. Every multiplier from 1.0 to 2.6 passed all seven gates, so the
+gates could not have caught it; matching the amber's measured chroma is what decided it.
+
+### Everything downstream was re-solved, not assumed
+
+`bg-accent-600 text-white` measures **5.55**, the selected-row wash **6.28**, dark foreground
+**7.74** on its worst surface — no call site moved. T-3406's amber step-remaps are recorded in the
+stylesheet as history rather than deleted, because the lesson survives the colour: *demo mode
+passing is never implied by base mode passing*, which is why this block still has its own contrast
+assertions and why the axe sweep now runs demo as a third mode.
+
+**T-4214's demo `accent-border` exception disappeared.** That role had to use accent-500 in demo
+because amber's light steps are near-white — `#ffd230` measured 1.17 against its own wash, which is
+not a border. Orchid-300 measures 1.48, so demo matches base/light again and the exception was
+removed rather than carried forward as a fossil whose cause had just been deleted.
+
+### The gates
+
+- **AC1**, chroma-aware as the card required: verified to fail against today's amber with the
+  card's own figure (`24.936... to be greater than or equal to 40`) before the ramp landed. The
+  near-neutral exemption is a measured property, not a name — a separate assertion pins
+  `unknown` below the chroma floor in all four modes, so a future status that goes near-neutral is
+  exempt for the same reason and a future `unknown` that gains chroma stops being.
+- **AC2**: the `info`-is-the-accent convergence is now checked in **every** mode and stated as
+  base-mode-only. It measured 0.3deg and passed while demo measured 178.9deg, because it resolved
+  `@theme` alone — it was asserting something it never checked. In demo it is now asserted to be
+  *clear* of the accent instead.
+- **AC3**: 36 token assertions pass, unchanged in strictness.
+- **AC4**: axe sweep **106 passed, 0 failed**, demo included — a mode that sweep could not run at
+  all until T-4212 added it earlier the same night.
+- **AC5**: rendered. In one demo-mode frame the selected nav item and layer chips are orchid,
+  `Last-known data` and `8 off-map findings` stay amber, `No LLDP data` stays azure. Three
+  meanings, three colours, no legend needed.
+
+### Deliberately not changed
+
+`DemoBanner`'s `DEMO MODE` pill is still `bg-amber-500`. It is a hardcoded literal, not the accent:
+T-3403 made the bar theme-independent on purpose (the same reasoning Stripe's sandbox banner uses),
+and it sits on its own near-black bar outside the content area. Recorded so it is not later read as
+a step this sweep missed.

@@ -153,6 +153,31 @@ function hue(hex: string): number {
   return (((Math.atan2(bb, a) * 180) / Math.PI) % 360 + 360) % 360;
 }
 
+/** OKLCH chroma — how COLOURED a colour is, in the same space `hue` uses.
+ *
+ * T-4211's gate needs this because a hue comparison is only meaningful
+ * between two colours that have one. `--color-status-unknown` sits at chroma
+ * 0.0147, an order of magnitude below every other status; measuring its hue
+ * produced a 31deg "collision" with the base accent that is pure noise, while
+ * the same metric said nothing about two colours at chroma 0.16 sitting 24deg
+ * apart, which was the real defect. */
+function chroma(hex: string): number {
+  const n = Number.parseInt(hex.slice(1), 16);
+  const linear = (v: number): number => {
+    const s = v / 255;
+    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  const r = linear((n >> 16) & 0xff);
+  const g = linear((n >> 8) & 0xff);
+  const b = linear(n & 0xff);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  const a = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
+  const bb = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+  return Math.hypot(a, bb);
+}
+
 const AA = 4.5;
 /** Every surface a status colour can be drawn on, read from the ladder
  * itself rather than named as a literal.
@@ -744,6 +769,92 @@ describe("accent roles (T-4214)", () => {
         expect(luminance(washed), `${combo.name}: wash must be lighter than the page`).toBeGreaterThan(luminance(page));
       } else {
         expect(luminance(washed), `${combo.name}: wash must be darker than the page`).toBeLessThan(luminance(page));
+      }
+    }
+  });
+});
+
+describe("accent vs status separation (T-4211)", () => {
+  // Nothing asserted this before, in either mode, which is how a 23.5deg
+  // collision was introduced, reviewed and merged with a green suite. The
+  // 40deg floor was held only BETWEEN status pairs; the accent was exempt
+  // from it, and `html.demo` was never looked at by any assertion in this
+  // file.
+  //
+  // **Chroma-aware, because hue alone lies at both ends.** A naive comparison
+  // flags base accent-600 against `unknown` at 31deg — noise, because
+  // `unknown` has chroma 0.0147, an order of magnitude below every other
+  // status, and a near-neutral does not have a hue worth comparing. The same
+  // naive metric said nothing about two colours at chroma 0.16 sitting 24deg
+  // apart, which is the real defect. So the floor applies only where BOTH
+  // colours are actually coloured.
+  const CHROMA_FLOOR = 0.04;
+  const HUE_FLOOR = 40;
+
+  const MODES = [
+    { name: "base / light", selectors: [] as string[], dark: false },
+    { name: "base / dark", selectors: ["html.dark"], dark: true },
+    { name: "demo / light", selectors: ["html.demo"], dark: false },
+    { name: "demo / dark", selectors: ["html.dark", "html.demo", "html.demo.dark"], dark: true },
+  ];
+
+  function resolveToken(mode: (typeof MODES)[number], name: string): string {
+    let value = /(#[0-9a-f]{6})/.exec((new RegExp(`${name}\\s*:\\s*([^;]+);`).exec(blockBody("@theme")))?.[1] ?? "")?.[1];
+    for (const selector of mode.selectors) {
+      const hit = /(#[0-9a-f]{6})/.exec((new RegExp(`${name}\\s*:\\s*([^;]+);`).exec(blockBody(selector)))?.[1] ?? "")?.[1];
+      if (hit !== undefined) value = hit;
+    }
+    if (value === undefined) throw new Error(`${name} unresolved for ${mode.name}`);
+    return value;
+  }
+
+  function separation(a: number, b: number): number {
+    const d = Math.abs(a - b) % 360;
+    return Math.min(d, 360 - d);
+  }
+
+  it("keeps the accent 40deg from every SATURATED status hue, in all four modes", () => {
+    for (const mode of MODES) {
+      const accent = resolveToken(mode, "--color-accent-600");
+      const accentChroma = chroma(accent);
+      for (const state of STATUS_STATES) {
+        // `info` is the documented exception in BASE mode — see the
+        // convergence assertion below — so it is checked there, not here.
+        if (!mode.name.startsWith("demo") && state === "info") continue;
+        const status = resolveToken(mode, `--color-status-${state}`);
+        if (chroma(status) < CHROMA_FLOOR || accentChroma < CHROMA_FLOOR) continue;
+        expect(
+          separation(hue(accent), hue(status)),
+          `${mode.name}: accent-600 vs status-${state} — a selected row and a ${state} row must not be the same colour`,
+        ).toBeGreaterThanOrEqual(HUE_FLOOR);
+      }
+    }
+  });
+
+  it("exempts `unknown` by measuring chroma, not by naming it", () => {
+    // The exemption has to be a property, not a list: a future status that
+    // happens to be near-neutral should be exempt for the same reason, and a
+    // future `unknown` that gains chroma should stop being.
+    for (const mode of MODES) {
+      expect(chroma(resolveToken(mode, "--color-status-unknown")), `${mode.name}: unknown`).toBeLessThan(CHROMA_FLOOR);
+    }
+  });
+
+  it("keeps `info` ON the accent hue in BASE mode only, and says so", () => {
+    // T-4204 made `info` converge with the accent deliberately: "an
+    // informational status IS the accent". That intent cannot survive demo
+    // mode, which re-points the accent and leaves `info` where it is — the
+    // old assertion measured 0.3deg while demo mode measured 178.9deg, and
+    // passed, because it only ever resolved `@theme`.
+    //
+    // So the intent is base-mode-only and is now stated as such, rather than
+    // asserted globally and checked locally.
+    for (const mode of MODES) {
+      const sep = separation(hue(resolveToken(mode, "--color-accent-600")), hue(resolveToken(mode, "--color-status-info")));
+      if (mode.name.startsWith("demo")) {
+        expect(sep, `${mode.name}: info is NOT the accent here, and must be clear of it`).toBeGreaterThanOrEqual(HUE_FLOOR);
+      } else {
+        expect(sep, `${mode.name}: info IS the accent`).toBeLessThan(10);
       }
     }
   });

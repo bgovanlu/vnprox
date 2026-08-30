@@ -574,11 +574,38 @@ html.dark {
  * utility in the app — buttons, the nav rail's selection, focus rings —
  * without touching a single component.
  *
- * Amber and not, say, green: it has to read as "this is not your cluster"
- * at a glance from across a room, and it must not collide with the
- * red/rose used for destructive affordances or the emerald used for
- * healthy status. The class is stamped by detectDemoMode() in
- * src/demo/useDemoMode.ts, from GET /health.
+ * T-4211: ORCHID, hue 320, and it used to be amber. The original reasoning
+ * — "it has to read as 'this is not your cluster' from across a room, and
+ * must not collide with the red/rose used for destructive affordances or the
+ * emerald used for healthy status" — was right in 2026 and was written when
+ * this app had NO status scale; every page picked its own emerald/amber/rose
+ * by hand. T-4204 then formalised `degraded` as a burnt amber, and the demo
+ * accent and the warning colour landed on top of each other.
+ *
+ * Measured: demo amber-600 sat 24.9deg from `degraded` and **23.5deg from
+ * `critical`**, against the 40deg floor this palette holds everywhere else.
+ * It did not sit next to the warning colour, it sat BETWEEN the warning
+ * colour and the error colour. So in demo mode a *selected* row and a
+ * *nearly-critical* row read as the same colour, which is principle 2 —
+ * colour encodes status — broken.
+ *
+ * Choosing the replacement was arithmetic, not taste. Taking the four
+ * SATURATED status hues (critical 22, degraded 70, ok 145, info 224; unknown
+ * is excluded at chroma 0.015 — a near-neutral has no hue worth comparing),
+ * three of the four gaps between them are too narrow to hold a fifth colour
+ * even at their exact midpoints: 24.2deg, 37.4deg and 39.6deg from each
+ * neighbour. **Only the info -> critical arc has room**, at 78.8deg. 320 sits
+ * inside it, 61.9deg from `critical` and 95.7deg from `info` and from the
+ * base accent. There was never a choice of hue, only a choice within one arc.
+ *
+ * Loudness is preserved deliberately. Demo mode works because it is more
+ * saturated than the real product, so the steps keep the base ramp's
+ * lightness profile with chroma scaled to land accent-600 at **0.1618** —
+ * against the amber it replaces at 0.1583 and the base azure at 0.1012. Same
+ * conspicuousness, different hue: only the collision moved.
+ *
+ * The class is stamped by detectDemoMode() in src/demo/useDemoMode.ts, from
+ * GET /health.
  *
  * T-3401: this block must redefine EVERY `--color-accent-*` step that
  * @theme above defines. A step defined in @theme but missing here would
@@ -602,7 +629,16 @@ html.dark {
  * already is amber-800 (the new value for 700), so nothing here relies on
  * 700 and 800 being visually distinct.
  *
- * T-4201: these are now literal hex rather than `var(--color-amber-*)`,
+ * T-4211 note on the T-3406 findings recorded just above: they were about
+ * amber, and amber is gone. They are kept because the LESSON is not — "demo
+ * mode passing is never implied by base mode passing" is why this block still
+ * has its own contrast assertions, and why the axe sweep now runs demo as a
+ * third mode (T-4212). The specific step remaps that sweep forced are no
+ * longer in force: the orchid ramp was solved against those same targets, so
+ * `bg-accent-600 text-white` measures 5.55 and the selected-row wash 6.28,
+ * with no call site moving.
+ *
+ * T-4201: these are literal hex rather than `var(--color-amber-*)`,
  * for symmetry with the base accent above — the base could no longer be
  * expressed as an alias once it stopped being a stock Tailwind scale, and
  * a block where one half is literal and the other is indirected cannot be
@@ -611,32 +647,32 @@ html.dark {
  * measurement T-3406 recorded above carries over unchanged (amber-700 is
  * still #bb4d00, exactly as that sweep recorded it). */
 html.demo {
-  --color-accent-50: #fffbeb;
-  --color-accent-100: #fef3c6;
-  --color-accent-200: #fee685;
-  --color-accent-300: #ffd230;
-  --color-accent-400: #ffb900;
-  --color-accent-500: #fe9a00;
-  --color-accent-600: #bb4d00;
-  --color-accent-700: #973c00;
-  --color-accent-800: #973c00;
-  --color-accent-900: #7b3306;
-  --color-accent-950: #461901;
+  --color-accent-50: #fdf4ff;
+  --color-accent-100: #fae7ff;
+  --color-accent-200: #f6ccff;
+  --color-accent-300: #eea5ff;
+  --color-accent-400: #e472fd;
+  --color-accent-500: #c260d8;
+  --color-accent-600: #9648a7;
+  --color-accent-700: #783886;
+  --color-accent-800: #622d6e;
+  --color-accent-900: #4d2156;
+  --color-accent-950: #321339;
 
-  /* T-4214: demo's accent roles. The light foreground must stay at 700-or-
-     darker: T-3406 found demo amber-600 on its own wash at 4.31 against the
-     pre-T-4203 surfaces, and it re-measures at **4.25** on today's — still a
-     fail. amber-700/800 (the same #973c00 after that phase's remap) measure
-     5.99. This table is not symmetric with the base accent by accident. */
-  --color-accent-fg: #973c00; /* accent-700 */
-  --color-accent-soft: color-mix(in srgb, #bb4d00 10%, transparent); /* accent-600 @ 10% */
-  /* NOT accent-300, unlike base/light. Demo's ramp is amber, whose light
-     steps are near-white: #ffd230 measures **1.17** against its own wash on
-     `surface-sunken` — under the floor, i.e. not a border. accent-500
-     measures 1.72. This is the same asymmetry the accent-fg row has (demo's
-     light foreground must stay at 700-or-darker), and for the same reason:
-     the four-way table is not symmetric by accident. */
-  --color-accent-border: #fe9a00; /* accent-500 */
+  /* T-4214/T-4211: demo's accent roles, on the orchid ramp. accent-700 is the
+     same step base/light uses; the 700-or-darker constraint T-3406 found for
+     amber was a property of amber's lightness curve, and the orchid ramp was
+     solved against the same targets, so 700 clears here for the same reason
+     it does in base. Re-measured, not assumed: 6.90 on the worst surface and
+     6.06 on its own wash. */
+  --color-accent-fg: #783886; /* accent-700 */
+  --color-accent-soft: color-mix(in srgb, #9648a7 10%, transparent); /* accent-600 @ 10% */
+  /* accent-300, matching base/light again. T-4214 had to use accent-500 here
+     because demo's ramp was AMBER, whose light steps are near-white: #ffd230
+     measured 1.17 against its own wash — not a border. Orchid-300 measures
+     1.48, so the exception T-4211 removed the cause of is removed with it
+     rather than carried forward as a fossil. */
+  --color-accent-border: #eea5ff; /* accent-300 */
 }
 /* T-4214 · The cascade trap this card exists to close.
  *
@@ -654,9 +690,9 @@ html.demo {
  * token in this file gets would pass while demo+dark rendered wrong, because
  * the missing block is neither of the two it compares. */
 html.demo.dark {
-  --color-accent-fg: #ffd230; /* accent-300 */
-  --color-accent-soft: color-mix(in srgb, #fe9a00 15%, transparent); /* accent-500 @ 15% */
-  --color-accent-border: #973c00; /* accent-700 */
+  --color-accent-fg: #eea5ff; /* accent-300 */
+  --color-accent-soft: color-mix(in srgb, #c260d8 15%, transparent); /* accent-500 @ 15% */
+  --color-accent-border: #783886; /* accent-700 */
 }
 
 
