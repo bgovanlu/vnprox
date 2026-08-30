@@ -99,9 +99,14 @@ collision it created is a symptom of exhaustion rather than a bad choice within 
 - **Decide what `flow` means.** A flow edge 9deg from `info` and from the accent is the one
   genuinely *unexamined* collision left. Either it is deliberately informational — in which case
   say so and let it resolve `--color-status-info` — or it needs its own channel.
-- **Do not re-hue `SIM_STROKE` or `STP_BLOCKING_STROKE`.** Those collisions are the point, and the
-  census records them as such. A future card that "fixes" them would be undoing two deliberate
-  designs on the strength of a number.
+  To be unambiguous, because the two readings of "fix `SIM_STROKE`" are opposites: do **not** move
+  those values *away* from the status hues — that would undo a deliberate design on the strength of
+  a number. Move them *onto* the status tokens exactly, which is the same intent the near-miss hues
+  were expressing approximately.
+
+- **`STP_BLOCKING_STROKE` stays a literal.** T-3901 chose a burnt orange deliberately *near but not
+  equal to* "down"/"deny" so a port STP has cut never reads as either. That is a value with no
+  token behind it and it should keep one — its four census pairs are the design, not drift.
 - Rewrite the four comments. They currently assert a property the code does not have.
 
 ## Acceptance criteria
