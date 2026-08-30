@@ -71,10 +71,13 @@ function separation(a: number, b: number): number {
  * what this repo distrusts, so `keeps this table in step with the source`
  * below re-reads each one out of the module that defines it. */
 const OVERLAY = {
-  "sim/allow": "#10b981",
-  "sim/deny": "#ef4444",
-  "sim/unreachable": "#f59e0b",
-  "sim/indeterminate": "#8b5cf6",
+  // T-4306: `sim/allow`, `sim/deny` and `sim/unreachable` are gone from this
+  // table because they are gone from the code — they now resolve
+  // `--color-status-ok` / `-critical` / `-degraded` rather than restating them
+  // 0.2-17deg away. That removes three census pairs by a DESIGN change, which
+  // is the only way this list is allowed to shrink (AC1). `indeterminate`
+  // stays: "could not decide" is not a health state.
+  "sim/indeterminate": "#8b5cf6", // violet-500, the one verdict with no status equivalent
   "flow": "#06b6d4",
   "flow-selected": "#0e7490",
   "stp-blocking": "#c2410c",
@@ -135,13 +138,8 @@ describe("map overlay hues (found while closing T-4302)", () => {
       "flow-selected | status/info",
       // Deliberate: SIM_STROKE maps a simulator verdict onto severity, and
       // EntityEdge.tsx says so — a `deny` SHOULD look like an error.
-      "sim/allow | status/ok",
-      "sim/deny | status/critical",
       // T-3901 chose a burnt orange deliberately near, but not equal to,
       // "down"/"deny", so a cut port never reads as either.
-      "sim/deny | stp-blocking",
-      "sim/unreachable | status/degraded",
-      "sim/unreachable | stp-blocking",
       "status/critical | stp-blocking",
       "status/degraded | stp-blocking",
     ]);
@@ -167,9 +165,14 @@ describe("map overlay hues (found while closing T-4302)", () => {
     expect(edge, "stp-blocking has moved in EntityEdge.tsx").toContain(
       `const STP_BLOCKING_STROKE = "${OVERLAY["stp-blocking"]}"`,
     );
-    for (const verdict of ["allow", "deny", "unreachable", "indeterminate"] as const) {
-      expect(draw, `sim/${verdict} has moved`).toContain(`${verdict}: "${OVERLAY[`sim/${verdict}`]}"`);
-    }
+    // T-4306 left exactly one sim literal, and it moved out of canvasDraw.ts
+    // into the shared mapping. Re-read from there — the other three are no
+    // longer literals anywhere, which is the point.
+    const sim = readFileSync(resolve(__dirname, "simVerdict.ts"), "utf8");
+    expect(sim, "sim/indeterminate has moved in simVerdict.ts").toContain(
+      `SIM_INDETERMINATE_COLOR = "${OVERLAY["sim/indeterminate"]}"`,
+    );
+    expect(draw, "canvasDraw.ts should no longer hold its own verdict palette").not.toContain('allow: "#');
   });
 
   it("records that no fourteenth hue can clear the floor — the circle is full", () => {

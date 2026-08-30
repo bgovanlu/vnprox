@@ -8,6 +8,7 @@ import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps, type Ed
 import clsx from "clsx";
 import type { EntityStatus, FindingBadge, SimVerdict } from "../api/types";
 import { findingChipText, hasOpenFinding, parseFindingBadge } from "./findingBadges";
+import { simToneVar, simVerdictTone } from "./simVerdict";
 import { isStpBlockingEdge, stpBadgeLabel } from "./stpOverlay";
 import { trafficEdgeStyle, toneVar } from "./trafficMode";
 
@@ -63,14 +64,12 @@ const STATUS_STROKE: Record<EntityStatus, string> = {
   unknown: "var(--color-status-unknown)",
 };
 
-// Same verdict palette as EntityNode.tsx's SIM_RING_CLASS, in stroke-color
-// form (allow=emerald, deny=red, unreachable=amber, indeterminate=violet).
-const SIM_STROKE: Record<SimVerdict, string> = {
-  allow: "#10b981",
-  deny: "#ef4444",
-  unreachable: "#f59e0b",
-  indeterminate: "#8b5cf6",
-};
+// T-4306: this was one of FOUR copies of the verdict palette — here, in
+// canvasDraw.ts, and twice in EntityNode.tsx as Tailwind utilities. All four
+// agreed, which is the part worth noticing: they agreed because everyone
+// reached for the same Tailwind-500 swatch, not by any mechanism.
+// `STATUS_STROKE` had three copies that did NOT agree. The mapping lives in
+// simVerdict.ts now; `var()` resolves it here because this is the DOM.
 
 // T-3901: the loop-breaking blocked port — "the first question in any L2
 // loop hunt" — gets its own distinct stroke (a burnt orange, not reused
@@ -139,7 +138,7 @@ export function EntityEdge({
           // port STP has cut off to prevent a loop is worth seeing
           // regardless of which paint mode the map is otherwise in.
           stroke: simVerdict
-            ? SIM_STROKE[simVerdict]
+            ? simToneVar(simVerdictTone(simVerdict))
             : stpBlocking
               ? STP_BLOCKING_STROKE
               : trafficMode

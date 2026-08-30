@@ -31,6 +31,7 @@ const PALETTE = {
   statusDown: "role:statusDown",
   statusDegraded: "role:statusDegraded",
   statusUnknown: "role:statusUnknown",
+  statusOk: "role:statusOk",
   badgeBg: "role:badgeBg",
   badgeText: "role:badgeText",
   minimapBg: "role:minimapBg",

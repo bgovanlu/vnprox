@@ -14,7 +14,7 @@
 // asserting the *data* both renderers consume is identical, plus the e2e
 // perf/scale run that exercises the real draw path in headless Chromium.
 import type { Edge as FlowEdge, Node as FlowNode } from "@xyflow/react";
-import type { EntityStatus, Severity } from "../api/types";
+import type { EntityStatus, Severity, SimVerdict } from "../api/types";
 import type { EntityEdgeData } from "./EntityEdge";
 import type { EntityNodeData } from "./EntityNode";
 import type { Size, Viewport } from "./canvasScene";
@@ -26,6 +26,7 @@ import { findingChipText, hasOpenFinding, parseFindingBadge, shouldPulse } from 
 import { formatMTUBadgeLabel, type MTUOverlayBadge } from "./mtuOverlay";
 import { drawGlyph, glyphOps } from "./canvasGlyphs";
 import { jackKindForEntity, speedMarking, type PortBodyKind } from "./portMedia";
+import { SIM_INDETERMINATE_COLOR, simVerdictTone } from "./simVerdict";
 import { recencyGlyphColor, recencyMarkColor, recencyMarkGlyph, type RecencyMark } from "./recencyOverlay";
 import { trafficEdgeStyle, type UtilizationTone } from "./trafficMode";
 
@@ -81,6 +82,12 @@ export interface SceneTheme {
   statusDown: string;
   statusDegraded: string;
   statusUnknown: string;
+  /** T-4306: `--color-status-ok`, the GREEN one — deliberately not the same
+   * as `nodeBorderOk`, which is `--color-outline` because a healthy node is
+   * the absence of a signal (StatusDot's convention). The path simulator's
+   * `allow` verdict is the opposite case: it is an answer to a question the
+   * operator asked, so it says yes in green. */
+  statusOk: string;
   badgeBg: string;
   badgeText: string;
   /** T-4301 remainder: the minimap's own two colours. It is a second
@@ -152,12 +159,30 @@ export function pulseAlphaForPhase(phaseMs: number, periodMs: number = PULSE_PER
  * generous; the node's label has stopped rendering well before it. */
 const GLYPH_MIN_PX = 7;
 
-const SIM_STROKE: Record<string, string> = {
-  allow: "#10b981",
-  deny: "#ef4444",
-  unreachable: "#f59e0b",
-  indeterminate: "#8b5cf6",
-};
+/** T-4306: was a fourth copy of the verdict palette, three of whose four
+ * values sat 0.2-17deg from the status hue they were mirroring on purpose.
+ * The mapping now lives in simVerdict.ts and this resolves it against the
+ * already-resolved scene palette, the way TRAFFIC_TONE does for T-4303's
+ * bands. `indeterminate` keeps a literal because "could not decide" is not a
+ * health state — see simVerdict.ts. */
+function simStroke(verdict: string, theme: SceneTheme): string | undefined {
+  if (!isSimVerdict(verdict)) return undefined;
+  switch (simVerdictTone(verdict)) {
+    case "status-ok":
+      return theme.statusOk;
+    case "status-critical":
+      return theme.statusDown;
+    case "status-degraded":
+      return theme.statusDegraded;
+    case "sim-indeterminate":
+      return SIM_INDETERMINATE_COLOR;
+  }
+}
+
+const SIM_VERDICTS = new Set(["allow", "deny", "unreachable", "indeterminate"]);
+function isSimVerdict(v: string): v is SimVerdict {
+  return SIM_VERDICTS.has(v);
+}
 
 // T-4302: `KIND_ACCENT` used to live here — fourteen kinds, each with its own
 // hue, painted as a 3-4px rail down the node's left edge. It is deleted, not
@@ -335,7 +360,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
     let width = data?.highlighted ? 2.5 : 1.5;
     let dashed = false;
     if (sim) {
-      stroke = SIM_STROKE[sim] ?? theme.edgeDefault;
+      stroke = simStroke(sim, theme) ?? theme.edgeDefault;
       width = 3.5;
     } else if (trafficMode) {
       const t = trafficEdgeStyle(data?.utilizationPct);
@@ -437,7 +462,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
     const sim = d.simVerdict;
     roundRectPath(ctx, tl.x, tl.y, w, h, radius);
     if (sim) {
-      ctx.strokeStyle = SIM_STROKE[sim] ?? statusBorder(d.status, theme);
+      ctx.strokeStyle = simStroke(sim, theme) ?? statusBorder(d.status, theme);
       ctx.lineWidth = 2.5;
       ctx.setLineDash(d.simRole === "missing" ? [5, 3] : []);
     } else {
@@ -563,7 +588,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
     if (sim && d.simRole) {
       ctx.beginPath();
       ctx.arc(tl.x + w, tl.y, 4, 0, Math.PI * 2);
-      ctx.fillStyle = SIM_STROKE[sim] ?? "#8b5cf6";
+      ctx.fillStyle = simStroke(sim, theme) ?? SIM_INDETERMINATE_COLOR;
       ctx.fill();
       ctx.strokeStyle = theme.background;
       ctx.lineWidth = 1.5;

@@ -1,6 +1,7 @@
 # T-4306 — The overlay vocabulary has run out of hue circle, and one collision was added tonight
 
 **Phase:** 43 (Canvas rendering)
+**Status:** partly done — the `SIM_STROKE` consolidation landed. `blast-radius` and `flow` remain.
 **Found by:** closing out T-4302's "what this card did not fix" note, 2026-08-30 · **size:** M
 **Depends on:** T-4211 (landed), T-4302 (landed)
 **Related:** T-4302 proved the same arithmetic for entity *kind* and moved it to shape
@@ -118,3 +119,55 @@ collision it created is a symptom of exhaustion rather than a bad choice within 
 4. `docs/design-language.md` §8.4's channel-assignment table gains a row for what an overlay does
    when the circle has nothing left — that is now a documented, measured fact rather than a thing
    each card rediscovers.
+
+---
+
+## Done: `SIM_STROKE` consolidated (5 census pairs removed by design)
+
+**There were four copies, not two.** `canvasDraw.ts`'s `SIM_STROKE` and `EntityEdge.tsx`'s
+`SIM_STROKE` as hex, and `EntityNode.tsx`'s `SIM_RING_CLASS` **and** `SIM_MARKER_CLASS` as Tailwind
+utilities.
+
+All four agreed — and that is the part worth recording. They agreed because four authors reached
+for the same Tailwind-500 swatch, not because anything kept them in step. `STATUS_STROKE` had three
+copies that did **not** agree (T-4302 measured them disagreeing about `ok` and `unknown`), and
+nothing about this table made it less likely to drift, only luckier so far.
+
+The mapping is `src/topology/simVerdict.ts` now, returning a token *name* that each renderer
+resolves the way it can — DOM through `var()`, canvas through `canvasPalette`, Tailwind call sites
+by picking between fully-written class literals. Same division of labour `trafficMode.ts`'s
+`toneVar` established at T-4303.
+
+| verdict | was | is | separation it was restating |
+|---|---|---|---|
+| `allow` | emerald-500 | `--color-status-ok` | 17.4deg |
+| `deny` | red-500 | `--color-status-critical` | 3.5deg |
+| `unreachable` | amber-500 | `--color-status-degraded` | **0.2deg** |
+| `indeterminate` | violet-500 | violet-500, in **one** place | — |
+
+Five census pairs are gone, and gone the way AC1 requires — because the colours no longer exist,
+not because the expected list was edited.
+
+### Two things this turned up
+
+**`statusOk` had to be a new role, not a reuse.** The canvas already had `nodeBorderOk`, and it is
+`--color-outline` — neutral, because a healthy node is the *absence* of a signal, which is
+`StatusDot`'s documented convention. An `allow` verdict is the opposite case: it is an answer to a
+question the operator asked, so it says yes in green. Two roles, two tokens, and the palette test
+records why the twentieth lookup exists.
+
+**The Tailwind tables kept their class spelling on purpose.** `SIM_RING_CLASS` and
+`SIM_MARKER_CLASS` now key on the tone but still write every class out in full, because Tailwind v4
+resolves utilities by scanning source text and an interpolated `ring-${tone}` is never emitted.
+Not hypothetical — `NoticeStack` shipped exactly that bug during T-4303 and carries a test
+forbidding it.
+
+## Still open
+
+- **`blast-radius` ↔ `accent(demo)`** (2.9deg, introduced by T-4211). The analysis above stands:
+  the dash channel is taken by the overlay's own role encoding, `--color-status-critical` would
+  state something false, and no re-hue can clear the floor. The scrim is the thread to pull.
+- **`flow` / `flow-selected` ↔ `info` / `accent(base)`** — the one genuinely *unexamined*
+  collision. Needs a decision about what a flow edge means, not a colour.
+- The four "distinct from every colour" comments still overclaim; two of the four modules they sit
+  in no longer have a private palette at all.

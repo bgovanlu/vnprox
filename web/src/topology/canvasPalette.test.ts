@@ -180,7 +180,7 @@ describe("canvasPalette (T-4301)", () => {
       return readerFor(false)(name);
     };
     resolveSceneTheme(counting, false);
-    // 19 lookups over 15 distinct tokens. Four fields share a token with
+    // 20 lookups over 16 distinct tokens. Four fields share a token with
     // another field, and every sharing is the point rather than an accident:
     // nodeBorderOk/edgeDefault are both `--color-outline`; T-4302's
     // statusDown/statusDegraded land on the same `--color-status-critical`/
@@ -192,7 +192,13 @@ describe("canvasPalette (T-4301)", () => {
     // and a badge saying "error" now provably resolve to one value, which two
     // tables of literals could not promise and, when measured, did not
     // deliver.
-    expect(reads).toHaveLength(19);
-    expect(new Set(reads).size).toBe(15);
+    //
+    // T-4306 added the twentieth: `statusOk` is `--color-status-ok`, the GREEN
+    // one, and is deliberately NOT shared with `nodeBorderOk`. A healthy node
+    // is drawn neutral because health is the absence of a signal; the path
+    // simulator's `allow` verdict is an answer to a question the operator
+    // asked, so it says yes in green. Two roles, two tokens, on purpose.
+    expect(reads).toHaveLength(20);
+    expect(new Set(reads).size).toBe(16);
   });
 });

@@ -27,6 +27,7 @@ import {
 import { PortJack } from "./PortBody";
 import { PICTOGRAMS, type PictogramKind } from "../icons/registry";
 import { jackKindForEntity, speedMarking } from "./portMedia";
+import { simVerdictTone, type SimTone } from "./simVerdict";
 import { STP_ROOT_BADGE, stpBadgeLabel } from "./stpOverlay";
 
 /** This node's role along a path-simulator overlay (T-504): "path" is any
@@ -146,18 +147,25 @@ const STATUS_CLASSES: Record<EntityStatus, string> = {
 // allow=emerald, deny=red, unreachable=amber, indeterminate=violet (a
 // distinct fourth color — never squeezed into the allow/deny/unreachable
 // palette, per the honesty contract's "never a pass/fail" requirement).
-const SIM_RING_CLASS: Record<SimVerdict, string> = {
-  allow: "ring-2 ring-emerald-500",
-  deny: "ring-2 ring-red-500",
-  unreachable: "ring-2 ring-amber-500",
-  indeterminate: "ring-2 ring-violet-500",
+/** T-4306: two of the four copies of the verdict palette lived in this file,
+ * as Tailwind utilities. The mapping is simVerdict.ts's now; these tables keep
+ * only the CLASS SPELLING, which they must, because Tailwind v4 resolves
+ * utilities by scanning source text — an interpolated `ring-${tone}` is never
+ * emitted. That is not hypothetical: NoticeStack shipped exactly that bug and
+ * has a test forbidding it now. So the tone decides which literal is used, and
+ * every literal is written out in full. */
+const SIM_RING_CLASS: Record<SimTone, string> = {
+  "status-ok": "ring-2 ring-status-ok",
+  "status-critical": "ring-2 ring-status-critical",
+  "status-degraded": "ring-2 ring-status-degraded",
+  "sim-indeterminate": "ring-2 ring-violet-500",
 };
 
-const SIM_MARKER_CLASS: Record<SimVerdict, string> = {
-  allow: "bg-emerald-500",
-  deny: "bg-red-500",
-  unreachable: "bg-amber-500",
-  indeterminate: "bg-violet-500",
+const SIM_MARKER_CLASS: Record<SimTone, string> = {
+  "status-ok": "bg-status-ok",
+  "status-critical": "bg-status-critical",
+  "status-degraded": "bg-status-degraded",
+  "sim-indeterminate": "bg-violet-500",
 };
 
 const SIM_MARKER_LABEL: Record<SimPathRole, string> = {
@@ -274,7 +282,7 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
         // ring above (a simulated trace is a more deliberate, rarer action
         // than a passive hover) and marks the missing-link break with a
         // dashed border so it reads as "broken", not just "highlighted".
-        simVerdict && SIM_RING_CLASS[simVerdict],
+        simVerdict && SIM_RING_CLASS[simVerdictTone(simVerdict)],
         simVerdict && simRole === "missing" && "border-dashed border-2",
       )}
       style={{ minWidth: 140 }}
@@ -299,7 +307,7 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
           title={SIM_MARKER_LABEL[simRole]}
           className={clsx(
             "absolute -right-1.5 -top-1.5 h-3 w-3 rounded-full border-2 border-white dark:border-slate-900",
-            SIM_MARKER_CLASS[simVerdict],
+            SIM_MARKER_CLASS[simVerdictTone(simVerdict)],
           )}
         />
       )}
