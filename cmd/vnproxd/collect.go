@@ -218,6 +218,7 @@ func (a collectorHealthAdapter) CollectorStatus() []api.CollectorSourceStatus {
 			LastAttempt:         s.LastAttempt,
 			ConsecutiveFailures: s.ConsecutiveFailures,
 			LastError:           s.LastError,
+			LastErrorSummary:    s.LastErrorSummary,
 		}
 	}
 	return out

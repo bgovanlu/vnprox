@@ -52,12 +52,23 @@ type CollectorHealth interface {
 // infer it), so a single unreachable peer's staleness is visible and
 // attributable to that peer's own band without affecting any other node's.
 type CollectorSourceStatus struct {
-	LastSuccess         time.Time `json:"last_success,omitempty"`
-	LastAttempt         time.Time `json:"last_attempt,omitempty"`
-	Name                string    `json:"name"`
-	Node                string    `json:"node,omitempty"`
-	LastError           string    `json:"last_error,omitempty"`
-	ConsecutiveFailures int       `json:"consecutive_failures,omitempty"`
+	LastSuccess time.Time `json:"last_success,omitempty"`
+	LastAttempt time.Time `json:"last_attempt,omitempty"`
+	Name        string    `json:"name"`
+	Node        string    `json:"node,omitempty"`
+	LastError   string    `json:"last_error,omitempty"`
+	// LastErrorSummary carries T-4304's operator-facing sentence through to
+	// GET /topology's staleness object, and is deliberately `json:"-"`.
+	//
+	// This struct is BOTH the adapter into stalenessFrom and the wire shape
+	// of GET /api/v1/health's `collectors` array. T-4304 chose to add a
+	// sibling field to the topology staleness contract; it did not ask for a
+	// new field on /health, and quietly growing a second documented payload
+	// because one struct happens to serve two purposes is how contracts drift.
+	// If /health should carry it too, that is a decision with its own
+	// docs/api.md edit, not a side effect of this one.
+	LastErrorSummary    string `json:"-"`
+	ConsecutiveFailures int    `json:"consecutive_failures,omitempty"`
 }
 
 // healthHandler serves GET /api/v1/health ->

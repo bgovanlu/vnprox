@@ -422,10 +422,11 @@ func stalenessFrom(sources []CollectorSourceStatus) *topology.Staleness {
 	out := &topology.Staleness{Sources: make([]topology.SourceStaleness, 0, len(sources))}
 	for _, s := range sources {
 		ss := topology.SourceStaleness{
-			Name:      s.Name,
-			Node:      s.Node,
-			Stale:     s.ConsecutiveFailures >= staleConsecutiveFailures,
-			LastError: s.LastError,
+			Name:             s.Name,
+			Node:             s.Node,
+			Stale:            s.ConsecutiveFailures >= staleConsecutiveFailures,
+			LastError:        s.LastError,
+			LastErrorSummary: s.LastErrorSummary,
 		}
 		if !s.LastSuccess.IsZero() {
 			ss.LastSuccess = s.LastSuccess.Unix()

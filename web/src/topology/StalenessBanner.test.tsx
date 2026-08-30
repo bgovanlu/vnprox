@@ -8,7 +8,7 @@ import staleFixture from "./__fixtures__/three-node-vlan-topology-stale.json";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { Staleness, TopologyResponse } from "../api/types";
+import type { SourceStaleness, Staleness, TopologyResponse } from "../api/types";
 import { StalenessBanner } from "./StalenessBanner";
 
 const stale = staleFixture as unknown as TopologyResponse;
@@ -165,5 +165,68 @@ describe("StalenessBanner — retry (T-3603)", () => {
   it("disables the button while a retry is in flight", () => {
     render(<StalenessBanner staleness={stale} retry={retryProps({ pending: true })} />);
     expect(screen.getByRole("button", { name: "Retrying…" })).toBeDisabled();
+  });
+});
+
+describe("the poll error an operator is shown (T-4304 deliverable 3)", () => {
+  const failing = (extra: Partial<SourceStaleness>): Staleness => ({
+    stale: true,
+    sources: [{ name: "host", node: "pve2", stale: true, lastSuccess: 1720512200, ...extra }],
+  });
+
+  // The chain that was actually on screen. Kept whole in the fixture because
+  // the point of Option B is that it survives.
+  const CHAIN =
+    'host links (pve2): peer: pve2: peer_untrusted (peer_unreachable): circuit open after a ' +
+    'certificate verification failure: peer: pve2: peer_untrusted: certificate verification failed, ' +
+    'treating the peer as unreachable (peer_unreachable): Get "https://10.20.0.12:8007/api/peer/host/links?node=pve2": ' +
+    "peer: peer_untrusted: cluster CA trust anchor unavailable: reading /etc/pve/pve-root-ca.pem: " +
+    "open /etc/pve/pve-root-ca.pem: no such file or directory";
+
+  const SUMMARY =
+    "pve2 answered, but its TLS certificate did not verify against the cluster CA, so it is being " +
+    "treated as unreachable. To fix: on pve2, run  pvecm updatecerts -f";
+
+  it("shows the summary, and does not put the chain in front of the operator", () => {
+    render(<StalenessBanner staleness={failing({ lastError: CHAIN, lastErrorSummary: SUMMARY })} />);
+    // Asserted on distinctive fragments rather than the whole string, and the
+    // reason is a real trap: Testing Library's default normalizer COLLAPSES
+    // whitespace, while the summary deliberately double-spaces before the
+    // command ("run  pvecm updatecerts -f") to set it off. A whole-string
+    // match fails on that alone and looks like the text is missing.
+    //
+    // `content` is the element's OWN text; using `el.textContent` instead
+    // matches every ancestor too and throws "found multiple elements".
+    expect(screen.getByText((content) => content.includes("did not verify against the cluster CA"))).toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes("pvecm updatecerts -f"))).toBeInTheDocument();
+    // The chain is present but inside a closed <details>, so it is not what
+    // the operator reads first. `hidden: true` is required precisely because
+    // it is collapsed — asserting it with the default query would fail and
+    // asserting its absence would be wrong.
+    expect(screen.getByText(CHAIN, { selector: "pre" })).toBeInTheDocument();
+  });
+
+  it("keeps the chain reachable and selectable for a bug report", () => {
+    render(<StalenessBanner staleness={failing({ lastError: CHAIN, lastErrorSummary: SUMMARY })} />);
+    // A <details>, not a tooltip: the text has to be copyable, and it has to
+    // survive a screenshot taken by someone who never hovered.
+    expect(screen.getByText("Technical detail")).toBeInTheDocument();
+    expect(screen.getByText(CHAIN, { selector: "pre" }).textContent).toBe(CHAIN);
+  });
+
+  it("falls back to the chain when the daemon had no summary for the error", () => {
+    // Absent summary means "unrecognised", not "unimportant". Showing nothing
+    // here would hide a real failure behind a field the server chose to omit.
+    render(<StalenessBanner staleness={failing({ lastError: CHAIN })} />);
+    // A substring matcher, not `new RegExp(chain.slice(...))`: the chain opens
+    // with "host links (pve2)", and those parens are a capture group, so the
+    // regex silently matched a string the DOM does not contain.
+    expect(screen.getByText((content) => content.includes(CHAIN))).toBeInTheDocument();
+    expect(screen.queryByText("Technical detail")).not.toBeInTheDocument();
+  });
+
+  it("renders nothing at all when the source is failing without an error string", () => {
+    render(<StalenessBanner staleness={failing({})} />);
+    expect(screen.queryByText("Technical detail")).not.toBeInTheDocument();
   });
 });

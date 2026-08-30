@@ -131,7 +131,9 @@ Each `Node`/`Edge` additionally carries a `findings` array (omitted when empty):
     {"name": "pve", "stale": false, "lastSuccess": 1720512345},
     {"name": "host", "node": "pve1", "stale": false, "lastSuccess": 1720512345},
     {"name": "host", "node": "pve2", "stale": false, "lastSuccess": 1720512340},
-    {"name": "host", "node": "pve3", "stale": true, "lastSuccess": 1720512200, "lastError": "peer_unreachable"},
+    {"name": "host", "node": "pve3", "stale": true, "lastSuccess": 1720512200,
+     "lastError": "host links (pve3): peer: pve3: peer_untrusted (peer_unreachable): certificate verification failed ...",
+     "lastErrorSummary": "pve3 answered, but its TLS certificate did not verify against the cluster CA, so it is being treated as unreachable. To fix: on pve3, run  pvecm updatecerts -f"},
     {"name": "lldp", "node": "pve1", "stale": false, "lastSuccess": 1720512345}
   ]
 }
@@ -139,7 +141,13 @@ Each `Node`/`Edge` additionally carries a `findings` array (omitted when empty):
 
 - `name` is the collector loop: `pve` (all PVE-derived data, cluster-wide), `host` (netlink + interfaces-file data), `lldp`.
 - `node` scopes the source to one cluster node's band; absent = cluster-wide. Since T-303 (documented here retroactively per that task's report note), `host` carries one entry **per cluster node** this daemon can reach — itself directly, every peer through the peer API (docs/architecture.md §1, §5) — so a single unreachable peer's band degrades independently (docs/features/topology.md §5's "greyed from last-known data with a staleness banner and timestamp") without affecting any other node's; `lldp` is still local-node-only pending T-302's own cluster-wide collection.
-- `stale` per source flips true after 3 consecutive poll failures (≈ data 3 poll intervals old); top-level `stale` is true iff any source is stale. `lastSuccess` (unix seconds, omitted if no poll has ever succeeded) is the "data as of" timestamp for the banner; `lastError` (string, present while a source is failing) is the most recent poll error.
+- `stale` per source flips true after 3 consecutive poll failures (≈ data 3 poll intervals old); top-level `stale` is true iff any source is stale. `lastSuccess` (unix seconds, omitted if no poll has ever succeeded) is the "data as of" timestamp for the banner; `lastError` (string, present while a source is failing) is the most recent poll error, verbatim — a wrapped Go error chain, which is what a bug report needs and what an operator cannot read.
+
+**`lastErrorSummary` (added by T-4304).** Optional sibling to `lastError`: one operator-facing sentence saying what is wrong and, where the daemon knows one, the command that fixes it. **Additive — `lastError` is unchanged and still carries the full chain byte for byte**, so every existing consumer of this object sees identical bytes. The banner shows the summary and puts the chain behind a disclosure.
+
+It is derived from the error's *sentinels* (`errors.Is` against `internal/peer`'s `ErrPeerUntrusted`, `ErrTrustAnchorUnavailable`, `ErrPeerUnreachable`, …), never from parsing `lastError`'s text — so rewording a wrap message cannot change it. **Omitted whenever the daemon has no better sentence than the chain**, which clients must read as "fall back to `lastError`", not as "there is no error": a confident paraphrase of an unrecognised failure is worse than the unreadable truth, because the reader cannot tell it is wrong.
+
+Deliberately scoped to this object. `GET /api/v1/health`'s `collectors[]` array carries `last_error` and does **not** gain a summary field; that would be a second contract change, and it is not one this task asked for.
 
 **`GET /inventory/{ref}` response shape.** `{ref, kind, node, label, fields, provenance, rawSource?, related, generatedAt}`:
 

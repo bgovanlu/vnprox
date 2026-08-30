@@ -6,7 +6,7 @@
 // successful poll per failing source. Node-scoped staleness also greys the
 // affected band (see summarizeStaleness + toFlowElements); cluster-wide
 // staleness (the "pve" loop) means the banner covers the whole map.
-import type { Staleness } from "../api/types";
+import type { SourceStaleness, Staleness } from "../api/types";
 import { Button } from "../components/Button";
 import { describeLastSuccess, describeScope, summarizeStaleness } from "./staleness";
 
@@ -104,12 +104,48 @@ export function StalenessBanner({ staleness, retry }: StalenessBannerProps) {
         {summary.staleSources.map((s) => (
           <li key={`${s.name}:${s.node ?? ""}`}>
             <span className="font-medium">{s.name}</span> ({describeScope(s)}): {describeLastSuccess(s)}
-            {s.lastError !== undefined && s.lastError !== "" && (
-              <span className="text-status-degraded"> — {s.lastError}</span>
-            )}
+            <StaleSourceError source={s} />
           </li>
         ))}
       </ul>
     </div>
+  );
+}
+
+/** T-4304 deliverable 3: the poll error, said once.
+ *
+ * What this replaced rendered was `lastError` verbatim, and a poll error is a
+ * five-level wrap by the time it reaches here — cause, consequence, transport
+ * and syscall all joined with colons. Every clause true, the whole unreadable,
+ * and the operator needed one fact and one command out of it.
+ *
+ * The summary is computed server-side from the error's sentinels (docs/api.md's
+ * `lastErrorSummary`), not by truncating the string here. Client-side
+ * truncation was the tempting version and is named in T-4304's card as
+ * declined: it treats the symptom, and shipping it first removes the pressure
+ * to give the daemon the words.
+ *
+ * The chain stays reachable. `<details>` and not a tooltip, because the text
+ * an operator wants to paste into a bug report has to be selectable, and
+ * because it must survive a screenshot taken by someone who never hovered. */
+function StaleSourceError({ source }: { source: SourceStaleness }) {
+  const chain = source.lastError ?? "";
+  if (chain === "") return null;
+
+  const summary = source.lastErrorSummary ?? "";
+  // No summary means the daemon did not recognise this error, not that it is
+  // unimportant — show the chain rather than nothing.
+  if (summary === "") {
+    return <span className="text-status-degraded"> — {chain}</span>;
+  }
+
+  return (
+    <>
+      <span className="text-status-degraded"> — {summary}</span>
+      <details className="mt-1">
+        <summary className="cursor-pointer text-xs text-fg-subtle">Technical detail</summary>
+        <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words text-xs text-fg-muted">{chain}</pre>
+      </details>
+    </>
   );
 }

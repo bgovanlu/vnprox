@@ -408,11 +408,18 @@ func (c *Collector) consecutiveFailures(name string) int {
 // peer) rather than a single local-node-only entry — "lldp" and "pve" are
 // unaffected (see Status's doc comment).
 type SourceStatus struct {
-	LastSuccess         time.Time
-	LastAttempt         time.Time
-	Name                string
-	Node                string
-	LastError           string
+	LastSuccess time.Time
+	LastAttempt time.Time
+	Name        string
+	Node        string
+	LastError   string
+	// LastErrorSummary is LastError said once, for an operator (T-4304
+	// deliverable 3). Derived from the error's sentinels via errors.Is in
+	// staleness_summary.go, not from its text, and empty whenever nothing
+	// more useful than the chain can be said. LastError is untouched
+	// alongside it: docs/api.md documents that field and a bug report needs
+	// the whole wrap.
+	LastErrorSummary    string
 	ConsecutiveFailures int
 }
 
@@ -447,6 +454,9 @@ func toSourceStatus(name, node string, st *sourceState) SourceStatus {
 	}
 	if st.lastErr != nil {
 		s.LastError = st.lastErr.Error()
+		// Summarised HERE, where lastErr is still an error value. One layer
+		// up it is a string, and the sentinels errors.Is needs are gone.
+		s.LastErrorSummary = summarizeSourceError(st.lastErr, node)
 	}
 	return s
 }

@@ -222,6 +222,18 @@ export interface SourceStaleness {
   name: string;
   node?: string;
   lastError?: string;
+  /** T-4304: one operator-facing sentence for `lastError` — what is wrong,
+   * and where the daemon knows one, the command that fixes it.
+   *
+   * Additive: `lastError` still carries the full wrapped Go chain, which is
+   * what a bug report needs and what nobody can read at a glance. The banner
+   * shows this and puts the chain behind a disclosure.
+   *
+   * **Absent means "fall back to `lastError`", never "there is no error".**
+   * The daemon omits it whenever it has no better sentence than the chain,
+   * because a confident paraphrase of an unrecognised failure is worse than
+   * the unreadable truth — the reader cannot tell it is wrong. */
+  lastErrorSummary?: string;
   lastSuccess?: number;
   stale: boolean;
 }

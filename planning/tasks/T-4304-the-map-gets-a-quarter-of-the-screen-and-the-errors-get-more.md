@@ -118,7 +118,7 @@ The layout numbers above are read off a real capture rather than computed from C
 only way this was findable — and the reason every card in this phase asks for a rendered artifact
 rather than only a measurement.
 
-## Deliverable 3 is blocked, deliberately
+## Deliverable 3 — Option B chosen and implemented
 
 The raw error text is `SourceStaleness.LastError` (`internal/topology/types.go:282`), and that is
 a **documented API field** — `docs/api.md:125` specifies the `staleness` object `GET /topology`
@@ -158,3 +158,58 @@ What is *not* blocked and could be done independently of the contract decision: 
 truncate the chain to its first clause and put the remainder behind a disclosure, purely
 client-side. That is a genuine improvement and needs no API change. It is not done here because it
 treats the symptom, and doing it first tends to remove the pressure to do B.
+
+---
+
+## Outcome — Option B, implemented
+
+`lastErrorSummary` is a new optional sibling on `GET /topology`'s `staleness.sources[]`.
+**`lastError` is unchanged and still carries the full wrapped chain byte for byte**, so every
+existing consumer of that object sees identical bytes — the property that made B worth an extra
+field. Asserted directly (`TestSummaryNeverReplacesTheChain`) at the layer that builds both.
+
+### Derived from sentinels, never from the text
+
+The summary is computed in `internal/collect/staleness_summary.go`, at `toSourceStatus` — the last
+point where `lastErr` is still an `error` rather than a string. One layer up the sentinels are gone.
+
+It matches with `errors.Is` against `internal/peer`'s existing sentinels
+(`ErrTrustAnchorUnavailable`, `ErrPeerUntrusted`, `ErrPeerIncompatible`, `ErrNoSecret`,
+`ErrPeerUnreachable`) plus `context.Canceled` / `DeadlineExceeded` / `os.ErrPermission`, and
+`errors.As` for `*peer.ResponseError`. **Parsing the joined string was the obvious alternative and
+is wrong**: it would be a fourth copy of knowledge the error values already carry, and would break
+the first time a wrap message was reworded — the defect class T-4301 measured in a hand-copied
+palette.
+
+**Ordering is load-bearing.** `peer/errors.go` is explicit that an untrusted peer wraps
+`ErrPeerUnreachable` *as well* ("an unverifiable peer is unreachable, never trusted"), so the
+specific cause has to be tested first or every trust failure reports as a plain outage. And
+`ErrTrustAnchorUnavailable` is tested before `ErrPeerUntrusted`, because a missing local CA makes
+*every* peer report untrusted — telling the operator to run `pvecm updatecerts -f` on each of them
+would be wrong advice, confidently given. The test asserts that case does **not** mention the
+command.
+
+### Silence over a confident paraphrase
+
+The summary is omitted whenever nothing better than the chain can be said, and the banner then
+falls back to the chain. That is the honest signal: an unrecognised failure paraphrased
+confidently is worse than the unreadable truth, because the reader cannot tell it is wrong.
+Documented in `docs/api.md` as "absent means fall back to `lastError`, never *there is no error*",
+and asserted on both sides.
+
+### Scope held deliberately
+
+`CollectorSourceStatus` is *both* the adapter into `stalenessFrom` and the wire shape of
+`GET /api/v1/health`'s `collectors` array. The new field is `json:"-"` there: this task chose to
+add a field to the topology staleness contract and did not ask for one on `/health`, and quietly
+growing a second documented payload because one struct serves two purposes is how contracts drift.
+
+### The client-side truncation named in this card was not done
+
+It stayed declined for the reason recorded before the decision: it treats the symptom, and shipping
+it first removes the pressure to give the daemon the words. The banner now uses `<details>` rather
+than a tooltip, so the chain is selectable for a bug report and survives a screenshot taken by
+someone who never hovered.
+
+Verified: `internal/collect`, `internal/api`, `internal/topology` green; 2845 frontend tests; lint
+and typecheck clean.

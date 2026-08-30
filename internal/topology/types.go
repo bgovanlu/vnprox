@@ -277,11 +277,18 @@ type Staleness struct {
 // seconds UTC of the last successful poll (0 / omitted if none yet) — the
 // "timestamp" §5's banner shows.
 type SourceStaleness struct {
-	Name        string `json:"name"`
-	Node        string `json:"node,omitempty"`
-	LastError   string `json:"lastError,omitempty"`
-	LastSuccess int64  `json:"lastSuccess,omitempty"`
-	Stale       bool   `json:"stale"`
+	Name      string `json:"name"`
+	Node      string `json:"node,omitempty"`
+	LastError string `json:"lastError,omitempty"`
+	// LastErrorSummary is the operator-facing sentence for LastError
+	// (docs/api.md's `lastErrorSummary`, T-4304). Additive and optional:
+	// LastError keeps the full wrapped chain byte for byte, so every existing
+	// consumer of this object is unaffected. Omitted when the collector has
+	// no better sentence than the chain itself, which the banner reads as
+	// "fall back to the raw text" rather than as "there is no error".
+	LastErrorSummary string `json:"lastErrorSummary,omitempty"`
+	LastSuccess      int64  `json:"lastSuccess,omitempty"`
+	Stale            bool   `json:"stale"`
 }
 
 // Filter is the server-side ?layers=&node=&vlan= filter for GET /topology.
