@@ -1,7 +1,7 @@
 # T-4301 — The design language stops at the canvas boundary
 
 **Phase:** 43 (Canvas rendering) — this is the phase's first card, ahead of any drawing work
-**Status:** criteria 1, 2, 4, 6 done — criterion 2 rewritten, see below, after finding that part of it was never an exception. Criterion 3 untouched.
+**Status:** done. Criterion 2 rewritten (see below) after finding that part of it was never an exception; criterion 3 found a second stale value the card had not counted.
 **Depends on:** T-4201 (accent ramp), T-4203 (surfaces), T-4204 (status scale), T-4206 (motion)
 **Blocks:** effectively every other Phase 43 card
 
@@ -310,3 +310,28 @@ deleted.
 
 Verified by reintroducing `#2563eb` at the selection ring: three of the four assertions fail,
 including the one that names the colour.
+
+
+## Criterion 3: the brand the operating system paints
+
+`index.html`'s `<meta name="theme-color">` and `manifest.webmanifest`'s `theme_color` both carried
+`#2563eb`, so on a phone or an installed PWA the browser chrome and the splash screen were still
+Tailwind blue — a colour the product had stopped using everywhere else. Both now carry
+`--color-accent-600`.
+
+**The manifest had a second stale value this card never counted.** `background_color` was
+`#0f172a` — Tailwind slate-900 — where the dark surface ladder settled on `#0f172b` at T-4203. One
+hex digit. Nobody was ever going to catch that by eye, and that is the entire argument for the test
+rather than the fix.
+
+These two files are the one part of the design language that **cannot** be re-pointed by editing
+`index.css`: they are not CSS, they cannot read a custom property, and their values must be
+literal. So `web/src/brandChrome.test.ts` makes them derived the only way available — it reads the
+tokens out of `index.css` and asserts both files match, `theme_color` against the accent and
+`background_color` against the *dark* page surface (the splash is deliberately dark, so an
+installed app does not open on a white flash). It also names the retired brand blue explicitly,
+because its reappearance here means something more specific than a wrong value: it means the PWA
+has drifted back to an abandoned colour in the one surface no stylesheet edit can reach.
+
+Verified in both directions: putting `#2563eb` back in the manifest fails two assertions, and
+moving `--color-accent-600` in the stylesheet without touching the two files fails two others.

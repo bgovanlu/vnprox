@@ -8,7 +8,12 @@
          are what Chromium's installability check and the iOS/Android
          "add to home screen" flow both read. -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#2563eb" />
+    <!-- T-4301 criterion 3: the brand accent (--color-accent-600), not the
+         pre-T-4201 Tailwind blue this carried until now. A static file cannot
+         read a custom property, so the value is literal and
+         src/brandChrome.test.ts pins it against index.css — which is the only
+         reason it is safe to write a colour here at all. -->
+    <meta name="theme-color" content="#027a9a" />
     <link rel="icon" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   </head>
