@@ -72,7 +72,10 @@ export interface WaitForLayoutSettledOptions {
  * the race without widening any budget: a layout that never settles still
  * times out via `timeout` below, it just no longer reports "ready" while
  * still moving. */
-export async function waitForLayoutSettled(page: Page, options: WaitForLayoutSettledOptions = {}): Promise<void> {
+export async function waitForLayoutSettled(
+  page: Page,
+  options: WaitForLayoutSettledOptions = {},
+): Promise<void> {
   const minNodes = options.minNodes ?? 4;
   const minDivergedFraction = options.minDivergedFraction ?? 0;
   const stableFrames = options.stableFrames ?? 8;
@@ -87,14 +90,19 @@ export async function waitForLayoutSettled(page: Page, options: WaitForLayoutSet
       const w = window as unknown as { __vnproxLayoutSettle?: SettleState };
 
       const nodes = Array.from(document.querySelectorAll(".react-flow__node"));
-      const values = nodes.map((n) => (n instanceof HTMLElement ? n.style.transform : ""));
+      const values = nodes.map((n) =>
+        n instanceof HTMLElement ? n.style.transform : "",
+      );
       const distinct = new Set(values).size;
       // Reproduces the pre-T-3713 "started" thresholds exactly: fraction 0
       // requires >1 distinct transform regardless of node count (the small
       // sim-lab maps' old `transforms.size > 1`); fraction 0.5 requires
       // strictly more than half the nodes to differ (the larger maps' old
       // `transforms.size > nodes.length / 2`).
-      const minDistinct = Math.max(2, Math.floor(nodes.length * minDivergedFraction) + 1);
+      const minDistinct = Math.max(
+        2,
+        Math.floor(nodes.length * minDivergedFraction) + 1,
+      );
 
       if (nodes.length < minNodes || distinct < minDistinct) {
         w.__vnproxLayoutSettle = undefined;
@@ -112,4 +120,52 @@ export async function waitForLayoutSettled(page: Page, options: WaitForLayoutSet
     { minNodes, minDivergedFraction, stableFrames },
     { polling: "raf", timeout },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Theme / mode priming, shared by the visual gate and the axe sweep (T-4212).
+//
+// These lived as private consts in visual.spec.ts. They are here because
+// a11y.spec.ts now needs the identical mechanism, and T-4212's own warning is
+// against "a divergent copy": the axe sweep's route list drifted from the
+// router precisely because it was a second hand-kept copy of something that
+// already existed. Two copies of "how do you put the app in demo mode" would
+// be the same mistake in a different register.
+
+/** Primes `vnprox.theme` in localStorage before the app's first script runs.
+ * `addInitScript` re-runs on every navigation, so one call per test is enough
+ * even when a whole file shares one logged-in storage state. */
+export async function forceTheme(
+  page: Page,
+  theme: "light" | "dark",
+): Promise<void> {
+  await page.addInitScript((t) => {
+    localStorage.setItem(
+      "vnprox.theme",
+      JSON.stringify({ state: { theme: t }, version: 0 }),
+    );
+  }, theme);
+}
+
+/** Forces demo-accent mode the same way the app itself decides it: by making
+ * `GET /api/v1/health` report `demo: true` (src/demo/useDemoMode.ts calls this
+ * exactly once at App mount and stamps `<html class="demo">` from the result).
+ *
+ * Deliberately NOT a client-side classList hack — that function
+ * unconditionally *toggles* the class from the real fetch result shortly after
+ * mount, so setting the class before the app boots would just get toggled back
+ * off the moment the real (non-demo) health response lands. Intercepting the
+ * response is also why neither suite needs a second, dedicated `vnproxd
+ * --demo` daemon (shards.ts's "demo" stack): the default stack's own real
+ * health response is reused verbatim except for the one field this is about. */
+export async function forceDemoAccent(page: Page): Promise<void> {
+  await page.route("**/api/v1/health", async (route) => {
+    const response = await route.fetch();
+    const body: unknown = await response.json();
+    const patched =
+      typeof body === "object" && body !== null
+        ? { ...body, demo: true }
+        : { demo: true };
+    await route.fulfill({ response, json: patched });
+  });
 }

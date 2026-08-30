@@ -154,10 +154,32 @@ function hue(hex: string): number {
 }
 
 const AA = 4.5;
-/** The two surfaces this app actually renders on: `bg-white`, and
- * `dark:bg-slate-900` (147 call sites against 16 for slate-950 — the
- * count is slateContrast.test.ts's, and this suite reuses its finding
- * rather than picking its own dark surface). */
+/** Every surface a status colour can be drawn on, read from the ladder
+ * itself rather than named as a literal.
+ *
+ * This used to be `WHITE = "#ffffff"` and `SLATE_900 = "#0f172b"`, described
+ * as "the two surfaces this app actually renders on". That was true before
+ * T-4203 introduced a four-level ladder, and it silently stopped being true
+ * afterwards — the light page is `#fafbfd`, not `#ffffff`, and the dark
+ * raised surface is `#182133`, not `#0f172b`.
+ *
+ * The cost was measurable and shipped: `--color-status-stale` scored 4.61 on
+ * `#ffffff` and passed this gate, while measuring **4.48 on the page it is
+ * actually drawn on** — a real AA failure that T-4212's axe sweep found and
+ * this suite could not, because it was still measuring the pre-ladder
+ * denominator. That is the third time in this phase a green gate has been
+ * pointed at the wrong surface (T-4215's slate table, T-4305's outline
+ * token), so the fix here is not a better pair of literals: it is to stop
+ * having literals.
+ *
+ * WHITE/SLATE_900 survive below for the ACCENT ramp's own assertions, which
+ * measure a hover blend rather than a surface and are a separate question
+ * (T-4214). They are no longer used for anything the status scale asserts. */
+function surfaceLadder(isDark: boolean): string[] {
+  const surfaces = tokensIn(isDark ? dark : theme, "color-surface");
+  return ["page", "raised", "sunken", "overlay"].map((level) => token(surfaces, level));
+}
+
 const WHITE = "#ffffff";
 const SLATE_900 = "#0f172b";
 
@@ -277,19 +299,35 @@ describe("semantic status scale (T-4204)", () => {
       const lf = token(light, state);
       const ls = token(light, `${state}-solid`);
       const lw = token(light, `${state}-soft`);
-      expect(contrast(lf, WHITE), `light ${state} fg on white`).toBeGreaterThanOrEqual(AA);
+      const onSolidLight = token(light, "on-solid");
+      for (const surface of surfaceLadder(false)) {
+        expect(contrast(lf, surface), `light ${state} fg on ${surface}`).toBeGreaterThanOrEqual(AA);
+      }
       expect(contrast(lf, lw), `light ${state} fg on its soft wash`).toBeGreaterThanOrEqual(AA);
-      expect(contrast(WHITE, ls), `light ${state} white on solid`).toBeGreaterThanOrEqual(AA);
+      expect(contrast(onSolidLight, ls), `light ${state} on-solid on solid`).toBeGreaterThanOrEqual(AA);
 
       const df = token(night, state);
       const dw = token(night, `${state}-soft`);
       const ds = token(night, `${state}-solid`);
-      expect(contrast(df, SLATE_900), `dark ${state} fg on slate-900`).toBeGreaterThanOrEqual(AA);
+      const onSolidDark = token(night, "on-solid");
+      for (const surface of surfaceLadder(true)) {
+        expect(contrast(df, surface), `dark ${state} fg on ${surface}`).toBeGreaterThanOrEqual(AA);
+      }
       expect(contrast(df, dw), `dark ${state} fg on its soft wash`).toBeGreaterThanOrEqual(AA);
-      expect(contrast(SLATE_900, ds), `dark ${state} surface on solid`).toBeGreaterThanOrEqual(AA);
+      expect(contrast(onSolidDark, ds), `dark ${state} on-solid on solid`).toBeGreaterThanOrEqual(AA);
     }
-    expect(contrast(token(light, "stale"), WHITE)).toBeGreaterThanOrEqual(AA);
-    expect(contrast(token(night, "stale"), SLATE_900)).toBeGreaterThanOrEqual(AA);
+    // `stale` is a text colour at exactly one call site (SwitchView's 10px
+    // chip) and a BORDER everywhere else (Badge's stale modifier), so it is
+    // held to AA on the surfaces it is drawn on as text — which is what the
+    // single `on white` assertion here used to stand in for, and got wrong.
+    for (const isDark of [false, true]) {
+      const stale = token(isDark ? night : light, "stale");
+      for (const surface of surfaceLadder(isDark)) {
+        expect(contrast(stale, surface), `${isDark ? "dark" : "light"} stale on ${surface}`).toBeGreaterThanOrEqual(
+          AA,
+        );
+      }
+    }
   });
 
   it("keeps the health states mutually distinguishable by hue, in both themes", () => {

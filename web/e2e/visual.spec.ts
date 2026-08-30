@@ -27,6 +27,7 @@
 //
 // or `scripts/ci-local.sh visual`, which does both npm/chromium setup and
 // the SPA build vnproxd needs to embed first.
+import { forceDemoAccent, forceTheme } from "./helpers";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,6 +36,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import {
   HEADING_LEVEL_OVERRIDES,
+  pathEndRegExp,
   routedPagePaths,
   slugifyRoute,
 } from "./routeInventory";
@@ -80,31 +82,6 @@ async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
   });
 }
 
-/** Primes `vnprox.theme` in localStorage before the app's first script runs
- * — the same mechanism a11y.spec.ts's forceLightTheme/its T-3406 sweep use,
- * generalized to either theme. addInitScript re-runs on every navigation,
- * so this can be called once per test even though the whole file shares one
- * logged-in storage state. */
-async function forceTheme(page: Page, theme: "light" | "dark"): Promise<void> {
-  await page.addInitScript((t) => {
-    localStorage.setItem(
-      "vnprox.theme",
-      JSON.stringify({ state: { theme: t }, version: 0 }),
-    );
-  }, theme);
-}
-
-/** Forces demo-accent mode the same way the app itself decides it: by
- * making `GET /api/v1/health` report `demo: true` (src/demo/useDemoMode.ts
- * calls this exactly once at App mount and stamps `<html class="demo">`
- * from the result). Deliberately NOT a client-side classList hack — that
- * function unconditionally *toggles* the class from the real fetch result
- * shortly after mount, so setting the class before the app boots would just
- * get toggled back off the moment the real (non-demo) health response
- * lands. Intercepting the response is also the reason this suite does not
- * need a second, dedicated `vnproxd --demo` daemon (shards.ts's "demo"
- * stack): the default three-node-vlan stack's own real health response is
- * reused verbatim except for the one field this is actually about. */
 /** The Graph view's two implementations. See docs/design-language.md §8.0:
  * v1 (xyflow + DOM nodes) is what users get by default; v2 (a real `<canvas>`)
  * is opt-in. */
@@ -120,18 +97,6 @@ async function forceRenderer(page: Page, renderer: Renderer): Promise<void> {
   if (renderer !== "v2") return;
   await page.addInitScript(() => {
     localStorage.setItem("vnprox.topology.rendererV2", "v2");
-  });
-}
-
-async function forceDemoAccent(page: Page): Promise<void> {
-  await page.route("**/api/v1/health", async (route) => {
-    const response = await route.fetch();
-    const body: unknown = await response.json();
-    const patched =
-      typeof body === "object" && body !== null
-        ? { ...body, demo: true }
-        : { demo: true };
-    await route.fulfill({ response, json: patched });
   });
 }
 
@@ -165,10 +130,6 @@ async function waitForSteadyState(page: Page): Promise<void> {
   await expect(page.getByText(/^(Loading|Simulating)[….]/).first()).toHaveCount(
     0,
   );
-}
-
-function pathEndRegExp(literal: string): RegExp {
-  return new RegExp(`${literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
 }
 
 // --- login + one-time cluster settle ---------------------------------------

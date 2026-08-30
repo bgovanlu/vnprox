@@ -294,7 +294,7 @@
   --color-status-unknown: #5f656d;
   --color-status-unknown-solid: #666d74;
   --color-status-unknown-soft: #f3f3f4;
-  --color-status-stale: #717579;
+  --color-status-stale: #6c7074;
 
   /* The text colour that goes ON a `-solid` fill.
    *
@@ -358,7 +358,7 @@
    *     fg           16.48  (900)      12.94  (100)
    *     fg-body       9.56  (700)      11.50  (200)
    *     fg-muted      6.99  (600)       5.53  (400)
-   *     fg-subtle     4.64  (below)     5.53  (400)
+   *     fg-subtle     4.57  (below)     5.08  (400)   worst incl. soft washes
    *
    * `fg-subtle` light is NOT slate-500. slate-500 measures 4.39:1 on
    * `--color-surface-sunken` — under the 4.5 floor, at 172 live call
@@ -368,9 +368,19 @@
    * table was correct when written and T-4203 invalidated it, because
    * introducing a surface LADDER changed the denominator of every contrast
    * measurement in the codebase while the guard kept the old denominator.
-   * #617087 is slate-500 with its hue and chroma held and OKLCH lightness
-   * lowered by 0.012 — 4.64 on sunken, ~5 RGB units from the old value, and
-   * still 1.51x lighter than fg-muted so the two roles stay distinct.
+   *
+   * T-4212 then found that THIS derivation had made the same mistake one
+   * level up, which is worth leaving in rather than tidying away. The value
+   * above was solved against the four surface levels — and status text sits
+   * on a FIFTH kind of surface, the `-soft` washes, which are not in the
+   * ladder. The axe sweep caught `#617087` at 4.44 on
+   * `--color-status-critical-soft`; it had been shipping since T-4215,
+   * because `make ci` (the pre-push gate) does not run the e2e job that
+   * includes that sweep. Re-solved against the four surfaces AND the five
+   * soft washes: #5f6e85, worst case 4.57. Still slate-500's hue and
+   * chroma, lightness lowered a further 0.008. **A guard that measures
+   * against a surface is blind to a call site that brings its own — and
+   * that now includes the guard written to say so.**
    *
    * Borders are not held to AA: they are boundaries, not text. They are
    * held to being *visible* against the surfaces they separate, which the
@@ -383,7 +393,7 @@
   --color-fg: #0f172a;
   --color-fg-body: #334155;
   --color-fg-muted: #475569;
-  --color-fg-subtle: #617087;
+  --color-fg-subtle: #5f6e85;
   --color-border: #e2e8f0;
   --color-border-strong: #cbd5e1;
 
@@ -478,7 +488,7 @@ html.dark {
   --color-status-unknown: #b7bfc7;
   --color-status-unknown-solid: #9ea5ad;
   --color-status-unknown-soft: #293142;
-  --color-status-stale: #82878c;
+  --color-status-stale: #8e9398;
   --color-status-on-solid: #0f172b;
 
   --color-surface-sunken: #090f1c;

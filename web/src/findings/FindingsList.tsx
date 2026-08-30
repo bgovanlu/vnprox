@@ -165,7 +165,7 @@ export function FindingsList({
                     {SEVERITY_LABEL[f.severity]}
                   </span>
                   {f.category && (
-                    <span className="rounded bg-black/5 px-1.5 py-0.5 text-[10px] dark:bg-white/10">
+                    <span className="rounded px-1.5 py-0.5 text-[10px] ring-1 ring-current/30">
                       {f.category}
                     </span>
                   )}
@@ -175,7 +175,7 @@ export function FindingsList({
                     </span>
                   )}
                   {f.ack && (
-                    <span className="rounded bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide dark:bg-white/15">
+                    <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-current/30">
                       Acknowledged
                     </span>
                   )}

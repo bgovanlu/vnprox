@@ -106,3 +106,15 @@ export function slugifyRoute(routePath: string): string {
 export const HEADING_LEVEL_OVERRIDES: Readonly<Record<string, 1 | 2>> = {
   "/diagnose": 2,
 };
+
+/** A `toHaveURL` matcher anchored at the end of the path, so "/guests" does
+ * not accidentally satisfy a check for "/guest".
+ *
+ * Lives here rather than in either spec because it is route knowledge, and
+ * T-4212 exists because route knowledge kept in two places drifts. Both the
+ * visual gate and the axe sweep assert the URL as their "did we actually land
+ * on the page we asked for" check — neither needs a per-route heading table to
+ * do it. */
+export function pathEndRegExp(literal: string): RegExp {
+  return new RegExp(`${literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+}

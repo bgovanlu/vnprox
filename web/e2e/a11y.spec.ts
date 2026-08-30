@@ -17,12 +17,19 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import * as os from "node:os";
 import * as path from "node:path";
-import { switchToGraphView } from "./helpers";
+import { forceDemoAccent, forceTheme, switchToGraphView } from "./helpers";
+import {
+  HEADING_LEVEL_OVERRIDES,
+  pathEndRegExp,
+  routedPagePaths,
+} from "./routeInventory";
 
 async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const suppress = () => {
-      const el = document.querySelector('[aria-label="Onboarding walkthrough"]');
+      const el = document.querySelector(
+        '[aria-label="Onboarding walkthrough"]',
+      );
       if (el instanceof HTMLElement) {
         el.style.setProperty("display", "none", "important");
       }
@@ -30,7 +37,10 @@ async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
     const start = () => {
       try {
         suppress();
-        new MutationObserver(suppress).observe(document.documentElement, { childList: true, subtree: true });
+        new MutationObserver(suppress).observe(document.documentElement, {
+          childList: true,
+          subtree: true,
+        });
       } catch {
         setTimeout(start, 0);
       }
@@ -71,10 +81,17 @@ async function logIn(page: Page): Promise<void> {
  * gating; this keeps the assertion focused on the impact levels that
  * actually block a screen-reader/keyboard user rather than cosmetic
  * contrast nits a design pass elsewhere might still pick up. */
-async function expectNoSeriousViolations(page: Page, label: string): Promise<void> {
+async function expectNoSeriousViolations(
+  page: Page,
+  label: string,
+): Promise<void> {
   const results = await new AxeBuilder({ page }).analyze();
-  const blocking = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
-  expect(blocking, `${label}: ${JSON.stringify(blocking, null, 2)}`).toEqual([]);
+  const blocking = results.violations.filter(
+    (v) => v.impact === "serious" || v.impact === "critical",
+  );
+  expect(blocking, `${label}: ${JSON.stringify(blocking, null, 2)}`).toEqual(
+    [],
+  );
 }
 
 // T-3406 fix: src/store/theme.ts has always defaulted to `theme: "dark"`
@@ -89,7 +106,10 @@ async function expectNoSeriousViolations(page: Page, label: string): Promise<voi
 // same fix applied to demo.spec.ts's two equivalent T-3403 AC3 tests.
 async function forceLightTheme(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    localStorage.setItem("vnprox.theme", JSON.stringify({ state: { theme: "light" }, version: 0 }));
+    localStorage.setItem(
+      "vnprox.theme",
+      JSON.stringify({ state: { theme: "light" }, version: 0 }),
+    );
   });
 }
 
@@ -98,7 +118,9 @@ async function forceLightTheme(page: Page): Promise<void> {
  * the stale treatment measure it rather than racing it.
  */
 async function waitForAStaleEntity(page: Page): Promise<void> {
-  await expect(page.locator(".grayscale").first()).toBeVisible({ timeout: 90_000 });
+  await expect(page.locator(".grayscale").first()).toBeVisible({
+    timeout: 90_000,
+  });
 }
 
 /**
@@ -178,17 +200,24 @@ async function applyVlanFilter(page: Page, vid: number): Promise<void> {
 test("axe: Dashboard", async ({ page }) => {
   await logIn(page);
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Home", level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Home", level: 1 }),
+  ).toBeVisible();
   await expectNoSeriousViolations(page, "Dashboard");
 });
 
 test("axe: Topology (Switch view, the default)", async ({ page }) => {
   await logIn(page);
-  await expect(page.getByRole("radio", { name: "Switch" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radio", { name: "Switch" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
   // Wait for a faceplate to mount AND for the stale grey to actually be on
   // screen, then neutralize the VLAN-filter de-emphasis dimming that remains
   // (see neutralizeFaceplateDimming — the stale dim itself is fixed at source).
-  await expect(page.getByRole("button", { name: "vmbr0 switch" }).first()).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "vmbr0 switch" }).first(),
+  ).toBeVisible();
   await waitForAStaleEntity(page);
   await neutralizeFaceplateDimming(page);
   await expectNoSeriousViolations(page, "Topology (Switch view)");
@@ -201,16 +230,23 @@ test("axe: Topology (Switch view, the default)", async ({ page }) => {
 // on (VID 20, which the three-node-vlan fixture's `vmbr0.20` sub-interface
 // carries, per switchModel.ts/three-node-vlan-topology.json) so the
 // de-emphasis dimming is actually on screen and actually measured.
-test("axe: Topology (Switch view, VLAN filter de-emphasis dimming active)", async ({ page }) => {
+test("axe: Topology (Switch view, VLAN filter de-emphasis dimming active)", async ({
+  page,
+}) => {
   await logIn(page);
-  await expect(page.getByRole("button", { name: "vmbr0 switch" }).first()).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "vmbr0 switch" }).first(),
+  ).toBeVisible();
   await applyVlanFilter(page, 20);
   // Confirm the filter actually dimmed something before measuring — a
   // no-op filter would make this test pass for the wrong reason.
   await expect(page.locator(".opacity-25, .opacity-40").first()).toBeVisible();
   await waitForAStaleEntity(page);
   await neutralizeFaceplateDimming(page);
-  await expectNoSeriousViolations(page, "Topology (Switch view, VLAN filter active)");
+  await expectNoSeriousViolations(
+    page,
+    "Topology (Switch view, VLAN filter active)",
+  );
 });
 
 test("axe: Topology (Graph view, v1)", async ({ page }) => {
@@ -219,46 +255,73 @@ test("axe: Topology (Graph view, v1)", async ({ page }) => {
   await expectNoSeriousViolations(page, "Topology (Graph view, v1)");
 });
 
-test("axe: Topology (Graph view, v2 canvas — T-901's a11y bridge)", async ({ page }) => {
+test("axe: Topology (Graph view, v2 canvas — T-901's a11y bridge)", async ({
+  page,
+}) => {
   await logIn(page);
   await switchToGraphView(page);
   await page.getByRole("button", { name: "Canvas v2" }).click();
   await expect(page.getByTestId("topology-canvas-v2")).toBeVisible();
+  // Park the pointer somewhere harmless before scanning. Playwright leaves
+  // the cursor on whatever it last clicked, so without this the "Canvas v2"
+  // toggle is still :hover when axe runs — and `Button`'s primary variant
+  // brightens on hover from `accent-600` (4.94:1) to `accent-500` (3.09:1).
+  // axe duly reported 58 colour-contrast nodes, every one of them the same
+  // white-on-#039fc7 pair, on the one test in this file that clicks a button
+  // and then scans.
+  //
+  // That hover value is a DECISION, not a defect: Button.tsx's own comment
+  // has re-derived this pairing four times (T-905, T-3401, T-3405, T-4201)
+  // and states plainly that "a hover state is transient and not the gating
+  // resting contrast". This is not a suppression — it makes this test measure
+  // the same resting state every other test in the sweep measures, which is
+  // the same reason `waitForLoadingPlaceholderToClear` exists below.
+  await page.mouse.move(0, 0);
   await expectNoSeriousViolations(page, "Topology (Graph view, v2 canvas)");
 });
 
 test("axe: SDN", async ({ page }) => {
   await logIn(page);
   await page.goto("/sdn");
-  await expect(page.getByRole("heading", { name: "SDN", level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "SDN", level: 1 }),
+  ).toBeVisible();
   await expectNoSeriousViolations(page, "SDN");
 });
 
 test("axe: Firewall", async ({ page }) => {
   await logIn(page);
   await page.goto("/firewall");
-  await expect(page.getByRole("heading", { name: "Firewall", level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Firewall", level: 1 }),
+  ).toBeVisible();
   await expectNoSeriousViolations(page, "Firewall");
 });
 
 test("axe: IPAM", async ({ page }) => {
   await logIn(page);
   await page.goto("/ipam");
-  await expect(page.getByRole("heading", { name: "IPAM", level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "IPAM", level: 1 }),
+  ).toBeVisible();
   await expectNoSeriousViolations(page, "IPAM");
 });
 
 test("axe: Settings", async ({ page }) => {
   await logIn(page);
   await page.goto("/settings");
-  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Settings", level: 1 }),
+  ).toBeVisible();
   await expectNoSeriousViolations(page, "Settings");
 });
 
 test("axe: changeset drawer (open, with a drafted op)", async ({ page }) => {
   await logIn(page);
   await switchToGraphView(page);
-  await page.waitForFunction(() => document.querySelectorAll(".react-flow__node").length >= 10);
+  await page.waitForFunction(
+    () => document.querySelectorAll(".react-flow__node").length >= 10,
+  );
   // The graph behind the drawer is in scope for this scan, and its pve2/pve3
   // nodes go stale part-way through a run. Waiting for that makes the stale
   // treatment part of what this measures every time, instead of a coin flip
@@ -296,7 +359,9 @@ test("axe: top bar, switched to dark theme", async ({ page }) => {
 test("axe: offline shell banner", async ({ page, context }) => {
   await logIn(page);
   await context.setOffline(true);
-  await expect(page.getByRole("status").filter({ hasText: "Offline" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Offline" }),
+  ).toBeVisible();
   await expectNoSeriousViolations(page, "Offline shell banner");
   await context.setOffline(false);
 });
@@ -311,7 +376,10 @@ test("AC3: keyboard-only traversal reaches and activates a v2 canvas map entity 
   // keyboard Enter, exactly what a keyboard-only user does.
   await page.getByRole("radio", { name: "Graph" }).focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("radio", { name: "Graph" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radio", { name: "Graph" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
 
   await page.getByRole("button", { name: "Canvas v2" }).focus();
   await page.keyboard.press("Enter");
@@ -349,10 +417,16 @@ test("AC3: keyboard-only traversal reaches and activates a v2 canvas map entity 
 // username), and logging in fresh for each of 52 (26 routes x 2 themes)
 // tests would exhaust the 10-attempt bucket long before its 30s refill
 // caught up.
-const A11Y_SWEEP_STORAGE_STATE = path.join(os.tmpdir(), `vnprox-e2e-a11y-sweep-storage-state-${String(process.pid)}.json`);
+const A11Y_SWEEP_STORAGE_STATE = path.join(
+  os.tmpdir(),
+  `vnprox-e2e-a11y-sweep-storage-state-${String(process.pid)}.json`,
+);
 
 test.beforeAll(async ({ browser }) => {
-  const context = await browser.newContext({ ignoreHTTPSErrors: true, storageState: undefined });
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    storageState: undefined,
+  });
   const page = await context.newPage();
   await page.goto("/login");
   await page.getByLabel("Username").fill("root");
@@ -364,55 +438,30 @@ test.beforeAll(async ({ browser }) => {
   await context.close();
 });
 
-interface SweepRoute {
-  path: string;
-  /** Regex so a JSX title that also renders a HelpAnchor `?` button inside
-   * the same `<h1>` (Analysis, Governance, Config as code, Platform,
-   * Certificates, Findings/Tools — see each page's own PageHeader usage)
-   * still matches on its own text rather than requiring an exact string. */
-  heading: RegExp;
-  /** Defaults to 1 (every routed page's single `<h1>`, T-3404). ToolsPage
-   * at desktop width titles itself "Tools" — "Findings" is only the
-   * narrow-viewport variant (ToolsPage.tsx), so this stays 1 for /tools;
-   * /diagnose is the one real exception — with no `?ref=` (this sweep,
-   * like a bookmark or a typed URL, never carries one) DiagnosisPage.tsx
-   * renders only an `EmptyState` ("No target selected", an `<h2>`), never
-   * mounting its `PageHeader`/`<h1>` at all. Level 2 here scans that real,
-   * reachable state instead of a route no plain navigation ever produces. */
-  level?: 1 | 2;
-}
-
-const SWEEP_ROUTES: SweepRoute[] = [
-  { path: "/", heading: /^Home$/ },
-  { path: "/topology", heading: /^Topology$/ },
-  { path: "/management", heading: /^Management interfaces$/ },
-  { path: "/guests", heading: /^Guests$/ },
-  { path: "/sdn", heading: /^SDN$/ },
-  { path: "/firewall", heading: /^Firewall$/ },
-  { path: "/ipam", heading: /^IPAM$/ },
-  { path: "/flows", heading: /^Flow explorer$/ },
-  { path: "/conntrack", heading: /^Conntrack explorer$/ },
-  { path: "/edge", heading: /^Edge & NAT cockpit$/ },
-  { path: "/route-explorer", heading: /^Route explorer$/ },
-  { path: "/firewall/compiled", heading: /^Compiled ruleset$/ },
-  { path: "/diagnose", heading: /^No target selected$/, level: 2 },
-  { path: "/analysis", heading: /^Analysis/ },
-  { path: "/ports", heading: /^Ports$/ },
-  { path: "/cabling", heading: /^Cabling plan$/ },
-  { path: "/blueprints", heading: /^Blueprints$/ },
-  { path: "/hub", heading: /^Hub$/ },
-  { path: "/config-as-code", heading: /^Config as code/ },
-  { path: "/governance", heading: /^Governance/ },
-  { path: "/history", heading: /^History$/ },
-  { path: "/incidents", heading: /^Incidents$/ },
-  { path: "/audit", heading: /^Audit$/ },
-  { path: "/tools", heading: /^Tools/ },
-  { path: "/settings", heading: /^Settings$/ },
-  { path: "/settings/alert-rules", heading: /^Alert rules$/ },
-  { path: "/settings/certificates", heading: /^Certificates/ },
-  { path: "/settings/platform", heading: /^Platform/ },
-  { path: "/settings/federation", heading: /^Federated clusters$/ },
-];
+// T-4212: this file used to carry `SWEEP_ROUTES`, a hand-maintained array of
+// route paths with a heading regex each. It had drifted: `/guest`
+// (GuestEgoPage, T-3906) and `/wireguard` (WireGuardPage, T-4015) were both
+// real, shipped, logged-in pages that this sweep had NEVER visited, in any
+// theme, and nothing failed to say so.
+//
+// That is the defect worth naming, not the two pages. **A coverage gate whose
+// inventory is hand-maintained measures the inventory, not the thing** — the
+// same shape as T-3717, where the OpenAPI gate was green because the routes it
+// missed were never mounted. Every future page inherited the same silence by
+// default: the next route added would also be unchecked, and also silently.
+//
+// The list now comes from `routeInventory.ts`, which derives it from App.tsx's
+// own `<Route path=>` declarations — the technique this table was built from
+// in the first place, and the one web/src/help/coverage.test.ts already uses
+// for its screen inventory. A source-derived list cannot drift from the router.
+//
+// The per-route heading REGEX goes with it, deliberately. Keeping a
+// path -> expected-heading map would leave a hand-maintained array of route
+// paths behind under a different name, which is exactly what AC1 forbids. What
+// it bought — "did we actually land on the page we asked for?" — is bought
+// instead by asserting the URL, which needs no per-route knowledge and cannot
+// go stale when a page is retitled. `HEADING_LEVEL_OVERRIDES` (shared with the
+// visual gate) still carries /diagnose's real level-2 exception.
 
 // T-3406: a handful of pages' data-loading placeholders ("Loading SDN
 // configuration…", "Loading nodes…", ...) render on a bare `text-slate-400`
@@ -429,29 +478,54 @@ const SWEEP_ROUTES: SweepRoute[] = [
 // instead of occasionally tripping over a known, separately-tracked defect
 // by accident of timing.
 async function waitForLoadingPlaceholderToClear(page: Page): Promise<void> {
-  await expect(page.getByText(/^(Loading|Simulating)[….]/).first()).toHaveCount(0);
+  await expect(page.getByText(/^(Loading|Simulating)[….]/).first()).toHaveCount(
+    0,
+  );
 }
 
-test.describe("T-3406: axe sweep, every routed page, light and dark", () => {
+test.describe("T-3406/T-4212: axe sweep, every routed page, light/dark/demo", () => {
   test.use({ storageState: A11Y_SWEEP_STORAGE_STATE });
 
-  for (const route of SWEEP_ROUTES) {
-    for (const theme of ["light", "dark"] as const) {
-      test(`axe: ${route.path} (${theme})`, async ({ page }) => {
-        await page.addInitScript((t) => {
-          localStorage.setItem("vnprox.theme", JSON.stringify({ state: { theme: t }, version: 0 }));
-        }, theme);
+  // Demo joins light and dark (T-4212 AC3). It is not a cosmetic third pass:
+  // `html.demo` re-points every `--color-accent-*` step to a different hue
+  // family, and axe's colour-contrast rule is the only automated check in this
+  // repo that would notice an accent that stops clearing its floor there. The
+  // sweep had never run it. Demo rides on the dark theme, matching the visual
+  // gate's own pinned choice rather than introducing a fourth variant.
+  const MODES = [
+    { name: "light", theme: "light", demo: false },
+    { name: "dark", theme: "dark", demo: false },
+    { name: "demo", theme: "dark", demo: true },
+  ] as const;
+
+  for (const routePath of routedPagePaths()) {
+    for (const mode of MODES) {
+      test(`axe: ${routePath} (${mode.name})`, async ({ page }) => {
+        await forceTheme(page, mode.theme);
+        if (mode.demo) await forceDemoAccent(page);
         await page.emulateMedia({ reducedMotion: "reduce" });
         await suppressOnboardingWalkthrough(page);
-        await page.goto(route.path);
-        await expect(page.getByRole("heading", { name: route.heading, level: route.level ?? 1 }).first()).toBeVisible();
-        if (theme === "dark") {
+        await page.goto(routePath);
+        // The URL, not a heading regex: it says "we are on the page we asked
+        // for" without a per-route table to keep current. A route that
+        // redirects — the way four of T-4216's five "context-requiring" routes
+        // appeared to, when the harness was running a binary that predated
+        // them — fails here rather than silently scanning /topology again.
+        await expect(page).toHaveURL(pathEndRegExp(routePath));
+        const level = HEADING_LEVEL_OVERRIDES[routePath] ?? 1;
+        await expect(
+          page.getByRole("heading", { level }).first(),
+        ).toBeVisible();
+        if (mode.theme === "dark") {
           await expect(page.locator("html")).toHaveClass(/dark/);
         } else {
           await expect(page.locator("html")).not.toHaveClass(/dark/);
         }
+        if (mode.demo) {
+          await expect(page.locator("html")).toHaveClass(/demo/);
+        }
         await waitForLoadingPlaceholderToClear(page);
-        await expectNoSeriousViolations(page, `${route.path} (${theme})`);
+        await expectNoSeriousViolations(page, `${routePath} (${mode.name})`);
       });
     }
   }
