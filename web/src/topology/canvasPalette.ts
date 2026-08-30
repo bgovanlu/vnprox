@@ -97,6 +97,18 @@ const ROLE: Record<keyof SceneTheme, string> = {
   blastRadiusStroke: "--color-fg-body",
   blastRadiusGlyphText: "--color-surface-page",
 
+  // T-4301 criterion 2's tail. The hover/selection rings and the minimap's
+  // viewport rectangle were Tailwind blue-500/600 — the pre-T-4201 brand
+  // blue, which the product stopped using everywhere else. In demo mode the
+  // map therefore drew a BLUE selection ring while the rest of the page went
+  // purple.
+  //
+  // `--color-accent-fg`, not a ramp step: it is the alias T-4214 added that
+  // re-points per theme (accent-700 light / accent-300 dark), and the ramp
+  // itself does not. Minimap.tsx's `dark` prop existed solely to hand-pick
+  // that step and is gone with it.
+  accentRing: "--color-accent-fg",
+
   // T-4301 leaves these two literal, on purpose, and they are the only pair
   // in this table that is not a role lookup.
   //
@@ -170,6 +182,7 @@ export function resolveSceneTheme(read: TokenReader, isDark: boolean): SceneThem
     flowEdge: value("flowEdge"),
     blastRadiusStroke: value("blastRadiusStroke"),
     blastRadiusGlyphText: value("blastRadiusGlyphText"),
+    accentRing: value("accentRing"),
   };
 
   // Named once, not per-token and not per-frame: a stylesheet either loaded

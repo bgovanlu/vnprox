@@ -48,6 +48,7 @@ const PALETTE = {
   flowEdge: "role:flowEdge",
   blastRadiusStroke: "role:blastRadiusStroke",
   blastRadiusGlyphText: "role:blastRadiusGlyphText",
+  accentRing: "role:accentRing",
 } satisfies SceneTheme;
 
 function node(id: string, overrides: Partial<EntityFlowNode["data"]> = {}, position = { x: 0, y: 0 }): EntityFlowNode {

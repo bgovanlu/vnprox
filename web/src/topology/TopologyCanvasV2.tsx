@@ -834,7 +834,6 @@ export function TopologyCanvasV2({
           mainView={size}
           onPan={setViewport}
           theme={sceneTheme}
-          dark={effectiveTheme === "dark"}
         />
       )}
     </div>

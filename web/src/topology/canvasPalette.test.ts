@@ -214,8 +214,16 @@ describe("canvasPalette (T-4301)", () => {
     // by being the only animated thing on the map, and the blast-radius lens
     // scrims everything else to 0.72 alpha — and the map got two hues back
     // off a hue circle that overlayHues.test.ts proves is full.
-    expect(reads).toHaveLength(23);
-    expect(new Set(reads).size).toBe(16);
+    //
+    // T-4301 criterion 2's tail added the 24th role and the 17th token:
+    // `accentRing` (`--color-accent-fg`) for the hover/selection rings and
+    // the minimap's viewport rectangle. Those three were Tailwind blue-500/
+    // 600 — the pre-T-4201 brand blue — so in demo mode the map drew a BLUE
+    // selection ring while the rest of the page went purple. This is the one
+    // addition here that IS a new token, because the accent had no
+    // representation in this palette at all before it.
+    expect(reads).toHaveLength(24);
+    expect(new Set(reads).size).toBe(17);
   });
 
   // The count above is a shape check and deliberately not a meaning check:
@@ -262,5 +270,14 @@ describe("canvasPalette (T-4301)", () => {
     // hand-measured number tied to one hue.
     expect(roles.blastRadiusGlyphText).toBe("--color-surface-page");
     expect(roles.blastRadiusStroke).toBe("--color-fg-body");
+
+    // The hover/selection rings and the minimap viewport must be the ACCENT,
+    // and specifically the per-theme alias rather than a ramp step: the ramp
+    // does not re-point under `html.dark`, so a fixed step is legible on one
+    // page colour and weak on the other. The failure this replaces was
+    // visible only in demo mode — `html.demo` moves the accent to another hue
+    // family, and these three call sites stayed Tailwind blue while every
+    // other selected control moved with it.
+    expect(roles.accentRing).toBe("--color-accent-fg");
   });
 });

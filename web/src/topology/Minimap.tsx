@@ -31,15 +31,6 @@ export interface MinimapProps {
    * already paid for it once in a memo keyed on the theme (canvasPalette.ts's
    * own note on why resolution must not creep into a draw path). */
   theme: SceneTheme;
-  /** Still needed for the ONE colour this component does not take from the
-   * palette: the viewport rectangle is the brand accent, and the accent has
-   * no per-theme alias yet — index.css re-points every `--color-accent-*`
-   * step under `html.demo` but not under `html.dark`, so a dark page picks a
-   * different STEP rather than a re-pointed token. Choosing that step is
-   * T-4214's decision, not this change's, and the rectangle is not a defect
-   * meanwhile: it measures 4.72 light / 4.85 dark against the minimap
-   * background, comfortably over the 3:1 floor the dots were failing. */
-  dark?: boolean;
 }
 
 /** Guards a <canvas>'s width/height assignment: reassigning it — even to an
@@ -64,7 +55,7 @@ function getContext2d(canvas: HTMLCanvasElement | null): CanvasRenderingContext2
   }
 }
 
-export function Minimap({ sceneNodes, mainViewport, mainView, onPan, theme, dark = false }: MinimapProps) {
+export function Minimap({ sceneNodes, mainViewport, mainView, onPan, theme }: MinimapProps) {
   const dotsCanvasRef = useRef<HTMLCanvasElement>(null);
   const rectCanvasRef = useRef<HTMLCanvasElement>(null);
   const draggingRef = useRef(false);
@@ -101,10 +92,16 @@ export function Minimap({ sceneNodes, mainViewport, mainView, onPan, theme, dark
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, MINIMAP_SIZE.width, MINIMAP_SIZE.height);
     const rect = viewportRectOnMinimap(mainViewport, mainView, minimapViewport);
-    ctx.strokeStyle = dark ? "#3b82f6" : "#2563eb";
+    // T-4301: the viewport rectangle IS the brand accent, and now says so.
+    // It was `dark ? blue-500 : blue-600` — the pre-T-4201 brand blue, with
+    // the ternary hand-picking a step because no per-theme accent alias
+    // existed when this was written. T-4214 added one, so the choice moved
+    // into the stylesheet and the `dark` prop this component carried for
+    // exactly this one colour is gone.
+    ctx.strokeStyle = theme.accentRing;
     ctx.lineWidth = 1.5;
     ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-  }, [mainViewport, mainView, minimapViewport, dark]);
+  }, [mainViewport, mainView, minimapViewport, theme.accentRing]);
 
   const panFromEvent = useCallback(
     (evt: { clientX: number; clientY: number }) => {

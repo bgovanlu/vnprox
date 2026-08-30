@@ -56,6 +56,7 @@ const THEME: SceneTheme = {
   flowEdge: "role:flowEdge",
   blastRadiusStroke: "role:blastRadiusStroke",
   blastRadiusGlyphText: "role:blastRadiusGlyphText",
+  accentRing: "role:accentRing",
 };
 
 const noop = (): void => undefined;

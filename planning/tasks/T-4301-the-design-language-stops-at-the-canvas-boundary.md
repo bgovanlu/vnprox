@@ -1,7 +1,7 @@
 # T-4301 — The design language stops at the canvas boundary
 
 **Phase:** 43 (Canvas rendering) — this is the phase's first card, ahead of any drawing work
-**Status:** criteria 1, 4, 6 done. Criterion 2 is now the only substantial one left, and this card records why it cannot be met as written. Criterion 3 untouched.
+**Status:** criteria 1, 2, 4, 6 done — criterion 2 rewritten, see below, after finding that part of it was never an exception. Criterion 3 untouched.
 **Depends on:** T-4201 (accent ramp), T-4203 (surfaces), T-4204 (status scale), T-4206 (motion)
 **Blocks:** effectively every other Phase 43 card
 
@@ -263,3 +263,50 @@ lands:
   page picks a different *step*, so there is no single token to name. None is a defect meanwhile:
   the rectangle measures 4.72 / 4.85.
 - Criterion 3 (`index.html`, `manifest.webmanifest`) is untouched and independent of all of this.
+
+
+---
+
+## Criterion 2, revisited: "cannot be met as written" was half right
+
+The paragraph above rules that `zero hex literals in web/src/topology/**` cannot be met, because
+the remaining literals are nominal scales for which hue is the correct channel. That is true of
+`diffOverlay`, `recencyOverlay`, `simVerdict` and `STP_BLOCKING_STROKE`, and it is the right call.
+
+**It was not true of three of them, and the ruling hid that.** The hover ring, the selection
+outline (`canvasDraw.ts`) and the minimap's viewport rectangle (`Minimap.tsx`) were `#3b82f6` and
+`#2563eb` — Tailwind blue-500/600, the **pre-T-4201 brand blue**, which this very card's opening
+section names as a colour "the product no longer uses anywhere else". They are not a nominal scale
+needing a hue of its own. They are the *accent*, drawn in a dead value.
+
+**The visible consequence was in demo mode**, which is the mode built to make accent changes
+obvious: `html.demo` re-points every `--color-accent-*` step to another hue family, so selecting a
+node on the map produced a BLUE ring while every other selected control on the page went purple.
+The map and the app disagreeing about what "selected" looks like.
+
+They survived for a reason worth recording: the audit counted 155 literals, ruled on the *hard*
+cases correctly, and let that ruling cover the easy ones by adjacency. A blanket "these are all
+design exceptions" is the same shape of error as a blanket "these are all stragglers" — the count
+was never the interesting number, the classification was.
+
+`Minimap.tsx`'s own comment shows the other half of it. It deferred the choice explicitly — *"the
+accent has no per-theme alias yet … choosing that step is T-4214's decision"* — and that was
+accurate when written. **T-4214 has since landed** (`--color-accent-fg`, accent-700 light /
+accent-300 dark). The deferral was correct and simply outlived its blocker, with nothing watching
+for the unblocking. The `dark` prop that existed solely to hand-pick a step is gone with it.
+
+### What the criterion says now
+
+Not a count. **Every literal left is a named exception with a recorded reason**, enforced by
+`hexLiterals.test.ts`: a file not on the allowlist may hold none, every allowlist entry carries the
+argument for why a token would be *wrong*, and a guard-the-guard fails any entry that no longer
+holds a literal so the list cannot quietly widen. It also names the retired brand blue specifically,
+since its reappearance means something different from a generic literal — it means the map has
+drifted back off the accent.
+
+`canvasDraw.ts` — the file this card counted 35 literals in, the one that draws the map itself —
+now holds **zero**. Its only remaining match is inside a doc comment describing the pattern it
+deleted.
+
+Verified by reintroducing `#2563eb` at the selection ring: three of the four assertions fail,
+including the one that names the colour.

@@ -156,6 +156,29 @@ export interface SceneTheme {
    * that had to be measured by hand and would have had to be re-measured on
    * any re-hue. */
   blastRadiusGlyphText: string;
+  /** T-4301 criterion 2's tail: the hover and selection rings, `--color-accent-fg`.
+   *
+   * These were `#3b82f6` and `#2563eb` — Tailwind blue-500/600, the
+   * **pre-T-4201 brand blue**, a colour T-4301 itself records the product "no
+   * longer uses anywhere else". They survived that card's sweep because they
+   * are not a palette: they are two call sites inside a draw loop, and the
+   * audit that found 155 literals classified the leftovers as nominal-scale
+   * exceptions without separating out the ones that are simply the accent
+   * drawn in a dead colour.
+   *
+   * The visible consequence was in demo mode. `html.demo` re-points every
+   * `--color-accent-*` step to a different hue family, so selecting a node
+   * gave a BLUE ring while every other selected control on the page went
+   * purple — the map disagreeing with the app about what "selected" looks
+   * like, in the one mode built to make accent changes obvious.
+   *
+   * `--color-accent-fg` rather than a raw ramp step, because it is the alias
+   * that re-points per theme (accent-700 light / accent-300 dark). The ramp
+   * itself does not, so a fixed step would be legible on one page colour and
+   * weak on the other. Hover is the same token at reduced alpha — one
+   * statement at two strengths, rather than two hand-picked steps whose
+   * relationship nothing checks. */
+  accentRing: string;
 }
 
 export interface DrawSceneParams {
@@ -511,17 +534,21 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
     }
     ctx.stroke();
     ctx.setLineDash([]);
-    // Highlight ring (hover chain)
+    // Highlight ring (hover chain) — the accent at reduced strength, so a
+    // hovered node reads as weaker than a selected one without spending a
+    // second token on the distinction (T-4301).
     if (d.highlighted && !sim) {
       roundRectPath(ctx, tl.x - 1.5, tl.y - 1.5, w + 3, h + 3, radius + 1.5);
-      ctx.strokeStyle = "#3b82f6";
+      ctx.strokeStyle = theme.accentRing;
+      ctx.globalAlpha = HOVER_RING_ALPHA;
       ctx.lineWidth = 2;
       ctx.stroke();
+      ctx.globalAlpha = 1;
     }
     // Selection outline
     if (n.selected) {
       roundRectPath(ctx, tl.x - 3, tl.y - 3, w + 6, h + 6, radius + 3);
-      ctx.strokeStyle = "#2563eb";
+      ctx.strokeStyle = theme.accentRing;
       ctx.lineWidth = 2;
       ctx.stroke();
     }
@@ -677,6 +704,11 @@ export interface DrawFlowOverlayParams {
 /** Unselected flow edges sit slightly back so a selected one reads as
  * forward without needing a hue of its own. */
 const FLOW_EDGE_ALPHA = 0.75;
+
+/** The hover ring's strength relative to the selection ring, which is the
+ * same token at full alpha. Hover is transient and selection is a state the
+ * operator chose; the weaker mark should be the transient one. */
+const HOVER_RING_ALPHA = 0.55;
 
 export function drawFlowOverlay(ctx: CanvasRenderingContext2D, params: DrawFlowOverlayParams): void {
   const { nodes, edges, viewport: vp, nodeSize, dragTopLeft, dashOffset = 0, selectedId, theme } = params;
