@@ -315,13 +315,22 @@ ever logged.)
       in the live store; the four most recent real changesets are all single-node. **Blocked: is
       destructive — running a real staged apply against `vnprox-dev` is a live network-config
       change, needs the T-3704 lab (or explicit operator sign-off).**
-- [ ] **T-2902 (peer host-write safety parity + audit attribution) has only ever seen read
-      traffic.** Every peer route this cluster has exercised in its lifetime is a read
-      (`/host/links`: 93,747 calls; `/host/neighbors`: 47,165; `/host/dhcp-leases`: 15,760) — the
-      five write routes it covers (`/host/stage-interfaces`, `/host/ifreload`, `/host/restore`,
-      `/host/discard-staged`, `/host/lldp/install`) have zero matches anywhere in the journal,
-      because no apply has ever targeted the peer node. **Blocked: is destructive — needs a real
-      apply against a peer node, needs the T-3704 lab (or explicit operator sign-off).**
+- [ ] **T-2902 (peer host-write safety parity + audit attribution) has seen exactly one write.**
+      The bulk of peer traffic this cluster has ever carried is reads (`/host/links`: 93,747 calls;
+      `/host/neighbors`: 47,165; `/host/dhcp-leases`: 15,760). Four of the five write routes
+      (`/host/stage-interfaces`, `/host/ifreload`, `/host/restore`, `/host/discard-staged`) still
+      have zero matches anywhere in the journal, because no apply has ever targeted the peer node.
+      **Blocked: is destructive — needs a real apply against a peer node, needs the T-3704 lab (or
+      explicit operator sign-off).**
+
+      **`/host/lldp/install` is the exception and is no longer unexercised** (corrected 2026-08-31;
+      this bullet previously said all five had zero matches). The guided LLDP install fanned out to
+      pve001 and returned `ok` twice on 2026-08-31, recorded in `audit_log` as
+      `lldp.install|pve001|ok` — a real peer write, over the real HMAC-gated peer route, against
+      the node this repo has no SSH access to. It is not blocked on hardware and never was; it was
+      simply never pressed. See `planning/reports/evidence/lldp-install-sandbox-pvecube-2026-08-31.txt`.
+      Note what it does *not* establish: the peer half succeeded there because pve001's apt had no
+      bookkeeping to write (§2 of that file), so it exercised the route, not the failure handling.
 
 ## Federation family: needs a second real PVE cluster, not more nodes (T-3705, 2026-08-23)
 
