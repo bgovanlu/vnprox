@@ -43,7 +43,7 @@ function SubnetRow({ subnet, selected, onSelect }: { subnet: IpamSubnet; selecte
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-sm font-medium">{subnet.cidr}</span>
         {subnet.readOnly && (
-          <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-fg-muted dark:bg-slate-700">
+          <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-fg-body dark:bg-slate-700">
             read-only
           </span>
         )}
@@ -85,7 +85,7 @@ function SubnetFacts({ subnet }: { subnet: IpamSubnet }) {
         </span>
       ))}
       {subnet.readOnly && (
-        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-fg-muted dark:bg-slate-700">
+        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-fg-body dark:bg-slate-700">
           read-only
         </span>
       )}

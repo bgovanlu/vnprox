@@ -215,3 +215,53 @@ the utility to use.
 `--color-fg` and `--color-fg-body` and matches neither. The rest are similar near-misses. Each
 needs a decision about which token it should become and an accepted visible change — a design
 question per group, not a sweep, which is why the count stops here rather than at zero.
+
+
+## The axe sweep caught what `make ci` could not, and it was mine
+
+`make ci` deliberately omits the e2e job, so the whole sweep above shipped green through a gate that
+never renders a page. Ran the axe suite by hand afterwards because this change touched 1200 class
+names and two token values, and it found **3 failures on `/ipam`, dark and demo** — 103 passed.
+
+```
+Element has insufficient color contrast of 4.03
+(foreground #94a3b8, background #314158, 10px)
+<span class="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium
+             text-fg-muted dark:bg-slate-700">read-only</span>
+```
+
+A `read-only` chip. Pass 2 converted its `text-slate-600 dark:text-slate-300` to
+`--color-fg-muted`, which is safe against all four surfaces in both themes — and this chip does not
+sit on a surface. It brings `dark:bg-slate-700`, where `fg-muted` lands at 4.04.
+
+**That is this card's own documented boundary, walked into by this card's own sweep.** T-4215 wrote,
+about the changeset badge chips: *"A guard that measures against surfaces still cannot see a call
+site that brings its own background."* The sentence was correct and the sweep did not act on it.
+
+Scanned for every instance rather than fixing the one axe happened to render — the fixture decides
+what axe sees, so a chip on a route with no data is invisible to it. **Three sites, two files**, all
+`text-fg-muted` on `bg-slate-700` at 4.04: `ipam/IpamPage.tsx` (x2) and `topology/findingBadges.ts`
+— which is the file T-4212 already fixed once for this same defect class. All three take
+`text-fg-body` (8.40 in both themes); a chip is text on a fill, not text on a page, and wants the
+stronger foreground. Re-ran axe: 4 passed.
+
+### `tokenOnOwnFill.test.ts`
+
+Four occurrences of one defect is a pattern, not a coincidence:
+
+| | what happened |
+|---|---|
+| T-4215 | changeset badge chips at 4.08 on their own `bg-slate-200/70` |
+| T-4212 | a `/tools` chip compositing `bg-black/5` over a wash, 4.11 |
+| T-4306 | the canvas badge — `--color-border`, a *hairline* token, used as a fill |
+| T-4215 | this one: the sweep's own conversion, 4.04 |
+
+Each was found by a different accident: a manual read, an axe run against whichever fixture
+rendered the element, a failing sibling test. So the scan became a gate. It reads the source rather
+than the DOM, which is the point — coverage no longer depends on what a test happened to mount —
+and it carries a guard-the-guard, since a renamed token would otherwise turn it into a green light
+for everything. Verified by restoring the regression: it fails with `4.04`, naming the file.
+
+Composited fills (`bg-black/5` over a `-soft` wash) are not resolvable from source and stay axe's
+job. Stating the boundary rather than implying the gate is complete — which is the mistake the
+first row of that table made.
