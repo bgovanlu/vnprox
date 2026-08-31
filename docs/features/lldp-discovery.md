@@ -8,6 +8,9 @@ Answers "what is this NIC actually plugged into?" — the question every Proxmox
 - Collector cadence 30s, per node, aggregated cluster-wide via peer API.
 - Captured per neighbor: chassis name/ID, port ID/description, mgmt address, advertised VLANs (PVID + tagged), MAU/speed, TTL. CDP neighbors appear too (lldpd decodes CDP).
 - If lldpd is absent: feature degrades gracefully — physical layer shows NICs only with a setup hint (one-click "install lldpd on all nodes" runs through a changeset-like confirmation, executed via peer API apt install; audited).
+  - **A node that already has lldpd is a no-op, not an install.** The daemon asks `dpkg-query` first and skips apt entirely. This is the ordinary case for a cluster-wide button — some nodes have it, some do not — and skipping matters for more than tidiness: `apt-get install -y` on an already-installed package still rewrites `/var/lib/apt/extended_states`, which `ProtectSystem=strict` forbids, so it exited 100 and reported a correctly configured node as failed.
+  - **The install itself runs via `systemd-run`, not apt directly.** vnproxd's unit mounts `/` read-only in its own namespace (not just `/var`), and installing lldpd writes to `/usr` and `/etc` — so the subprocess is handed to PID 1 as a transient unit outside that namespace rather than widening `ReadWritePaths`, which would have meant granting `/usr` + `/etc` + `/var` and ending the sandbox. See `packaging/systemd/vnprox.service`.
+  - Failures are reported as one actionable line; apt's transcript is not surfaced.
 
 ## 2. Presentation
 

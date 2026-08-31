@@ -75,6 +75,29 @@ ProtectSystem=strict
 # rt_tables.d subdirectory ifupdown2 actually writes to, not the whole of
 # /etc/iproute2 (which also holds rt_protos.d and other files vnproxd has no
 # documented need to modify).
+# The fourth thing this sandbox blocked is deliberately NOT in the list below,
+# and the reason is worth recording next to the three that are.
+#
+# The guided "install lldpd on all nodes" flow shells out to apt, which under
+# ProtectSystem=strict could not write /var/lib/apt/extended_states and exited
+# 100 — even on a node where lldpd was already installed and apt had done no
+# work, so a correctly configured node reported as a failure (found on
+# pvecube, 2026-08-31).
+#
+# The first three entries here were each one narrow path a subprocess needed.
+# This one is not, and that difference is the whole decision: reading
+# /proc/<pid>/mountinfo on a live node shows `/` itself mounted `ro` inside
+# this unit's namespace, not merely /var, and `dpkg -L lldpd` writes to /usr
+# and /etc. So no narrow grant fixes it — only /usr + /etc + /var would, which
+# is not a narrowing of this sandbox but the end of it.
+#
+# Fixed in the daemon instead (internal/host/lldp_install_linux.go): the
+# install runs through `systemd-run`, which asks PID 1 to spawn a transient
+# unit outside this namespace. Verified on real hardware — inside a
+# ProtectSystem=strict unit `/` is `ro`; a systemd-run child of that same unit
+# sees `/` as `rw`. Two things follow for anyone extending this file: a
+# subprocess that must write outside the paths below does not automatically
+# justify adding one, and this list stays as narrow as it is today.
 ReadWritePaths=/var/lib/vnprox /etc/vnprox/keys /etc/wireguard /etc/network /etc/iproute2/rt_tables.d /run
 ProtectHome=yes
 PrivateTmp=yes
