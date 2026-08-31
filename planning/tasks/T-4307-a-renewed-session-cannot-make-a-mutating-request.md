@@ -56,6 +56,20 @@ Note that `TicketRenewCheckInterval` defaults to one minute (`service.go:160`) �
 *check* cadence, not the renew cadence, so a reproduction has to drive the actual renew trigger
 rather than wait a minute.
 
+**A restart masks this, so do not try to reproduce it on a surviving session.** `s.live[sessionID]`
+is written in exactly one place — `startSession` at login (`handlers.go:170`) — and nothing
+rehydrates it from the `sessions` table on daemon start; `PVEClientFor`'s doc comment
+(`service.go:325-333`) states the same thing from the other direction. A session that predates the
+current daemon start therefore has no live identity, so `renewSession` returns at `renewal.go:56`
+and `rec.CSRFToken` is never rewritten. Its cookie stays valid indefinitely.
+
+That is not hypothetical: it is why the guided LLDP install succeeded on 2026-08-31 at 13:14 on a
+session created at 09:20:42, across a 10:31 daemon restart, with no 403 and no re-login. Nearly
+four hours on one login is not evidence against this card — it is evidence the renewal loop was
+not running for that session at all.
+
+The corollary for anyone reproducing: log in *after* the daemon is up, and keep it up.
+
 ## Acceptance criteria
 
 1. A test that logs in, forces one ticket renewal, and then makes a mutating request with the

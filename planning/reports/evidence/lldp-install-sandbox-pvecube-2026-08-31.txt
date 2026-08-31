@@ -176,12 +176,26 @@ $ curl -sk https://127.0.0.1:8007/api/v1/health
 6. What this does NOT cover
 =====================================================================
 
-  - The HTTP layer. POST /api/v1/lldp/install is session + CSRF gated and
-    needs a PVE password, which this workstation does not hold; the route's
-    own code is unchanged by 8cdd427e and is covered by
-    internal/api/lldpinstall_test.go. Section 4 exercises the half that
-    changed. Pressing the button in a browser and re-reading the audit_log
-    query from section 1 is the remaining confirmation.
+  - The HTTP layer, at the time sections 1-5 were written. POST
+    /api/v1/lldp/install is session + CSRF gated and needs a PVE password,
+    which this workstation does not hold; sections 3 and 4 therefore
+    exercise the half that changed, directly.
+
+    CLOSED the same day. The operator pressed the button twice at 13:14, on
+    the 4.0.0+227+g8cdd427e daemon, and section 1's query now reads:
+
+    $ sqlite3 -readonly /var/lib/vnprox/vnprox.db \
+        "select datetime(at,'unixepoch','localtime'), target, result, detail_json \
+         from audit_log where action='lldp.install' order by at desc limit 4;"
+    2026-08-31 13:14:40|pve001 |ok|{"detail":"","node":"pve001"}
+    2026-08-31 13:14:39|pvecube|ok|{"detail":"","node":"pvecube"}
+    2026-08-31 13:14:34|pve001 |ok|{"detail":"","node":"pve001"}
+    2026-08-31 13:14:33|pvecube|ok|{"detail":"","node":"pvecube"}
+
+    pvecube: error at 09:22:01, ok at 13:14:33, nothing between the two but
+    the upgrade. `detail` is empty rather than fourteen lines of apt, which
+    is the other half of the fix (the audit row carried the transcript too,
+    not just the toast).
 
   - pve001's own execution. It runs an older vnproxd that still has the
     direct-apt code, and cannot be upgraded (no SSH, no authorisation). It
