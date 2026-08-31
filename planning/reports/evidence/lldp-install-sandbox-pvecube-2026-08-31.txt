@@ -1,0 +1,191 @@
+Guided LLDP install — before/after on vnprox-dev
+Captured 2026-08-31, 10:20–10:40 EDT, from pvecube (192.168.1.9), PVE 9.2.4.
+
+Subject: commit 8cdd427e, "lldp: stop reporting an already-configured node as
+a failed install". This file is the hardware half of that commit — the unit
+tests in internal/host/lldp_install_linux_test.go prove the branching, and
+what follows proves the branch predicates are true on a real hardened node.
+
+Mutations performed, in full: the vnprox package was upgraded
+(4.0.0+226+g3d0805ed -> 4.0.0+227+g8cdd427e, which restarts vnprox.service),
+and `systemctl enable --now lldpd` was run once — a no-op, since lldpd was
+already enabled and active both before and after (section 3). pve001 was not
+touched at all: nothing in this file ran against it, and it is named only
+where the audit log already recorded it. No pvesh write, no change to network
+config, no change to cluster membership.
+
+
+=====================================================================
+1. The reported failure, and how long it had been happening
+=====================================================================
+
+Reported symptom: "Failed on 1 of 2 nodes. * pvecube failed — host:
+installing lldpd ([apt-get install -y lldpd]): exit status 100: ..." followed
+by fourteen lines of apt transcript.
+
+$ sqlite3 -readonly /var/lib/vnprox/vnprox.db \
+    "select datetime(at,'unixepoch','localtime'), username, target, result \
+     from audit_log where action='lldp.install' order by at desc limit 6;"
+2026-08-31 09:22:02|root|pve001 |ok
+2026-08-31 09:22:01|root|pvecube|error
+2026-08-31 09:21:32|root|pve001 |ok
+2026-08-31 09:21:31|root|pvecube|error
+2026-07-12 10:56:16|root|pvecube|error
+
+$ sqlite3 -readonly /var/lib/vnprox/vnprox.db \
+    "select count(*), min(datetime(at,'unixepoch','localtime')) from audit_log \
+     where action='lldp.install' and result='error';"
+3|2026-07-12 10:56:16
+
+Two things this settles that the bug report alone did not:
+
+  - The failure is not new. It first fired on 2026-07-12, seven weeks before
+    it was reported, and the route has never once succeeded on pvecube.
+  - It never self-heals. Every press fails identically, for the reason in
+    section 2: the write apt needs in order to stop needing it is the write
+    it cannot perform.
+
+
+=====================================================================
+2. Root cause, including why only ONE of the two nodes failed
+=====================================================================
+
+vnproxd runs under ProtectSystem=strict. Read from inside the running
+daemon's own mount namespace:
+
+$ PID=$(systemctl show -p MainPID --value vnprox.service)   # 954084
+$ nsenter -t $PID -m -- findmnt -no TARGET,OPTIONS /
+/ ro,nosuid,relatime,errors=remount-ro
+
+`/` itself is read-only — not merely /var. That is the fact that decides the
+fix: `dpkg -L lldpd` writes under /usr and /etc, so there is no ReadWritePaths
+set short of granting /usr, /etc and /var that makes a direct apt work, and
+granting those three is not a narrowing of the sandbox but the end of it.
+
+The asymmetry ("1 of 2 nodes") is apt's auto/manual bookkeeping:
+
+$ apt-mark showauto lldpd
+lldpd
+$ apt-mark showmanual lldpd
+(empty)
+
+On pvecube lldpd is marked *auto*. `apt-get install -y lldpd` therefore wants
+to promote it to manual, and that promotion is a write to
+/var/lib/apt/extended_states — the file the transcript names. On pve001 the
+package is already manual, so apt has no bookkeeping to write, exits 0, and
+the identical daemon on the identical sandbox reports ok. The failure was
+never about the node's configuration; it was about one bit in apt's state
+file, which is why "install lldpd on all nodes" split 1/2 rather than 0/2.
+
+
+=====================================================================
+3. The two branch predicates, read inside the daemon's own namespace
+=====================================================================
+
+3a. The skip predicate — dpkg-query works inside the sandbox and says yes.
+
+$ nsenter -t $PID -m -- dpkg-query -W -f='${db:Status-Status}\n' lldpd
+installed
+exit=0
+
+3b. The enable step needs no escape, and is genuinely a no-op here.
+
+$ systemctl is-enabled lldpd ; systemctl is-active lldpd
+enabled
+active
+$ nsenter -t $PID -m -- systemctl enable --now lldpd
+Synchronizing state of lldpd.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.
+Executing: /usr/lib/systemd/systemd-sysv-install enable lldpd
+exit=0
+$ systemctl is-enabled lldpd ; systemctl is-active lldpd
+enabled
+active
+
+3c. The escape hatch — systemd-run is reachable from inside the sandbox, and
+its child is outside it. This is the branch pvecube will NOT take (the
+package is present), so it is verified directly rather than inferred.
+
+$ nsenter -t $PID -m -- sh -c 'command -v systemd-run'
+/usr/bin/systemd-run
+$ nsenter -t $PID -m -- systemd-run --wait --collect --quiet --pipe \
+      --description='vnprox sandbox escape probe' findmnt -no TARGET,OPTIONS /
+/ rw,relatime,errors=remount-ro
+exit=0
+
+`ro` inside, `rw` in the child of the same unit. --quiet --pipe also confirmed
+clean: systemd-run's own "Running as unit ..." line never reaches stdout, so
+it cannot leak into the error string the UI renders.
+
+
+=====================================================================
+4. End-to-end: the shipped function, under the shipped hardening
+=====================================================================
+
+A scratch binary calling host.InstallLLDPD at 8cdd427e — the same function
+POST /api/v1/lldp/install calls — built from the repo tree, run on pvecube
+under a transient unit carrying vnprox.service's own hardening directives
+(ProtectSystem=strict, the same ReadWritePaths line, ProtectHome, PrivateTmp,
+NoNewPrivileges, the Protect*/SystemCall* set). The binary was removed from
+the node afterwards.
+
+$ systemd-run --wait --collect --quiet --pipe \
+    -p ProtectSystem=strict \
+    -p 'ReadWritePaths=/var/lib/vnprox /etc/vnprox/keys /etc/wireguard /etc/network /etc/iproute2/rt_tables.d /run' \
+    -p ProtectHome=yes -p PrivateTmp=yes -p NoNewPrivileges=yes \
+    -p ProtectKernelTunables=yes -p ProtectKernelModules=yes \
+    -p ProtectControlGroups=yes -p ProtectProc=invisible \
+    -p SystemCallArchitectures=native -p 'SystemCallFilter=@system-service' \
+    /opt/lldpprobe
+RESULT ok=true took=677ms
+probe exit=0
+
+677ms is the cost of dpkg-query plus systemctl. apt did not run.
+
+The control — the OLD code path, the same argv the audit rows above recorded,
+under the same hardening on the same node — so that the pass above is not
+vacuous:
+
+$ systemd-run --wait --collect --quiet --pipe \
+    -p ProtectSystem=strict -p 'ReadWritePaths=...same...' \
+    -p ProtectHome=yes -p PrivateTmp=yes -p NoNewPrivileges=yes \
+    apt-get install -y lldpd
+W: Not using locking for read only lock file /var/lib/dpkg/lock-frontend
+W: Not using locking for read only lock file /var/lib/dpkg/lock
+E: Could not create temporary file for /var/lib/apt/extended_states - mkstemp (30: Read-only file system)
+E: Failed to write temporary StateFile /var/lib/apt/extended_states
+W: chown to _apt:root of directory /var/cache/apt/archives/partial failed - SetupAPTPartialDirectory (30: Read-only file system)
+W: chmod 0700 of directory /var/cache/apt/archives/partial failed - SetupAPTPartialDirectory (30: Read-only file system)
+control exit=100
+
+Same host, same sandbox, same minute: old path 100, new path 0.
+
+
+=====================================================================
+5. Deployment
+=====================================================================
+
+$ dpkg-query -W -f='${Version}\n' vnprox
+4.0.0+227+g8cdd427e
+$ systemctl is-active vnprox.service
+active
+$ curl -sk https://127.0.0.1:8007/api/v1/health
+{"status":"ok","version":"4.0.0+227+g8cdd427e","collectors":[{"name":"pve",...},{"name":"lldp",...}]}
+
+
+=====================================================================
+6. What this does NOT cover
+=====================================================================
+
+  - The HTTP layer. POST /api/v1/lldp/install is session + CSRF gated and
+    needs a PVE password, which this workstation does not hold; the route's
+    own code is unchanged by 8cdd427e and is covered by
+    internal/api/lldpinstall_test.go. Section 4 exercises the half that
+    changed. Pressing the button in a browser and re-reading the audit_log
+    query from section 1 is the remaining confirmation.
+
+  - pve001's own execution. It runs an older vnproxd that still has the
+    direct-apt code, and cannot be upgraded (no SSH, no authorisation). It
+    reports ok today only because of the apt-mark accident in section 2 — if
+    that node's lldpd is ever marked auto, the old daemon there will fail
+    exactly as pvecube did, and the fix cannot reach it. This is a property
+    of the mixed-version cluster, not a gap in the fix.
