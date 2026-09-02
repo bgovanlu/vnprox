@@ -272,3 +272,59 @@ untested half.
 
 All seven are fixed as of the commit that appends this section, each with a
 test that fails against the previous code.
+
+
+=====================================================================
+8. 2026-09-02: the full-hardening gap from section 6, closed
+=====================================================================
+
+Section 6 recorded that the escape had only ever been measured under a
+partial directive set — `nsenter -m` (mount namespace alone) and a probe
+carrying ProtectSystem/ReadWritePaths/ProtectHome/PrivateTmp/NoNewPrivileges
+but not CapabilityBoundingSet, RestrictAddressFamilies, RestrictNamespaces or
+SystemCallFilter. Those three are the directives most likely to break
+`systemd-run --pipe`, since it needs an AF_UNIX connection to the system bus
+and SCM_RIGHTS fd passing.
+
+Re-run on pvecube against the deployed v4.2.0 binary, under vnprox.service's
+own hardening this time including CapabilityBoundingSet,
+RestrictAddressFamilies, SystemCallFilter=@system-service and the whole
+Protect*/Restrict* set:
+
+$ systemctl is-enabled lldpd ; systemctl is-active lldpd
+enabled
+active
+
+$ systemd-run --wait --collect --quiet --pipe \
+    -p ProtectSystem=strict -p 'ReadWritePaths=...as shipped...' \
+    -p ProtectHome=yes -p PrivateTmp=yes -p NoNewPrivileges=yes \
+    -p ProtectKernelTunables=yes -p ProtectKernelModules=yes \
+    -p ProtectKernelLogs=yes -p ProtectControlGroups=yes \
+    -p ProtectClock=yes -p ProtectProc=invisible \
+    -p RestrictRealtime=yes -p RestrictSUIDSGID=yes \
+    -p SystemCallArchitectures=native \
+    -p 'CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_CHOWN CAP_FOWNER CAP_SETPCAP' \
+    -p 'RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX' \
+    -p 'SystemCallFilter=@system-service' \
+    /opt/lldpprobe420
+RESULT ok=true took=764ms
+probe exit=0
+
+$ systemctl is-enabled lldpd ; systemctl is-active lldpd
+enabled
+active
+
+What this now establishes that section 4 did not: the `systemd-run` escape
+works under the complete shipped hardening, not a subset of it, and the
+`systemctl enable` half of the flow runs through that escape (v4.2.0 moved
+it there — before, it ran client-side and would have hit EROFS on
+/etc/rc[2-5].d on a node whose links were K-links).
+
+What it still does not establish, and section 6's caveat therefore stands in
+reduced form: apt itself has never run through the escape on this node,
+because pvecube has lldpd and takes the skip path. The mechanism is now
+measured under full hardening; the apt branch's own behaviour under it is
+not. Closing that needs a node without lldpd — the T-3704 nested lab, not
+vnprox-dev.
+
+Probe binary removed from the node.
