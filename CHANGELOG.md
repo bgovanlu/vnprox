@@ -33,7 +33,19 @@ functionality is folded into `[2.0.0]`.
 
 ## [Unreleased]
 
-Two phases of Arc 6 (`docs/roadmap-earned.md`).
+## [4.2.0] - 2026-09-02
+
+Phases 29 and 30 of Arc 6 (`docs/roadmap-earned.md`), which maps Phase 29 to
+v4.1 and Phase 30 to v4.2; this cut carries both, so it is tagged for the
+later of the two and there is no v4.1.0 tag.
+
+**What this tag contains beyond those two phases.** Work on Phase 31 ("All of
+Proxmox networking", mapped to v4.3) and on the design-language and canvas
+cards that follow it is already merged on this branch and is therefore inside
+this tag, but it is *not* written up below — the entries here describe phases
+29 and 30 only. That is a gap in this file, not in the tag: `git log
+v4.0.0..v4.2.0` is the complete record until Phase 31 gets its own cut. Named
+so a reader does not conclude from silence that the phase had not started.
 
 **Phase 30 ("The visible product")** gave screens to backend features that had none — the
 config-as-code cockpit (`/config-as-code`), governance (`/governance`: policies, compliance,
@@ -48,6 +60,22 @@ gained a reverse check that catches help describing a screen nobody built — it
 v4.0.0; none adds a feature.
 
 ### Fixed
+
+- **The guided "install lldpd on all nodes" button could never succeed on a node that already had
+  the package, and had never worked on one that did not.** Two independent defects, found in that
+  order. `apt-get install -y` on an already-installed package still rewrites
+  `/var/lib/apt/extended_states`, which `ProtectSystem=strict` makes read-only for the daemon, so
+  apt exited 100 after doing no work and a correctly configured node reported as failed — for
+  seven weeks before anyone noticed, and never self-healing, because the write apt needs in order
+  to stop needing it is the write the sandbox denies. The daemon now asks `dpkg-query` first. A
+  node that genuinely needs the install runs apt (and the `systemctl enable`) inside one transient
+  `systemd-run` unit outside the daemon's namespace, since `/` — not merely `/var` — is read-only
+  in there and `dpkg -L lldpd` writes to `/usr` and `/etc`. That unit outlives the request, so a
+  timeout no longer leaves a node installed but never enabled, and the peer route gets its own
+  two-minute deadline rather than the 5s one sized for state reads. Failures are one actionable
+  line in the UI and the audit row, with the full transcript in the daemon log — a dpkg postinst
+  failure's real diagnosis carries no `E:` prefix and would otherwise be unrecoverable on a node
+  with no shell access. Concurrent presses now wait on dpkg's lock instead of racing it.
 
 - **`vnproxctl verify`'s PWA check now runs on a node that has no API token — which is every
   freshly installed node (T-2901 follow-up, found deploying Phase 29 to real hardware).**
