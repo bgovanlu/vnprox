@@ -91,13 +91,28 @@ ProtectSystem=strict
 # and /etc. So no narrow grant fixes it — only /usr + /etc + /var would, which
 # is not a narrowing of this sandbox but the end of it.
 #
-# Fixed in the daemon instead (internal/host/lldp_install_linux.go): the
-# install runs through `systemd-run`, which asks PID 1 to spawn a transient
-# unit outside this namespace. Verified on real hardware — inside a
-# ProtectSystem=strict unit `/` is `ro`; a systemd-run child of that same unit
-# sees `/` as `rw`. Two things follow for anyone extending this file: a
-# subprocess that must write outside the paths below does not automatically
-# justify adding one, and this list stays as narrow as it is today.
+# Fixed in the daemon instead (internal/host/lldp_install_linux.go): both the
+# install and the `systemctl enable` run through `systemd-run`, which asks PID
+# 1 to spawn a transient unit outside this namespace.
+#
+# What has actually been measured, stated precisely, because the earlier
+# version of this comment said "verified on real hardware" and meant less than
+# a reader would assume. On pvecube: inside this unit's namespace `/` is `ro`,
+# and a `systemd-run` child of that same unit sees `/` as `rw`. That was read
+# under `nsenter -m`, which enters the mount namespace only, and a companion
+# probe ran under ProtectSystem/ReadWritePaths/ProtectHome/PrivateTmp/
+# NoNewPrivileges but NOT under this unit's CapabilityBoundingSet,
+# RestrictAddressFamilies, RestrictNamespaces or SystemCallFilter. Every
+# recorded run — probe and real button press alike — took the
+# already-installed path. The apt branch has never executed from the fully
+# hardened daemon, so if a future tightening here breaks it (dropping AF_UNIX,
+# or denying the SCM_RIGHTS fd passing `--pipe` needs), no existing check
+# would notice. See planning/reports/evidence/
+# lldp-install-sandbox-pvecube-2026-08-31.txt.
+#
+# Two things follow for anyone extending this file: a subprocess that must
+# write outside the paths below does not automatically justify adding one, and
+# this list stays as narrow as it is today.
 ReadWritePaths=/var/lib/vnprox /etc/vnprox/keys /etc/wireguard /etc/network /etc/iproute2/rt_tables.d /run
 ProtectHome=yes
 PrivateTmp=yes

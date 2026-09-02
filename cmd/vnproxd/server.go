@@ -65,6 +65,17 @@ const certPollInterval = 30 * time.Second
 // of a cluster's lifetime" rationale as certPollInterval).
 const peerSecretPollInterval = 30 * time.Second
 
+// lldpInstallRequestTimeout bounds POST /api/peer/host/lldp/install, the one
+// peer route whose work is an apt run rather than a read.
+//
+// peer.DefaultRequestTimeout (5s) is sized for state reads and is far too
+// short here: a node that genuinely needs lldpd spends longer than that in
+// apt, so the coordinator gave up and recorded a failure for an install that
+// went on to succeed. Two minutes covers a slow mirror and a dpkg lock wait
+// (internal/host sets DPkg::Lock::Timeout to 60s) while still bounding a
+// peer that has genuinely stopped answering.
+const lldpInstallRequestTimeout = 2 * time.Minute
+
 // metricPruneInterval is how often the metric_samples prune loop enforces
 // store.MetricRetention (24h, docs/data-model.md §2). Hourly keeps the
 // table within ~4% of the retention window at negligible cost.
@@ -1529,7 +1540,32 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	if peerClient != nil {
 		peerAudit = peerClient
 		peerSnapshots = peerClient
-		lldpPeerInstaller = peerClient
+		// lldpPeerInstaller gets its OWN client, with a far longer request
+		// timeout than every other route here.
+		//
+		// peerClient carries the host-state polling loop, so its 5s
+		// DefaultRequestTimeout is right for it: a peer that has not answered
+		// a stats read in five seconds is a peer worth marking unreachable.
+		// Installing a package is not a read. On a node that genuinely lacks
+		// lldpd, `apt-get install` routinely takes longer than five seconds,
+		// so the shared client gave up mid-install on exactly the nodes the
+		// button exists for — reporting a failure for work that then
+		// succeeded, unobserved, moments later.
+		//
+		// The install itself is resilient to that now (internal/host runs it
+		// in a transient unit that outlives the request), so this is about
+		// reporting the truth rather than about completing the work. Same
+		// secrets, same cluster-CA-pinned trust anchor, same metrics registry
+		// — only the deadline differs.
+		lldpInstallClient := peer.NewClient(peer.ClientOptions{
+			ClusterStatus:  coordClusterStatus,
+			Secrets:        peerSecrets,
+			Logger:         logger,
+			Trust:          peerTrust,
+			Metrics:        selfMetrics,
+			RequestTimeout: lldpInstallRequestTimeout,
+		})
+		lldpPeerInstaller = lldpInstallClient
 		peerServiceStarter = peerClient
 		peerFlows = peerClient
 		guestInteriorPeers = peerClient

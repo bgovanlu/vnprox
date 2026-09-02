@@ -88,7 +88,15 @@ $ nsenter -t $PID -m -- dpkg-query -W -f='${db:Status-Status}\n' lldpd
 installed
 exit=0
 
-3b. The enable step needs no escape, and is genuinely a no-op here.
+3b. The enable step is genuinely a no-op here.
+
+CORRECTED 2026-09-02: this heading originally read "needs no escape, and is
+genuinely a no-op here." The transcript below disproves its first half — see
+the `Executing: /usr/lib/systemd/systemd-sysv-install enable lldpd` line,
+which is systemctl exec'ing a helper *inside* this namespace, and which runs
+update-rc.d, which renames links under /etc/rc[2-5].d. It exited 0 only
+because those links were already S-links. The enable now goes through
+systemd-run as well. Section 7.
 
 $ systemctl is-enabled lldpd ; systemctl is-active lldpd
 enabled
@@ -203,3 +211,64 @@ $ curl -sk https://127.0.0.1:8007/api/v1/health
     that node's lldpd is ever marked auto, the old daemon there will fail
     exactly as pvecube did, and the fix cannot reach it. This is a property
     of the mixed-version cluster, not a gap in the fix.
+
+  - The apt branch under the FULL hardening set. Section 3c entered the
+    daemon's namespace with `nsenter -m`, which is the mount namespace only,
+    and section 4's probe carried ProtectSystem/ReadWritePaths/ProtectHome/
+    PrivateTmp/NoNewPrivileges but not CapabilityBoundingSet,
+    RestrictAddressFamilies, RestrictNamespaces or SystemCallFilter. Every
+    run recorded in this file — probe and real button press alike — took the
+    already-installed path. So the escape mechanism is measured, but apt
+    itself has never run through it from the fully hardened daemon. A future
+    tightening of vnprox.service that broke it (dropping AF_UNIX, or denying
+    the SCM_RIGHTS fd passing `--pipe` depends on) would not be caught by any
+    check recorded here.
+
+
+=====================================================================
+7. Addendum, 2026-09-02: what a code review found afterwards
+=====================================================================
+
+Sections 1-5 measured the right things and their conclusions stand. What they
+did not do is exercise the branch this file is named after, and a review of
+the commit found seven defects concentrated there. Recorded here because the
+green evidence above is exactly what would make a later reader trust the
+untested half.
+
+  - The peer route ran on peer.DefaultRequestTimeout (5s). A node genuinely
+    needing the install spends longer than that in apt, so the coordinator
+    gave up and recorded a failure for work that then succeeded unobserved.
+    Cancelling also killed only the `systemd-run` client: the transient unit
+    kept running under PID 1 holding vnproxd's stdout pipe, so CombinedOutput
+    blocked until apt finished, and the separate `systemctl enable` step was
+    skipped entirely — leaving lldpd installed but never enabled.
+
+  - `systemctl enable` was documented as needing no sandbox escape. Section
+    3b's own transcript disproves that: it shows systemctl exec'ing
+    /usr/lib/systemd/systemd-sysv-install inside the daemon's namespace,
+    which runs update-rc.d, which renames links under /etc/rc[2-5].d. It
+    passed here only because those links were already S-links.
+
+  - The "systemd-run is unavailable" message could never appear: it was
+    searched for in the command's output, but a missing binary makes exec
+    fail before Start, with the text in err and no output at all.
+
+  - The "Read-only file system" special case inverted its own diagnosis once
+    apt moved outside the sandbox. Section 2's mount line shows this node is
+    `errors=remount-ro`, so the likeliest remaining cause of that string is a
+    genuinely read-only disk — and the message asserted the disk was fine.
+
+  - `systemctl enable` prints two informational lines before anything else on
+    this node (section 3b), so reporting the first line of a failed enable
+    reported "Synchronizing state of lldpd.service..." as the error.
+
+  - The one-line error dropped apt's transcript everywhere. A dpkg postinst
+    failure's actual diagnosis carries no `E:` prefix, and `--pipe` keeps it
+    out of the journal, so on pve001 it would have been unrecoverable.
+
+  - Concurrent presses were left to race on /var/lib/dpkg/lock-frontend;
+    omitting `--unit` prevents systemd colliding, but systemd is not what
+    serialises package installs.
+
+All seven are fixed as of the commit that appends this section, each with a
+test that fails against the previous code.
