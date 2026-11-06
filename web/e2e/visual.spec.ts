@@ -320,7 +320,9 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
         // what is on disk, so the skip below only applies to a plain
         // verification run with no baseline yet — it turns "every test
         // fails on a fresh checkout" into one clear, actionable message.
-        const updating = testInfo.config.updateSnapshots !== "none";
+        // Playwright's default mode is "missing", which writes the baseline and
+        // fails the test, so only the modes `--update-snapshots` sets count.
+        const updating = ["all", "changed"].includes(testInfo.config.updateSnapshots);
         const snapshotName = `${slug}.png`;
         if (!updating && !existsSync(testInfo.snapshotPath(snapshotName))) {
           test.skip(
@@ -447,7 +449,9 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
           await expect(v2Canvas).toHaveCount(0);
         }
 
-        const updating = testInfo.config.updateSnapshots !== "none";
+        // Playwright's default mode is "missing", which writes the baseline and
+        // fails the test, so only the modes `--update-snapshots` sets count.
+        const updating = ["all", "changed"].includes(testInfo.config.updateSnapshots);
         const snapshotName = `topology-graph-${renderer}-${mode.name}.png`;
         if (!updating && !existsSync(testInfo.snapshotPath(snapshotName))) {
           test.skip(
@@ -491,7 +495,7 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
       await expect(page.getByLabel("Username")).toBeVisible();
       await page.evaluate(() => document.fonts.ready);
 
-      const updating = testInfo.config.updateSnapshots !== "none";
+      const updating = ["all", "changed"].includes(testInfo.config.updateSnapshots);
       const snapshotName = `login-${mode.name}.png`;
       if (!updating && !existsSync(testInfo.snapshotPath(snapshotName))) {
         test.skip(

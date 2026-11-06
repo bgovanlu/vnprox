@@ -73,6 +73,12 @@ assessed individually.
   simulator trace-path test's flakiness, which measured 5 failures in 6 runs before the fix and 120 of
   120 passes after it.
 
+- **The installer could silently lose its own output.** On a host with neither `ss` nor `netstat`,
+  finding port 8007 in use redirected the rest of `install.sh`'s stderr to `/dev/null`, so every later
+  log, warning and error disappeared. `vnprox-setup` carried the same two lines. Hosts with `ss` never
+  took this path.
+- **The visual gate failed on a host with no baselines** instead of skipping as documented.
+
 ### Changed
 
 - **Both test quarantines are empty.** `T-3713`'s entry is removed because its cause is fixed;
