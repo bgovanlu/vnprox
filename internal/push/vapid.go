@@ -68,14 +68,14 @@ func GenerateVAPIDKeyFile(path string) error {
 		return fmt.Errorf("push: creating VAPID key directory for %s: %w", path, err)
 	}
 
-	// D (the private scalar) is the only secret material; it is always
-	// exactly 32 bytes for P-256 (FillBytes zero-pads a scalar that
-	// happens to have leading zero bytes, which crypto/ecdsa's own
-	// D.Bytes() would silently drop, producing a shorter-than-32-byte
-	// encoding on a small fraction of keys).
-	var scalar [32]byte
-	priv.D.FillBytes(scalar[:])
-	encoded := base64.StdEncoding.EncodeToString(scalar[:])
+	// The private scalar is the only secret material. PrivateKey.Bytes is
+	// always exactly 32 bytes for P-256, zero-padding a scalar with leading
+	// zero bytes, which LoadVAPIDKeyFile relies on.
+	scalar, encodeErr := priv.Bytes()
+	if encodeErr != nil {
+		return fmt.Errorf("push: encoding VAPID key: %w", encodeErr)
+	}
+	encoded := base64.StdEncoding.EncodeToString(scalar)
 	if err := os.WriteFile(path, []byte(encoded+"\n"), 0o600); err != nil {
 		return fmt.Errorf("push: writing VAPID key file %s: %w", path, err)
 	}
@@ -133,21 +133,24 @@ func privateKeyFromScalar(scalar []byte) (*ecdsa.PrivateKey, error) {
 // UncompressedPublicKey returns pub's uncompressed SEC1 point encoding
 // (0x04 || X(32) || Y(32), 65 bytes for P-256) — the wire form both RFC
 // 8291's per-message ephemeral keys and RFC 8292's VAPID identity key use.
-// Built by hand (rather than the deprecated elliptic.Marshal) so X/Y are
-// always fixed-width, zero-padded 32-byte fields even for a coordinate that
-// happens to have leading zero bytes.
-func UncompressedPublicKey(pub *ecdsa.PublicKey) []byte {
-	out := make([]byte, uncompressedPointLen)
-	out[0] = 0x04
-	pub.X.FillBytes(out[1:33])
-	pub.Y.FillBytes(out[33:65])
-	return out
+// PublicKey.Bytes keeps X/Y fixed-width, zero-padded 32-byte fields even for a
+// coordinate that happens to have leading zero bytes.
+func UncompressedPublicKey(pub *ecdsa.PublicKey) ([]byte, error) {
+	out, err := pub.Bytes()
+	if err != nil {
+		return nil, fmt.Errorf("push: encoding public key: %w", err)
+	}
+	return out, nil
 }
 
 // PublicKeyBase64URL returns pub's uncompressed point, base64url-encoded
 // without padding — the exact string shape both the browser's
 // `PushManager.subscribe({applicationServerKey})` call and RFC 8292's
 // Authorization header `k=` parameter need.
-func PublicKeyBase64URL(pub *ecdsa.PublicKey) string {
-	return base64.RawURLEncoding.EncodeToString(UncompressedPublicKey(pub))
+func PublicKeyBase64URL(pub *ecdsa.PublicKey) (string, error) {
+	point, err := UncompressedPublicKey(pub)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(point), nil
 }

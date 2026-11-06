@@ -307,6 +307,10 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	if err != nil {
 		return fmt.Errorf("initializing push VAPID key: %w", err)
 	}
+	pushVAPIDPublicKey, err := push.PublicKeyBase64URL(&pushVAPIDKey.PublicKey)
+	if err != nil {
+		return fmt.Errorf("encoding push VAPID public key: %w", err)
+	}
 
 	authSvc, sessionCipher, err := setupAuth(cfg, logger, db, auditRepo, apiTokenRepo, demoRT)
 	if err != nil {
@@ -2006,7 +2010,7 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		// call needs (internal/push.PublicKeyBase64URL's doc comment).
 		PushSubscriptions:  pushSubscriptionRepo,
 		PushSecretCipher:   sessionCipher,
-		PushVAPIDPublicKey: push.PublicKeyBase64URL(&pushVAPIDKey.PublicKey),
+		PushVAPIDPublicKey: pushVAPIDPublicKey,
 		// T-1501: Kubernetes overlay mapping engine (read-only forever).
 		// K8sClusters/K8sAudit reuse the same *store.AuditRepo/db
 		// everything else in this file wires in; K8sSecretCipher reuses

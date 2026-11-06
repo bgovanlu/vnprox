@@ -310,7 +310,10 @@ func Send(ctx context.Context, sub Subscription, payload []byte, cfg SendConfig)
 	if err != nil {
 		return err
 	}
-	vapidPub := PublicKeyBase64URL(&cfg.VAPIDPrivateKey.PublicKey)
+	vapidPub, err := PublicKeyBase64URL(&cfg.VAPIDPrivateKey.PublicKey)
+	if err != nil {
+		return err
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sub.Endpoint, bytes.NewReader(body))
 	if err != nil {
