@@ -1,6 +1,6 @@
 # vnprox — project status
 
-**As of:** 2026-08-15 (this header corrected 2026-11-06; the body below has not been re-audited since the date given) · **Latest release:** `v4.2.0` (tag `v4.2.0`, commit `49f5aa48`, 2026-09-02) · **Active arc:** Arc 6 — Earned (`docs/roadmap-earned.md`); see `docs/roadmap.md` for which phases have shipped
+**As of:** 2026-08-15 (this header corrected 2026-11-06; the body below has not been re-audited since the date given) · **Latest release:** `v4.2.1` (tag `v4.2.1`, 2026-11-06) · **Active arc:** Arc 6 — Earned (`docs/roadmap-earned.md`); see `docs/roadmap.md` for which phases have shipped
 
 Companion documents: [`status-matrix.md`](status-matrix.md) (the per-feature audit grid and its method) and [`datasheet.md`](datasheet.md) (shipped capability, for external readers).
 

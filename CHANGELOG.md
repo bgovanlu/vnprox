@@ -33,6 +33,51 @@ functionality is folded into `[2.0.0]`.
 
 ## [Unreleased]
 
+## [4.2.1] - 2026-11-06
+
+A security and repair release. No schema, API or configuration change; an upgrade from 4.2.0 is an
+ordinary package upgrade.
+
+**Why the local gate had stopped passing.** From 2026-09-23 every `make ci` failed regardless of the
+change being tested: two test quarantines had reached their expiry, and advisories published since
+v4.2.0 then failed `govulncheck` and the `npm audit` gate as well. All three are resolved here. The
+fixed advisories were reported by those scanners; their exploitability against vnprox has not been
+assessed individually.
+
+### Security
+
+- **Go 1.26.6 → 1.26.10**, the toolchain every release binary is built with, for advisories in
+  `crypto/x509`, `crypto/tls`, `net/http`, `net/textproto` and `html/template`.
+- **`golang.org/x/net` → v0.62.0, `klauspost/compress` → v1.20.3, `google.golang.org/grpc` → v1.85.0.**
+  `govulncheck` reported 15 reachable vulnerabilities before this release and reports none now. The
+  `go.mod` minimum rises from 1.25.8 to 1.26.0 because the updated dependencies require it.
+- **`monaco-editor` 0.55 → 0.57**, which carries the fixed `dompurify` (critical), and
+  **`react-router` → 7.18.5** (high). `npm audit --omit=dev` now reports nothing, and no high or
+  critical advisory remains anywhere in the tree, so `web/audit-allowlist.json` is empty. Ten moderate
+  advisories remain in `eslint` development tooling, which does not ship.
+- **`contrib/terraform-provider-vnprox`:** the same `x/net` and `grpc` updates. It is a separate Go
+  module, so the main gate did not see them.
+
+### Fixed
+
+- **Typing `/` in the raw `/etc/network/interfaces` editor threw away the edit.** Monaco's default
+  `EditContext` input is a plain `<div>`, which the global keyboard shortcuts did not recognise as
+  editable, so the `/` in an address like `10.0.0.1/24` opened global search and navigated to Topology.
+  `g`, `f` and `1`–`4` fired as shortcuts too, and spaces were dropped under automated input. The editor
+  now uses Monaco's textarea input. No real-browser test had ever opened this editor, because Vitest
+  stubs Monaco; one now does.
+- **The Graph view opened at maximum zoom with most of the map off the canvas** (`T-3713`). React
+  Flow's `fitView` fits once on mount, when every node is still stacked at the origin, and nothing fit
+  again after the elkjs layout spread them out. The view now fits once per distinct node set, as the
+  v2 canvas already did. A share link's viewport still wins. This was also the real cause of the
+  simulator trace-path test's flakiness, which measured 5 failures in 6 runs before the fix and 120 of
+  120 passes after it.
+
+### Changed
+
+- **Both test quarantines are empty.** `T-3713`'s entry is removed because its cause is fixed;
+  `T-3708`'s `TenantsPanel` entry because it has not recurred in the last 20 recorded runs.
+
 ## [4.2.0] - 2026-09-02
 
 Phases 29 and 30 of Arc 6 (`docs/roadmap-earned.md`), which maps Phase 29 to

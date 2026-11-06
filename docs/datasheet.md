@@ -1,7 +1,7 @@
 # vnprox — product datasheet
 
 **Visual networking for Proxmox VE**
-Written against version 4.0.0 (released 2026-08-14) · current release is 4.2.0 (2026-09-02)
+Written against version 4.0.0 (released 2026-08-14) · current release is 4.2.1 (2026-11-06)
 
 *Figures below are counted from the tree at v4.0.0 plus the then-unreleased Phase 29 fixes
 (`CHANGELOG.md` §Unreleased), and each names the file it can be recounted from. The 2026-08-15

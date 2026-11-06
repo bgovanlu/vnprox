@@ -15,7 +15,7 @@
 > re-measured on 2026-08-23, **71 of 72 API route groups have a frontend caller**, the exception
 > being `/api/v1/openapi.json`, which is a machine-readable spec and correctly has no UI.
 
-**Audit date:** 2026-08-06 · **Commit:** `6c0957e` · **Sweep taken against:** `v3.0.4` · **Deployed at sweep time:** `3.0.4+43+g6c0957e` (pvecube) · **Current release: `v4.2.0`** (2026-09-02) — this document's §2/§3/§4 numbers were never re-run against it; see the note below and §7
+**Audit date:** 2026-08-06 · **Commit:** `6c0957e` · **Sweep taken against:** `v3.0.4` · **Deployed at sweep time:** `3.0.4+43+g6c0957e` (pvecube) · **Current release: `v4.2.1`** (2026-11-06) — this document's §2/§3/§4 numbers were never re-run against it; see the note below and §7
 
 This is a mechanical sweep of the whole stack: feature area × backend × GUI × API × docs × tests × hardware validation. Every figure below is derived from the repository at the commit above by a command recorded in the *Method* section, not from a task report's own claim about itself.
 
