@@ -58,6 +58,9 @@ grep -q "resolved listen port: 8008" <<<"$OUT" || { echo "FAIL: expected fallbac
 dpkg -r vnprox >/dev/null 2>&1 || true
 
 echo "=== conflict present: interactive prompt accepts an operator-typed port ==="
+# netcat-traditional exits after one connection, and the probe above was it.
+(nc -l -p 8007 >/dev/null 2>&1 &)
+sleep 1
 OUT="$(echo "8009" | bash /packaging/install.sh --skip-pve-check --offline "/dist/'"$DEB_BASENAME"'" 2>&1)"
 grep -qi "something is already listening on port 8007" <<<"$OUT" || { echo "FAIL: conflict not detected"; echo "$OUT"; exit 1; }
 grep -q "resolved listen port: 8009" <<<"$OUT" || { echo "FAIL: expected the typed port 8009"; echo "$OUT"; exit 1; }
