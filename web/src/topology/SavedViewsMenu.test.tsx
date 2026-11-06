@@ -12,6 +12,7 @@ import { SavedViewsMenu } from "./SavedViewsMenu";
 const saveMutate = vi.fn();
 const deleteMutate = vi.fn();
 const clipboardWriteText = vi.fn((_text: string) => Promise.resolve());
+const promptMock = vi.fn<(message?: string) => string | null>();
 let savedViewsList: { name: string; updatedAt: number }[] = [];
 
 vi.mock("./savedViewsQueries", () => ({
@@ -45,7 +46,8 @@ beforeEach(() => {
   deleteMutate.mockReset();
   vi.mocked(loadSavedView).mockReset();
   savedViewsList = [];
-  vi.stubGlobal("prompt", vi.fn());
+  promptMock.mockReset();
+  vi.stubGlobal("prompt", promptMock);
   clipboardWriteText.mockClear();
 });
 
@@ -58,13 +60,13 @@ describe("SavedViewsMenu", () => {
   });
 
   it("prompts for a name and saves the current state (T-907 AC1)", async () => {
-    vi.mocked(window.prompt).mockReturnValue("my great filter");
+    promptMock.mockReturnValue("my great filter");
     const user = userEvent.setup();
     renderMenu();
     await user.click(screen.getByRole("button", { name: "Views ▾" }));
     await user.click(await screen.findByText("Save current view…"));
 
-    expect(window.prompt).toHaveBeenCalled();
+    expect(promptMock).toHaveBeenCalled();
     expect(saveMutate).toHaveBeenCalledWith(
       { name: "my great filter", state: CURRENT_STATE },
       expect.anything(),
@@ -72,7 +74,7 @@ describe("SavedViewsMenu", () => {
   });
 
   it("does not save when the name prompt is cancelled", async () => {
-    vi.mocked(window.prompt).mockReturnValue(null);
+    promptMock.mockReturnValue(null);
     const user = userEvent.setup();
     renderMenu();
     await user.click(screen.getByRole("button", { name: "Views ▾" }));

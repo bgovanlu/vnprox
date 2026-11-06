@@ -16,5 +16,5 @@
 # scripts/ci-local.sh` still works for a deliberate one-off override) rather
 # than clobbering it.
 
-GO_VERSION_EXPECTED="${GO_VERSION_EXPECTED:-1.26.6}"
+GO_VERSION_EXPECTED="${GO_VERSION_EXPECTED:-1.26.10}"
 NODE_MAJOR="${NODE_MAJOR:-22}"

@@ -107,7 +107,6 @@ describe("EvpnView", () => {
     await waitFor(() => {
       expect(screen.getByRole("table", { name: "EVPN peering matrix" })).toBeInTheDocument();
     });
-    const table = screen.getByRole("table", { name: "EVPN peering matrix" });
     await userEvent.click(screen.getByText("Idle"));
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "pve1 ↔ 10.20.0.13" })).toBeInTheDocument();
@@ -117,7 +116,6 @@ describe("EvpnView", () => {
     const lastErrorRow = screen.getByText("Last error").closest("div");
     expect(lastErrorRow).not.toBeNull();
     expect(within(lastErrorRow as HTMLElement).getByText("Admin")).toBeInTheDocument();
-    void table;
   });
 
   it("renders the VNI list", async () => {
