@@ -1,9 +1,9 @@
 # vnprox — product datasheet
 
 **Visual networking for Proxmox VE**
-Version 4.0.0 · released 2026-08-14
+Written against version 4.0.0 (released 2026-08-14) · current release is 4.2.0 (2026-09-02)
 
-*Figures below are counted from the tree at v4.0.0 plus the unreleased Phase 29 fixes
+*Figures below are counted from the tree at v4.0.0 plus the then-unreleased Phase 29 fixes
 (`CHANGELOG.md` §Unreleased), and each names the file it can be recounted from. The 2026-08-15
 documentation audit found several of them had gone stale by a whole arc; they are now recounted
 rather than carried forward.*
@@ -171,7 +171,7 @@ A datasheet that lists only strengths is marketing. These are the boundaries as 
 | **Simulator** | Evaluates configured state, not live packets. Node/cluster-scope host-chain rules are disclosed as off-path rather than evaluated |
 | **Switch push** | A switch made unreachable by a bad push cannot be rolled back remotely — there is no agent on the switch |
 | **Retention** | Short-horizon by design: 24 h metrics, bounded flow and latency rings. Export to real observability for anything longer |
-| **Not yet shipped** | **Localization** — `T-2006` was never delivered despite v4.0.0's "phases 20 and 21 complete"; rescheduled as `T-3106`. **Signed apt repository** — the tooling and signing pipeline exist, the *hosting* does not (`T-2102` → `T-3301`); `apt install vnprox` still resolves to nothing. **Hosted blueprint/plugin registry** and **public demo instance** — built, not reachable. **Terraform provider / Ansible collection** — the versioned automation contract and release-asset wiring ship here; the provider and collection themselves live in downstream repositories that do not yet exist |
+| **Not yet shipped** | **Localization** — `T-2006` was never delivered despite v4.0.0's "phases 20 and 21 complete"; rescheduled as `T-3106`. **Signed apt repository** — the tooling and signing pipeline exist, the *hosting* does not (`T-2102` → `T-3301`); `apt install vnprox` still resolves to nothing. **Hosted blueprint/plugin registry** and **public demo instance** — built, not reachable. **Terraform provider / Ansible collection** — the versioned automation contract and release-asset wiring ship here; the provider and collection code lives in this repository's `contrib/`, and their standalone repositories hold only a seed README and LICENSE |
 | **Shipped since this row last said otherwise** | `vnproxctl doctor` (incl. `--live`), the mobile PWA, and the PVE compatibility matrix all ship as of v4.0.0. The PWA was **non-functional in any real browser until Phase 29** — the CSP refused its service worker and manifest (`T-2901`); installability and push on real devices are still owed a hardware check (`planning/reports/needs-hardware-validation.md` §T-2901) |
 | **Licensing** | Apache-2.0. See `LICENSE`, `NOTICE`, and `THIRD-PARTY-LICENSES.md` — the last enumerates every bundled third-party component, notably `elkjs` (EPL-2.0) which ships inside the SPA |
 

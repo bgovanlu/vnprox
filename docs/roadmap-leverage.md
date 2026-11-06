@@ -4,8 +4,8 @@
 and 2026-08-09 — see `planning/tasks/phase-24.md`'s delivery records — and folded into the
 `v3.5.0` line). **Correction, 2026-08-19 (debt sweep): "all ten cards delivered" needs a footnote.**
 `T-2409` (per-spec e2e store isolation) is built and proven but was never merged to `main` — it
-misses its own wall-clock and green-suite acceptance criteria, and the work sits on the parked
-branch `t-2409-e2e-store-isolation` to this day (confirmed still unmerged 2026-08-19; see
+misses its own wall-clock and green-suite acceptance criteria, and the work sat on the parked
+branch `t-2409-e2e-store-isolation` (still unmerged when that branch, tip `a9559e79`, was deleted 2026-11-06; see
 `planning/tasks/phase-24.md`'s own delivery record for the detail, and
 `planning/tasks/debt-sweep-2026-08-19.md` worklist item 10, which tracks the branch itself as
 still-open debt). Ten cards were *worked*; nine landed on `main`. The four arcs before this one are described in

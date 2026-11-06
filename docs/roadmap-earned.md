@@ -313,7 +313,7 @@ is host-relative).
 **`T-3204`** — the accumulated test debt, owned in one place: root-cause the quarantined
 `scale.spec.ts` ordering failure (**quarantine expires 2026-09-15**, `T-2505-followup-01`, 4/4
 reproducible, mechanism unexplained); the `simulator.spec.ts` T-504 AC5 flake (37.5% and the
-suite's worst); revive the parked `t-2409-e2e-store-isolation` branch to meet T-2505's unmet
+suite's worst); revive the parked `t-2409-e2e-store-isolation` branch (since deleted, 2026-11-06, tip `a9559e79`) to meet T-2505's unmet
 AC3 (`--repeat-each=2` green — shard-level isolation was proven weaker than per-run); and
 `T-2002-bug-01`: field-removal regression guards for the 8 of 9 frozen MCP tool payloads, 5
 frozen plugin-SDK interfaces, and the event-stream schema that currently have none. OpenAPI

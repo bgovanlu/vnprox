@@ -8,8 +8,8 @@
 //
 // # Why this package exists, and who may import it
 //
-// An earlier version of this feature (preserved, not merged, on the
-// `sigstore-in-daemon` branch — see that branch's own commit message)
+// An earlier version of this feature (never merged; its
+// `sigstore-in-daemon` branch, tip 562de983, was deleted 2026-11-06)
 // verified the registry's *entire* index.json this way, inside vnproxd
 // itself. That was abandoned for one reason: sigstore-go's dependency
 // weight. Pulling it in grows the module graph from 64 to roughly 400

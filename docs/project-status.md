@@ -1,6 +1,6 @@
 # vnprox — project status
 
-**As of:** 2026-08-15 · **Latest release:** `v4.0.0` (tag `v4.0.0`, commit `5c19dcc`, 2026-08-14) · **Active arc:** Arc 6 — Earned (`docs/roadmap-earned.md`), Phases 29 and 30 shipped, Phase 31 next
+**As of:** 2026-08-15 (this header corrected 2026-11-06; the body below has not been re-audited since the date given) · **Latest release:** `v4.2.0` (tag `v4.2.0`, commit `49f5aa48`, 2026-09-02) · **Active arc:** Arc 6 — Earned (`docs/roadmap-earned.md`); see `docs/roadmap.md` for which phases have shipped
 
 Companion documents: [`status-matrix.md`](status-matrix.md) (the per-feature audit grid and its method) and [`datasheet.md`](datasheet.md) (shipped capability, for external readers).
 
@@ -181,8 +181,8 @@ each had a plausible-sounding case for existing:
 `T-2408`, `T-2410`), one partial (`T-2406`), three deferred; a second pass on 2026-08-09 shipped
 two more (`T-2405`, `T-2407`) and closed `T-2411` (untracking the built binaries from git).
 `T-2409` (per-spec e2e store isolation) remains **built but not merged** — it works and is
-proven, but misses its own wall-clock and green-suite acceptance criteria; the branch is
-`t-2409-e2e-store-isolation`. Full per-card notes, the packaging-job root cause
+proven, but misses its own wall-clock and green-suite acceptance criteria; its branch,
+`t-2409-e2e-store-isolation` (tip `a9559e79`), was deleted 2026-11-06. Full per-card notes, the packaging-job root cause
 (`T-1806-bug-02`, a `SIGPIPE`/`pipefail` race in a `grep -q` pipeline that failed *when the
 pattern matched*), and the two GitHub-Actions-billing corrections are in
 `planning/tasks/phase-24.md`'s own delivery-record sections — not restated here to avoid a

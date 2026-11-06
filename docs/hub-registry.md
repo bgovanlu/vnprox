@@ -190,8 +190,8 @@ vnproxctl hub verify --sigstore-key-bundle trusted-signers.json \
 ```
 
 **Say the cost out loud, and do not describe this as equivalent to
-per-fetch keyless verification.** An earlier design (preserved, not merged,
-on the `sigstore-in-daemon` branch) verified index.json itself this way, on
+per-fetch keyless verification.** An earlier design (never merged; its
+`sigstore-in-daemon` branch, tip `562de983`, was deleted 2026-11-06) verified index.json itself this way, on
 every single fetch, inside vnproxd — there was never a persistent private
 key anywhere for an attacker to steal; every verification required a fresh
 Fulcio certificate from a live OIDC token. That design was abandoned for
