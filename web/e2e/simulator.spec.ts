@@ -176,6 +176,58 @@ test("T-504 AC2: unreachable-VLAN case renders the missing link on the map", asy
   await expect(page.getByRole("img", { name: "missing link" })).toBeVisible();
 });
 
+// Vitest stubs Monaco, so this is the only check that the real editor loads and
+// edits in a browser. The typed text carries the two things that broke it under
+// Monaco's EditContext input: "/" and "g"/"f"/"1" fired global shortcuts ("/"
+// navigated to /topology, losing the edit), and spaces were dropped. Nothing is
+// saved.
+test("T-208: the raw editor accepts config text without firing global shortcuts", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (err) => pageErrors.push(err.message));
+
+  await logIn(page);
+  await page.goto("/tools");
+
+  const lines = page.locator(".monaco-editor .view-lines");
+  await expect(lines).toContainText("sandbox");
+  await lines.scrollIntoViewIfNeeded();
+  const box = await lines.boundingBox();
+  if (!box) throw new Error("the editor has no bounding box");
+  await page.mouse.click(box.x + 40, box.y + 8);
+  await expect(page.locator(".monaco-editor textarea.inputarea")).toBeFocused();
+
+  await page.keyboard.press("Control+Home");
+  await page.keyboard.type("address 10.0.0.1/24 g f 1");
+
+  await expect(lines).toContainText(/address\s10\.0\.0\.1\/24\sg\sf\s1/);
+  await expect(page).toHaveURL(/\/tools/);
+  expect(pageErrors).toEqual([]);
+});
+
+// T-3713's actual cause: React Flow's `fitView` prop fits once on mount, when
+// every node is still stacked at the origin, so the map stayed at maxZoom with
+// most of the settled elkjs layout off the canvas. Scrolling cannot reach a
+// node in canvas transform space, which is what made clicks on it time out.
+test("T-3713: Graph view fits the settled layout inside the canvas", async ({ page }) => {
+  await logIn(page);
+  await waitForLayout(page);
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const canvas = document.querySelector(".react-flow")?.getBoundingClientRect();
+        if (!canvas) return ["no canvas"];
+        return Array.from(document.querySelectorAll(".react-flow__node"))
+          .filter((node) => {
+            const b = node.getBoundingClientRect();
+            return b.left < canvas.left || b.top < canvas.top || b.right > canvas.right || b.bottom > canvas.bottom;
+          })
+          .map((node) => node.getAttribute("data-id") ?? "unknown");
+      }),
+    )
+    .toEqual([]);
+});
+
 test("T-504 AC5: Trace path from the map pre-fills and runs (guest->guest, guest->external, IP->guest)", async ({ page }) => {
   await logIn(page);
   await waitForLayout(page);

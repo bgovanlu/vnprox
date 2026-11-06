@@ -1,5 +1,38 @@
 # T-3713 · `simulator.spec.ts` "Trace path from the map" is ~33% flaky on element stability
 
+## ✅ Resolved 2026-11-06 — a product bug, not a test problem
+
+**The cause, measured.** A geometry probe at the moment of the click read the map at
+`matrix(2, 0, 0, 2, …)`, which is `maxZoom`, with `vm-b/net0` at x=1732 on a canvas ending at x=1375.
+React Flow's `fitView` prop fits once on mount, when every node is still stacked at the origin. The
+elkjs layout then spreads them out and nothing fits again, so most of the map stayed off the canvas.
+This card's ranked hypothesis 2 (viewport) was the right one, and blockers 1 and 3 below were symptoms
+of it: Playwright's scroll-into-view moved the canvas under a click point that could never be reached,
+which is why the reported interceptor changed on every retry. Real users saw the same over-zoomed map.
+
+**The fix.** `TopologyPage` fits once per distinct node set after layout arrives, as
+`TopologyCanvasV2` already did. A share link's viewport stays authoritative.
+
+**Against the acceptance criteria below.**
+
+| Check | Before | After |
+| --- | --- | --- |
+| Trace-path test, low load (`--repeat-each=6`) | 1 passed, 5 failed, 1.2m each failure | not applicable |
+| AC1: whole spec `--repeat-each=10 --workers=1`, twice | | 60 passed, then 60 passed; trace-path 13s |
+| New test `T-3713: Graph view fits the settled layout` with the fix removed | | Fails, 21 nodes off the canvas |
+| AC3: `web/e2e/quarantine.json` empty | 1 entry | Empty |
+
+AC2 (the full sharded suite) is recorded by the v4.2.1 release gate.
+
+**Not fixed here.** The map embedded on `/tools` showed the same over-zoom in a screenshot, and is not
+changed by this fix. Separately, `NODE_HEIGHT` in `layout.ts` is 56 while nodes render about 77 tall,
+so stacked nodes overlap by about 1.5px. Neither affects this test.
+
+Everything below is the investigation as it stood, kept because its disproven hypotheses are the
+useful part.
+
+---
+
 **Found by:** the e2e run gating T-3709's Sigstore commit, 2026-08-25. · **size:** S ·
 **depends:** — · **affects:** every e2e run; it is currently the only thing standing between a green
 tree and a red one

@@ -440,17 +440,33 @@ function TopologyPageContent() {
   const layoutSignature = topology
     ? `${String(topology.nodes.length)}:${String(topology.edges.length)}:${topology.nodes.map((n) => n.id).join(",")}`
     : "";
+  const layoutPositionsSignatureRef = useRef("");
   useEffect(() => {
     if (!topology) return;
     let cancelled = false;
     void computeLayout(topology.nodes, topology.edges).then((result) => {
-      if (!cancelled) setLayoutPositions(result);
+      if (cancelled) return;
+      layoutPositionsSignatureRef.current = layoutSignature;
+      setLayoutPositions(result);
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on layoutSignature, not `topology` itself
   }, [layoutSignature]);
+
+  // T-3713: TopologyCanvas's `fitView` prop only fits on mount, while every
+  // node is still stacked at the origin, which leaves the map at maxZoom with
+  // the settled layout off the canvas. Fit again once per distinct node set,
+  // as TopologyCanvasV2 does. A share link's viewport is authoritative.
+  const fittedLayoutSignatureRef = useRef("");
+  useEffect(() => {
+    const signature = layoutPositionsSignatureRef.current;
+    if (urlView || viewMode !== "graph" || rendererVersion !== "v1") return;
+    if (signature === "" || fittedLayoutSignatureRef.current === signature) return;
+    fittedLayoutSignatureRef.current = signature;
+    void reactFlow.fitView();
+  }, [layoutPositions, urlView, viewMode, rendererVersion, reactFlow]);
 
   // --- Expanded guest-group pills: one query per expanded pill ----------
   const [expandedData, setExpandedData] = useState<Record<string, { nodes: TopologyNode[]; edges: TopologyEdge[] }>>(

@@ -6,7 +6,7 @@ Standards for all implementation work. `CLAUDE.md` summarizes the rules; this do
 
 | Layer | Choice | Version |
 |---|---|---|
-| Backend | Go | 1.25+ (go.mod: `go 1.25.0`; CI pins a newer patch release) |
+| Backend | Go | 1.26+ (go.mod: `go 1.26.0`; CI pins a newer patch release) |
 | Router | net/http + `chi` | v5 |
 | DB | SQLite via `modernc.org/sqlite` (pure Go, no cgo) | — |
 | Netlink | `github.com/vishvananda/netlink` | — |
@@ -56,7 +56,7 @@ dependency with an incompatible or unrecognized license fails CI before it fails
 the task report's license note is what a reviewer reads to understand *why* the gate passed, not
 what makes it pass.
 
-Toolchain note: the module requires Go 1.25+ (`go 1.25.0` in go.mod). A host with an older `go` binary still builds, but only via `GOTOOLCHAIN` auto-download of a matching toolchain — which needs network access and therefore fails air-gapped. Install Go 1.25+ natively for offline builds. This matters for *building* vnprox offline (e.g. `scripts/verify-reproducible.sh` on an air-gapped build host); it does not affect *installing* it — T-4009's offline bundle (`packaging/bundle-offline.sh`, `docs/deployment.md`'s "Offline install bundle" section) ships prebuilt binaries in the `.deb`, so an air-gapped target node needs no Go toolchain at all, native or otherwise.
+Toolchain note: the module requires Go 1.26+ (`go 1.26.0` in go.mod). A host with an older `go` binary still builds, but only via `GOTOOLCHAIN` auto-download of a matching toolchain — which needs network access and therefore fails air-gapped. Install Go 1.26+ natively for offline builds. This matters for *building* vnprox offline (e.g. `scripts/verify-reproducible.sh` on an air-gapped build host); it does not affect *installing* it — T-4009's offline bundle (`packaging/bundle-offline.sh`, `docs/deployment.md`'s "Offline install bundle" section) ships prebuilt binaries in the `.deb`, so an air-gapped target node needs no Go toolchain at all, native or otherwise.
 
 ## Repo layout
 
@@ -335,8 +335,9 @@ least 20 characters, a ticket, an expiry no more than 42 days out.
 `internal/vitestgate`'s `TestRepoQuarantineIsValid` re-checks that file against the real clock on
 every `make check`. It ships seeded with the `TenantsPanel.test.tsx` entry from the incident above —
 not because the test is currently flaky (the underlying fix landed in `2cd48367`), but so the record
-starts non-empty and the hard-expiry mechanism has something real to expire: it is due `2026-09-20`,
-at which point it fails the build until someone re-triages it.
+starts non-empty and the hard-expiry mechanism has something real to expire: it was due `2026-09-20`.
+It did fail the build on that date, and was removed on 2026-11-06 for v4.2.1 with no recurrence in the
+last 20 recorded runs. The file is now empty, which is its healthy state.
 
 ## The mock PVE server (`internal/pvemock`)
 
@@ -691,7 +692,7 @@ make e2e     # when touching UI flows — Playwright, sharded; the gate decides 
 
 Every job pins the same versions so a CI run is reproducible and a local `make check` matches it exactly:
 
-- **Go**: `1.26.6` (`scripts/lib/versions.sh`'s `GO_VERSION_EXPECTED` — the single source of truth `scripts/ci-local.sh` and `packaging/Makefile`'s release build path both read, rather than each pinning its own literal; also `actions/setup-go`'s `go-version`, identical across `ci.yml`, `packaging-matrix.yml`, `release.yml`); `go.mod` floors at `go 1.25.0`. Bumped from `1.26.5` on 2026-08-14: `govulncheck` failed `make check` on five stdlib advisories (GO-2026-6218 `net/url`, GO-2026-6090 `crypto/tls`, GO-2026-6089 `net/http`, GO-2026-5972 `encoding/asn1`, GO-2026-5026 `net/http`/idna), every one of them reachable from vnprox code and every one fixed in `1.26.6`. Since the workflows are disabled, the version that actually matters is the one on the dev host that builds the `.deb` — check `go version` before cutting a release. `packaging/Makefile`'s `deb` target warns (does not fail) when the `go` on `PATH` doesn't match this pin.
+- **Go**: `1.26.10` (`scripts/lib/versions.sh`'s `GO_VERSION_EXPECTED` — the single source of truth `scripts/ci-local.sh` and `packaging/Makefile`'s release build path both read, rather than each pinning its own literal; also `actions/setup-go`'s `go-version`, identical across `ci.yml`, `packaging-matrix.yml`, `release.yml`); `go.mod` floors at `go 1.25.0`. Bumped from `1.26.5` on 2026-08-14: `govulncheck` failed `make check` on five stdlib advisories (GO-2026-6218 `net/url`, GO-2026-6090 `crypto/tls`, GO-2026-6089 `net/http`, GO-2026-5972 `encoding/asn1`, GO-2026-5026 `net/http`/idna), every one of them reachable from vnprox code and every one fixed in `1.26.6`. Since the workflows are disabled, the version that actually matters is the one on the dev host that builds the `.deb` — check `go version` before cutting a release. `packaging/Makefile`'s `deb` target warns (does not fail) when the `go` on `PATH` doesn't match this pin.
 - **Node**: `22` (`scripts/lib/versions.sh`'s `NODE_MAJOR`, same single-source-of-truth shape as Go above; also `actions/setup-node`'s `node-version`, identical across all workflows); `web/package.json`'s `engines.node` floors at `>=20.19.0`.
 - **golangci-lint**: `v2.12.2` (`Makefile`'s `GOLANGCI_LINT_VERSION`, invoked via `go run .../golangci-lint@$(GOLANGCI_LINT_VERSION)` when no local binary is on `PATH` — same version locally and in CI).
 - **govulncheck**: `v1.5.0` (`Makefile`'s `GOVULNCHECK_VERSION`, same `go run ...@version` pattern).
