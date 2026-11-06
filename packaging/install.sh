@@ -497,9 +497,10 @@ port_listening() {
 	if command -v netstat >/dev/null 2>&1 && netstat -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[.:]${port}\$"; then
 		return 0
 	fi
+	# The subshell closes its own descriptor. Never add `exec ... 2>/dev/null`
+	# here: exec applies that redirect to this whole shell, which silences every
+	# later log, warning and error.
 	if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
-		exec 3<&- 2>/dev/null || true
-		exec 3>&- 2>/dev/null || true
 		return 0
 	fi
 	return 1
