@@ -15,7 +15,7 @@ import { useEffect, useRef } from "react";
 // language needs). `editor.api` still carries Monaco's core editor engine
 // itself (an inherent, unavoidable cost of embedding Monaco at all — it is
 // not further splittable), but skips those ~40 extra language bundles.
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
+import * as monaco from "monaco-editor/editor/editor.api.js";
 import type { LintMarker } from "../../api/rawInterfaces";
 import { INTERFACES_LANGUAGE_ID, registerInterfacesLanguage } from "./interfacesLanguage";
 
@@ -50,6 +50,10 @@ export default function MonacoRawEditor({ value, onChange, markers, readOnly = f
       minimap: { enabled: false },
       fontSize: 13,
       scrollBeyondLastLine: false,
+      // Monaco's default EditContext input is a plain <div>, which
+      // useKeyboardShortcuts cannot recognise as editable: typing "/" in an
+      // address opened global search and navigated away, losing the edit.
+      editContext: false,
     });
     editorRef.current = editor;
     const subscription = editor.onDidChangeModelContent(() => {
