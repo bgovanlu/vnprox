@@ -82,7 +82,7 @@ export default defineConfig({
       // wrong, and measuring is what showed it.
       //
       // `page.clock` has shipped since Playwright 1.45 and this repo pins
-      // 1.61.1, so the clock IS freezable from outside the app —
+      // 1.64.1, so the clock IS freezable from outside the app —
       // visual.spec.ts now does it. But freezing it barely moved the number,
       // because the dominant cause was never a client-derived label: it was
       // timestamps the SERVER produces, rendered as absolute local time, on

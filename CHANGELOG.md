@@ -81,6 +81,13 @@ assessed individually.
 
 ### Changed
 
+- **Playwright 1.61.1 → 1.64.1.** With Go 1.26.10's HTTP/2 server, 1.61.1 intermittently lost track of
+  a navigation response (`Object with guid response@… was not bound`), failing 6 to 8 unrelated tests
+  per run. The tests passed with the same code on Go 1.26.6, or on Go 1.26.10 with server HTTP/2 off.
+- **Two end-to-end tests had gone stale after the notice stack redesign (`T-4304`).** The read-only half
+  of the remediation test had been passing without checking anything, because collapsed notices do not
+  render their buttons for any session; it now opens them first. The Graph view's screenshot baseline
+  predated the redesign and has been regenerated.
 - **Both test quarantines are empty.** `T-3713`'s entry is removed because its cause is fixed;
   `T-3708`'s `TenantsPanel` entry because it has not recurred in the last 20 recorded runs.
 

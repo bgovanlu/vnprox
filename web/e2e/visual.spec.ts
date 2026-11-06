@@ -180,7 +180,7 @@ test.describe("T-4210: visual regression, every routed page x light/dark/demo", 
   // verification run is a diff nobody introduced. T-4210 recorded this as not
   // neutralizable "from outside the app without a source change this task's
   // scope excludes"; that was already untrue when written — `page.clock` has
-  // shipped since Playwright 1.45 and this repo pins 1.61.1.
+  // shipped since Playwright 1.45 and this repo pins 1.64.1.
   //
   // `setFixedTime`, not `install`. `install` pauses the timer queue as well as
   // the clock, which stalls the app's own polling and can leave a page waiting

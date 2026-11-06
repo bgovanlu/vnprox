@@ -274,7 +274,7 @@ ago") were irreducible "without a source change this task's scope excludes". Bot
 were wrong:
 
 - **The clock was always freezable from outside the app.** `page.clock` has shipped since Playwright
-  1.45 and this repo pins 1.61.1. Every test now calls `page.clock.setFixedTime` before its first
+  1.45 and this repo pins 1.64.1. Every test now calls `page.clock.setFixedTime` before its first
   navigation — `setFixedTime`, not `install`, because `install` also pauses the timer queue and
   stalls the app's own polling.
 - **Antialiasing and relative labels were not the dominant cause.** With the clock frozen, `/audit`

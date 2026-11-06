@@ -40,7 +40,25 @@ const REMEDIATION_BUTTONS = [
   /^Start (dnsmasq|frr)$/,
 ];
 
+/** Two or more active notices collapse into one row, and NoticeStack does not
+ * render their bodies until it is opened (T-4304). Without this, no session has
+ * any of these buttons, so "a read-only session has none" proves nothing. */
+async function openNotices(page: Page): Promise<void> {
+  const collapsed = page
+    .getByRole("region", { name: "Topology notices" })
+    .getByRole("button", { expanded: false });
+  if ((await collapsed.count()) > 0) {
+    await collapsed.first().click();
+  }
+}
+
+/** The fixture's notices depend on polling state, so they arrive after load.
+ * Two minutes matches visual.spec.ts's settleClusterStaleness. */
+const NOTICE_SETTLE_MS = 120_000;
+
 test.describe("Phase 36 remediation actions", () => {
+  test.setTimeout(NOTICE_SETTLE_MS * 2);
+
   // The write-capable half. This is what stops the read-only assertion
   // below from passing vacuously: if none of the three banners renders in
   // this fixture at all, this test says so loudly instead of leaving the
@@ -49,19 +67,15 @@ test.describe("Phase 36 remediation actions", () => {
     await logInAs(page, "root", "vnprox-mock", "pam");
 
     const main = page.getByRole("main");
-    let found: string | undefined;
-    for (const re of REMEDIATION_BUTTONS) {
-      if ((await main.getByRole("button", { name: re }).count()) > 0) {
-        found = re.source;
-        break;
-      }
-    }
-    expect(
-      found,
-      "no Phase 36 remediation button rendered for a write-capable session — either the banners are " +
-        "absent in this fixture (in which case the read-only test below proves nothing and this pair " +
-        "needs a fixture that shows them) or the affordances have regressed",
-    ).toBeDefined();
+    const anyRemedy = main.getByRole("button", {
+      name: new RegExp(REMEDIATION_BUTTONS.map((re) => re.source).join("|")),
+    });
+    await expect(async () => {
+      await openNotices(page);
+      await expect(anyRemedy.first()).toBeVisible({ timeout: 1_000 });
+    }, "no Phase 36 remediation button rendered for a write-capable session — either the banners are " +
+      "absent in this fixture (in which case the read-only test below proves nothing and this pair " +
+      "needs a fixture that shows them) or the affordances have regressed").toPass({ timeout: NOTICE_SETTLE_MS });
   });
 
   // AC1. A read-only session must not be offered a button that installs
@@ -78,6 +92,13 @@ test.describe("Phase 36 remediation actions", () => {
       await logInAs(page, "auditor", "readonly", "pve");
 
       const main = page.getByRole("main");
+      // A read-only session still sees the notices themselves. Waiting for one
+      // to be open is what makes the absence checks below mean something.
+      await expect(async () => {
+        await openNotices(page);
+        await expect(main.getByText(/last-known data|No LLDP data yet/).first()).toBeVisible({ timeout: 1_000 });
+      }).toPass({ timeout: NOTICE_SETTLE_MS });
+
       for (const re of REMEDIATION_BUTTONS) {
         await expect(
           main.getByRole("button", { name: re }),
